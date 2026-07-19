@@ -1,0 +1,36 @@
+{
+  "name": "argus-cloud",
+  "version": "0.1.0",
+  "description": "Normascope Cloud — hosted service (private)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "npm run build && node test/metering.test.mjs",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshattray/argus-cloud.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/harshattray/argus-cloud/issues"
+  },
+  "homepage": "https://github.com/harshattray/argus-cloud#readme",
+  "private": "true",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "pg": "^8.22.0"
+  }
+}
