@@ -1,7 +1,7 @@
 # FUTURENORMA.md — where we are, what's built, what's left
 
 **Private.** Contains credentials, pricing, margins, and strategy.
-Last updated: 2026-07-29.
+Last updated: 2026-07-30.
 
 This is the single orientation document. Read this, then `CHECKPOINT.md` for
 phase-level detail and `BuildV4.md` for the spec that defines "done".
@@ -94,9 +94,19 @@ served from R2.
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ v0.7.0, unpublished | Verified from the packed tarball: clean install, real capture→diff→report run, all 20 entry points resolve |
 
-Branch `stage-5-explain` @ `1287239` — **not pushed, not merged**.
+Branch `stage-5-explain` @ `e3f3fc9` — **not pushed, not merged**.
 Full suite: **62 checks green**.
+
+**Publish order matters.** `normascope-mcp` depends on `norma-scope` by name,
+and npm cannot link a workspace *root* as a dependency — so it resolves from
+the registry, and `^0.7.0` will not install until 0.7.0 is published. Publish
+`norma-scope@0.7.0` first, then bump the MCP dep and publish `normascope-mcp`
+second. (Its tsconfig now points at `../../src` for typechecking, because it
+had been silently validating against the last *published* release — its
+dynamic import of `dist/explain/` was checked against a 0.6.0 copy with no
+explain module in it.)
 
 ### argus-cloud — private repo
 
@@ -245,26 +255,33 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 3. **Wire the Action to `/api/ci-explain`** (POST after upload, poll GET, append
    the escaped `prLine` to the sticky comment). Service and tests already exist.
 4. **Publish `normascope-mcp` to npm** and list it in an agent-tool registry —
-   the last open Build 3.5 Stage 3 gate item.
+   the last open Build 3.5 Stage 3 gate item. Publish `norma-scope@0.7.0`
+   first (§2).
+5. **`doctor` reports explain readiness** — mode, key, and whether the optional
+   SDK is installed. Today `doctor` checks config, Figma, URL, selectors, and
+   browser but says *nothing* about explain, so the first time a user learns
+   they are missing a piece is the moment they wanted an answer. Nothing is
+   lost when that happens (`.bridge/` state persists; only `explain` re-runs),
+   but discovery belongs in `doctor`. Small, self-contained.
 
 ### Next — needs a decision from Harsha
 
-5. **Pick the MoR: Paddle vs Lemon Squeezy.** (Stripe cannot onboard
+6. **Pick the MoR: Paddle vs Lemon Squeezy.** (Stripe cannot onboard
    India-registered businesses — that's why MoR.) Unblocks C5 live, E7, and
    remapping the provisional `pack_*` product ids to real ones.
-6. **Domain.** `harshat.space` subdomain for private testing; real domain later.
+7. **Domain.** `harshat.space` subdomain for private testing; real domain later.
    Migration cost is a BASE_URL change, DNS, an OAuth app, and an MoR re-point.
 
 ### Then — the real launch sequence
 
-7. **Deploy `argus-cloud/web/`** to its own Vercel project + Neon/Supabase
+8. **Deploy `argus-cloud/web/`** to its own Vercel project + Neon/Supabase
    Postgres + R2. Then **retire `/norma-lab`** from the portfolio (§1).
-8. **Build Stage 4 auth + dashboard** (§4) — the report page's API-key field is
+9. **Build Stage 4 auth + dashboard** (§4) — the report page's API-key field is
    a stopgap until sessions exist.
-9. **Phase E security validation**: E1 injection fixtures against the *hosted*
+10. **Phase E security validation**: E1 injection fixtures against the *hosted*
    path, E6 provider retention posture + disclosure page, E7 the live
    buy→explain→exhaust→re-buy loop.
-10. **Launch docs**: data-flow disclosure, pricing page with per-review cost,
+11. **Launch docs**: data-flow disclosure, pricing page with per-review cost,
     BYO instructions, exact model list, honest limitations ("hypotheses, not
     diagnoses"). File the **Normascope** trademark. ~~Record the FSL/BSL
     decision.~~ **Done 2026-07-29: Apache-2.0** for the client (CLI, MCP,
@@ -286,6 +303,7 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 | Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
 | Explain is Anthropic-only, in BYO **and** hosted | Open. Invisible to us because we have a key; a hard blocker for any account without an Anthropic contract. Scoped in §8. |
+| **A paying customer on the CLI would pay twice** | Open, and a **launch blocker for the cloud tier**. Org-credits mode exists only in the MCP server (`server.ts:234–269`); `norma explain` has no cloud branch and goes straight to `createAnthropicCaller()`. So a customer with credits cannot spend them from the CLI — they must also bring an Anthropic key. Harmless today (no paying customers), must close before Cloud launches. Scoped in §8. |
 
 ---
 
@@ -301,6 +319,10 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 5. **Gates live on substrates we control** — servers, data, network. Never
    client-side locks; they're readable-JS theatre that annoy honest users and
    hand a fork its reason to exist. The durable moat is **data enrichment**.
+   (The published tarball is minified as of v0.7.0. That is **friction, not a
+   gate** — a prettifier undoes it in seconds and every string literal,
+   including the prompts, is still plain text. It costs nothing and deters
+   casual lifting; never treat it as protection, and never build a gate on it.)
 6. **No paid logic in the published package.** (The Argus *repo* is private;
    the npm package is what's public, and that is the boundary that matters.)
    No provider key ever reaches the CLI,
@@ -330,6 +352,33 @@ is injected at `command.ts:130` with `deps.callModel` overriding it (that is how
 the suite runs with zero live calls). Adding a provider is **a second
 implementation of one function**, not a refactor. The architecture is already
 right; only the transport is hardcoded.
+
+### The CLI and the MCP server do not have the same modes
+
+This is the sharper gap, found 2026-07-30, and it is a **launch blocker for the
+cloud tier**:
+
+| Surface | BYO (own key) | Org credits (paid) |
+|---|---|---|
+| MCP server | ✅ `ANTHROPIC_API_KEY` | ✅ `NORMASCOPE_CLOUD_URL` + `NORMASCOPE_ORG_KEY` → `/api/upload` + `/api/explain`, **plain fetch, no SDK** (`server.ts:234–269`) |
+| CLI (`norma explain`) | ✅ | ❌ **missing entirely** |
+
+A customer who has bought credits and runs `npx norma-scope explain` gets the
+BYO path — so they pay us for credits they cannot spend, *and* pay Anthropic.
+The server side is entirely built (upload, explain, metering, ledger, result
+cache, breaker); the CLI is one branch away from using it.
+
+Two consequences worth holding onto:
+
+- **Cloud mode needs no SDK and no provider choice from the user.** It is a
+  `fetch` to our endpoint. Whatever provider we run server-side is our problem,
+  not theirs — so for paying users, "provider flexibility" is already solved by
+  architecture. The SDK friction below applies to **BYO mode only**.
+- **This is cheap and carries no wire-contract risk**, because the endpoints
+  and their shapes already exist and are exercised by the MCP path.
+
+Close it before Cloud launches, not after. No paying customers exist today, so
+it costs nothing right now — it becomes embarrassing the day one does.
 
 ### Why this matters — procurement, not preference
 
@@ -374,15 +423,22 @@ BYO mode.** Hosted stays Anthropic-only until a paying customer asks otherwise.
    `openai-compatible` (base URL — covers Ollama, vLLM, OpenRouter).
 2. One `ModelCaller` per provider behind a factory keyed on that value.
    Per-provider key env var. `doctor` reports which provider and key are live.
-3. **Provider SDKs become optional dynamic imports, not hard deps.** The CLI
-   should not carry ~10 MB of Anthropic SDK for users who never run explain,
-   let alone four SDKs. Make `@anthropic-ai/sdk` optional in the same change —
-   that is a win on its own, independent of multi-provider.
+3. ~~**Provider SDKs become optional dynamic imports, not hard deps.**~~
+   **Done 2026-07-30 (v0.7.0, unpublished).** `@anthropic-ai/sdk` is an
+   optional peer loaded by dynamic import; a clean install dropped from 27 MB
+   to 14 MB and only BYO users who actually run an analysis pay for it. Two
+   things a future provider must copy: the import is **type-only** at the top
+   of `client.ts` so nothing is pulled at load time, and `loadSdk()` also
+   resolves from the **working directory** — `npx` runs the CLI out of npm's
+   `_npx` cache, where the project's `node_modules` is not on the resolution
+   path, so a package the user installed exactly as instructed is otherwise
+   invisible. That bug shipped and was caught in testing; do not reintroduce
+   it per provider.
 4. A **capability matrix** per provider (strict schema · images · caching ·
    refusal signal). A provider missing strict schema is **rejected at config
    time with a named reason** — never silently degraded.
 5. Re-run `scripts/calibrate.mjs` per provider; it needs the same seam.
-6. Docs: exact supported model list per provider. Launch-docs item 10 already
+6. Docs: exact supported model list per provider. Launch-docs item 11 already
    promises "exact model list" — this makes that promise bigger.
 
 ### Decision needed
@@ -395,6 +451,15 @@ Ranked by value ÷ risk:
   above plus its own calibration run. Real work, real payoff.
 - **(c) `openai-compatible` base URL** — cheap to add, impossible to guarantee.
   Ship it labelled **best-effort / unsupported**, or not at all.
+
+**Free escape hatch available today, undocumented:** the Anthropic SDK honours
+`ANTHROPIC_BASE_URL`, so any Anthropic-API-compatible gateway — a proxy in
+front of Bedrock, a LiteLLM-style router, a self-hosted endpoint — already
+works with zero code change. That is how the whole triage → analysis →
+findings path was verified against a local stand-in endpoint with no live
+call. It is not real multi-provider (no schema, refusal, image, or price
+mapping) but it is an afternoon of docs, and it may satisfy the first
+enterprise that asks before (a) is built.
 
 **Sequencing:** this sits behind the §5 "Now" list. Pushing both branches and
 artifact upload beat it. It moves ahead of everything the moment one real
