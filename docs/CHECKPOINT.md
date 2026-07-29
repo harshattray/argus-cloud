@@ -30,12 +30,15 @@ blocked on the MoR sandbox and deployment.
   50/$3, 200/$12, 1000/$60. Full audit trail: `docs/calibration.md`
   (recompute any figure from recorded usage × the live price table).
 
-## Branch / commit map (nothing merged to main yet)
+## Branch / commit map (both merged to main 2026-07-30)
 
 - **Argus (private repo, public npm package `norma-scope`)** — branch `stage-5-explain`.
-  Latest: `1287239` (Phase B run + MCP explain tool D3/D4 + T6.6).
+  Latest: `e3f3fc9` (v0.7.0 packaging: minified bundle, Apache-2.0, optional SDK).
+  Pushed and fast-forward-merged to `main`; `origin/main` is at the same commit.
+  Not tagged, **not published** — `v0.6.0` is still the latest tag and npm release.
 - **argus-cloud (private)** — branch `stage-5-metering`.
-  Latest: `2f711b7` (Phase D: enrichment, CI batch, Next.js web surface).
+  Latest: `ab40521` (FUTURENORMA: CLI/MCP mode gap, v0.7.0 packaging state).
+  Pushed and fast-forward-merged to `main`; `origin/main` is at the same commit.
 
 ## What's DONE since the last checkpoint
 

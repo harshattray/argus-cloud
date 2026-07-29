@@ -10,8 +10,8 @@ phase-level detail and `BuildV4.md` for the spec that defines "done".
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished and published** (`norma-scope` v0.6.0, Build 3.5 Stages
-0–3 merged to main). The **explain engine is finished** and its real cost is
+The **CLI is finished** (`norma-scope`; v0.6.0 is what's on npm, v0.7.0 is
+built, merged to main, and awaiting a tag + publish). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The **hosted surface exists twice**: a full Next.js
@@ -96,7 +96,9 @@ served from R2.
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
 | Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ v0.7.0, unpublished | Verified from the packed tarball: clean install, real capture→diff→report run, all 20 entry points resolve |
 
-Branch `stage-5-explain` @ `e3f3fc9` — **not pushed, not merged**.
+Branch `stage-5-explain` @ `e3f3fc9` — **pushed and fast-forward-merged to
+`main` 2026-07-30**. `main` and `origin/main` are both at `e3f3fc9`. Not tagged
+(`v0.6.0` is the latest tag) and **not published to npm**.
 Full suite: **62 checks green**.
 
 **Publish order matters.** `normascope-mcp` depends on `norma-scope` by name,
@@ -125,7 +127,8 @@ explain module in it.)
 | **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
 | Credit packs seeded from measured COGS | ✅ | `migrations/005` |
 
-Branch `stage-5-metering` @ `762b669` — **not pushed, not merged**.
+Branch `stage-5-metering` @ `ab40521` — **pushed and fast-forward-merged to
+`main` 2026-07-30**. `main` and `origin/main` are both at `ab40521`.
 Full suite: **63 checks green**.
 
 ### Portfolio repo — the lab
@@ -246,8 +249,11 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 
 ### Now — unblocked, no decisions needed
 
-1. **Push both branches.** `stage-5-explain` and `stage-5-metering` exist only
-   locally. This is the single riskiest thing in this document.
+1. ~~**Push both branches.**~~ **Done 2026-07-30** — both pushed and
+   fast-forward-merged to their `main` branches (§2). The next release step is
+   tagging `v0.7.0` and publishing to npm, in that order and only together:
+   publish `norma-scope` first, then bump `normascope-mcp` to 0.2.0 with
+   `norma-scope: ^0.7.0` and publish it second (§2, publish order).
 2. **Artifact upload (R2).** Hosted/lab explain currently reasons over
    `summary.json` metadata + history, **not image crops** — the prompt says so
    explicitly and findings are hedged accordingly. Uploading crops brings hosted
@@ -295,7 +301,7 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 
 | Risk | Status |
 |---|---|
-| Both stage branches unpushed | **Highest.** Fix immediately. |
+| ~~Both stage branches unpushed~~ | **Closed 2026-07-30.** Both pushed and merged to `main`; `origin` holds everything. |
 | E1 hosted-path injection fixtures not run 1:1 | Open. CLI-side injection suite is green and the hosted prompt uses the same delimiter rules — but it has not been *proven* on the hosted path. |
 | E6 provider retention posture unverified | Open. Disclosure page unwritten. |
 | E7 live purchase loop | Blocked on MoR. |
