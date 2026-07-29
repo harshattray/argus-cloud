@@ -22,9 +22,11 @@ export const ZERO_USAGE: TokenUsage = {
 };
 
 /**
- * List prices in microdollars per token. Seeded from the live pricing page;
- * Phase B calibration re-verifies these before Phase C prices any pack, and
- * a model missing here fails closed (no charge computed → no sale).
+ * List prices in microdollars per token. Verified against the live pricing
+ * page by Phase B calibration on 2026-07-29 (docs/calibration.md). Sonnet 5
+ * is deliberately kept at LIST price ($3/$15) rather than its intro price
+ * ($2/$10, ends 2026-08-31) so recorded costs never under-state provider
+ * spend. A model missing here fails closed (no charge computed → no sale).
  */
 const PRICES_MICRO_PER_TOKEN: Record<string, { input: number; output: number }> = {
   "claude-haiku-4-5": { input: 1, output: 5 },

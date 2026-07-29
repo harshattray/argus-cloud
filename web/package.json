@@ -1,0 +1,25 @@
+{
+  "name": "argus-cloud-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Normascope Cloud web surface — Next.js on Vercel (Stage 4 + Build 4.0 Phase D)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0",
+    "argus-cloud": "file:..",
+    "next": "^15.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -5,3 +5,6 @@ dist/
 *.log
 test/.tmp-*
 .pgdata/
+.next/
+web/node_modules/
+.DS_Store

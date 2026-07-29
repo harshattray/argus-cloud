@@ -10,6 +10,7 @@ import {
 import { makeCacheKey, cacheGet, cachePut } from "./resultCache.js";
 import { isTripped, addSpend, checkAndTrip, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
 import type { ApiKeyRecord } from "./apiKeys.js";
+import { buildEnrichment, applyEnrichment, saveRunFindings, type Enrichment } from "./enrichment.js";
 
 /**
  * Hosted explain pipeline (Build 4.0 Phase C) — the enforcement point every
@@ -36,6 +37,11 @@ export type ProviderResult =
 export interface ProviderRequest {
   model: string;
   batch: boolean;
+  /**
+   * Phase D hosted-only history context, as a delimited data block for the
+   * prompt. Null for orgs/frames with no history. Never present on BYO.
+   */
+  enrichmentText?: string | null;
 }
 
 export type Provider = (request: ProviderRequest) => Promise<ProviderResult>;
@@ -51,6 +57,8 @@ export interface ExplainRequest {
   orgId: string;
   apiKey?: ApiKeyRecord | null;
   runId?: string | null;
+  /** Enables history enrichment (D6) and findings storage when set with runId. */
+  repoId?: string | null;
   frame: string;
   buildHash: string;
   designHash: string;
@@ -199,9 +207,21 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     };
   };
 
+  // Phase D — hosted-only history enrichment, computed from our rows before
+  // the provider call. BYO traffic never reaches this function, so the gap
+  // is structural, not a client-side lock.
+  let enrichment: Enrichment | null = null;
+  if (req.repoId) {
+    enrichment = await buildEnrichment(db, { orgId: req.orgId, repoId: req.repoId, frame: req.frame });
+  }
+
   let result: ProviderResult;
   try {
-    result = await deps.provider({ model: req.model, batch: req.batch ?? false });
+    result = await deps.provider({
+      model: req.model,
+      batch: req.batch ?? false,
+      enrichmentText: enrichment?.text ?? null,
+    });
   } catch (err) {
     return fail(`provider threw: ${(err as Error).message}`);
   }
@@ -215,7 +235,9 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     return fail("response failed schema validation");
   }
 
-  // 8 — meter, feed the breaker, cache, return.
+  // 8 — inject history fields (our data, not the model's), meter, feed the
+  // breaker, cache, persist for future recurrence, return.
+  const findings = enrichment ? applyEnrichment(result.json, enrichment) : result.json;
   const cost = computeCostMicrodollars(req.model, result.usage, { batch: req.batch }) ?? 0;
   await addSpend(db, cost, now);
   await checkAndTrip(db, deps.dailyBudgetMicrodollars, deps.alert, now);
@@ -225,7 +247,18 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     usage: result.usage,
     costMicrodollars: cost,
     creditsCharged: credits,
+    detail: enrichment ? `enrichment_tokens=${enrichment.tokenEstimate}` : "",
   });
-  await cachePut(db, req.orgId, cacheKey, req.model, result.json);
-  return { ok: true, findings: result.json, cached: false, creditsCharged: credits };
+  await cachePut(db, req.orgId, cacheKey, req.model, findings);
+  if (req.repoId && req.runId) {
+    await saveRunFindings(db, {
+      orgId: req.orgId,
+      repoId: req.repoId,
+      runId: req.runId,
+      frame: req.frame,
+      model: req.model,
+      findings,
+    });
+  }
+  return { ok: true, findings, cached: false, creditsCharged: credits };
 }

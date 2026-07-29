@@ -2,13 +2,16 @@
   "name": "argus-cloud",
   "version": "0.1.0",
   "description": "Normascope Cloud — hosted service (private)",
-  "main": "index.js",
+  "main": "dist/db.js",
+  "exports": {
+    "./*": "./dist/*"
+  },
   "directories": {
     "doc": "docs",
     "test": "test"
   },
   "scripts": {
-    "test": "npm run build && node test/metering.test.mjs",
+    "test": "npm run build && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs",
     "build": "tsc"
   },
   "repository": {

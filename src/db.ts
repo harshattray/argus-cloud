@@ -59,7 +59,11 @@ export async function createDb(): Promise<Db> {
   }
 
   const { PGlite } = await import("@electric-sql/pglite");
-  const lite = new PGlite();
+  // PGLITE_DATA_DIR gives local dev a persistent database (.pgdata/ is
+  // gitignored) so the seed script and the dev server share state; unset, it
+  // stays in-memory — what the test suites rely on.
+  const dataDir = process.env.PGLITE_DATA_DIR?.trim();
+  const lite = dataDir ? new PGlite(dataDir) : new PGlite();
   const wrapLite = (runner: {
     query: (t: string, p?: unknown[]) => Promise<{ rows: unknown[] }>;
   }): Db => ({
