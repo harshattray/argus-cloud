@@ -1,121 +1,123 @@
 # CHECKPOINT — Build 4.0 (Stage 5, Explain + Metered Intelligence)
 
-Last updated: 2026-07-19. This is the pick-up-from-here doc. Read this first,
+Last updated: 2026-07-29. This is the pick-up-from-here doc. Read this first,
 then the phase spec it points you to. Status is authoritative as of the
 commits listed below; if the code and this doc disagree, trust the code and
 fix this doc.
 
 ## TL;DR — where we are
 
-Build 4.0 has five phases (A–E) defined in `docs/BuildV4.md`. Phases A and C
-are **built and green**; B is **built but not yet run** (needs a real API
-key); D and E are **not started**.
+Build 4.0 phases A–E defined in `docs/BuildV4.md`. **A, B, C are DONE. D is
+built and live-smoke-tested locally** (hosted explain, CI batch service, MCP
+tool, history enrichment). **E is partially exercised**; the remainder is
+blocked on the MoR sandbox and deployment.
 
 | Phase | What it is | State | Where |
 |---|---|---|---|
-| A | Explain engine (free BYO-key CLI) | ✅ DONE, tests green | Argus (public), branch `stage-5-explain` |
-| B | Calibration (measure real cost) | 🟡 harness built, NOT RUN — needs `ANTHROPIC_API_KEY` | Argus, same branch (`scripts/calibrate.mjs`) |
-| C | Metering (credits/caps/breaker/webhooks) | ✅ DONE, tests green (fixture-level) | argus-cloud (private), branch `stage-5-metering` |
-| D | Hosted explain + CI batch + MCP org-key | ❌ NOT STARTED — blocked on stack decision | argus-cloud |
-| E | Security validation + live e2e + launch | ❌ NOT STARTED — blocked on B, D, MoR | both repos |
+| A | Explain engine (free BYO-key CLI) | ✅ DONE, tests green; A5.3 live smoke done | Argus, `stage-5-explain` |
+| B | Calibration (measure real cost) | ✅ DONE — ran live 2026-07-29, all B1–B4 green | `docs/calibration.md` (both repos) |
+| C | Metering (credits/caps/breaker/webhooks) | ✅ DONE, tests green | argus-cloud, `stage-5-metering` |
+| D | Hosted explain + CI batch + MCP org-key + enrichment | ✅ BUILT + local live smoke (D1, D3, D4, D6 verified; D2 fixture-verified) | argus-cloud `web/` + `src/`, Argus MCP |
+| E | Security validation + live e2e + launch | 🟡 PARTIAL — E3/E4/E5/D5 exercised locally; E1 partial; E6/E7 open | both repos |
+
+## Measured economics (Phase B, 2026-07-29)
+
+- Blended COGS **$0.0115/review** at live (intro) prices; **$0.0164** at
+  post-intro list prices. Target ≤ $0.08: **MET** both ways.
+- Deep review: $0.0200–$0.0203. Batch analyses bill at 50% as expected;
+  cache reads verified (50% hit rate on repeats).
+- Packs seeded in `migrations/005_products.sql` at the list-price 3× floor:
+  50/$3, 200/$12, 1000/$60. Full audit trail: `docs/calibration.md`
+  (recompute any figure from recorded usage × the live price table).
 
 ## Branch / commit map (nothing merged to main yet)
 
-- **Argus (public, npm `norma-scope`)** — branch `stage-5-explain`, pushed to
-  `origin`. Commits: `5a7a1d3` (Phase A engine), `5fe53fe` (usage-log seam),
-  `7da14ce` (Phase B calibration harness + cache breakpoint).
-- **argus-cloud (private)** — branch `stage-5-metering`, pushed to `origin`.
-  Commit: `b5158b4` (Phase C metering core on the Stage 4 substrate).
+- **Argus (public, npm `norma-scope`)** — branch `stage-5-explain`.
+  Latest: `1287239` (Phase B run + MCP explain tool D3/D4 + T6.6).
+- **argus-cloud (private)** — branch `stage-5-metering`.
+  Latest: `2f711b7` (Phase D: enrichment, CI batch, Next.js web surface).
 
-Both branches open their stage-gate PR when the phase is fully done (Phase A
-can PR now; Phase C's gate also wants Build 3.5 Stage 4's HTTP/UI, which does
-not exist yet — see "Prerequisite debt" below).
+## What's DONE since the last checkpoint
 
-## What's DONE
+### Phase B (live, billed)
+`npm run calibrate` in Argus ran twice (~$0.20 total): 22 recorded calls,
+live pricing fetched from the (moved) pricing doc, deep pass included.
+The harness's pricing parser was fixed for the new 5-column table.
 
-### Phase A — explain engine (Argus, `stage-5-explain`)
-- `SECURITY-LLM.md` — normative threat model. **Any new outbound field must
-  be added to its payload inventory (P1–P6) and covered by a scanner/cap.**
-- `src/explain/`: `context.ts` (A2 DOM+style capture during `auto`, opt-in,
-  deterministic, capped), `assemble.ts` (A3 pure assembly, token budget with
-  fixed truncation order, blocking secret scanner), `scanner.ts`, `schema.ts`
-  (strict findings schema + validation), `prompt.ts` (hardened, PROMPT_VERSION
-  = 1), `models.ts` (haiku-4-5 triage / sonnet-5 analysis / opus-4-8 deep),
-  `client.ts` (`@anthropic-ai/sdk`, structured outputs, injectable caller so
-  tests never go live), `codepointers.ts` (globs + `git check-ignore` gate),
-  `command.ts` (`norma explain [frame|--all|--deep]`), `findings.ts`.
-- `report.ts` renders findings escaped, with a stale-hash guard.
-- `test/explain.test.mjs`: 25 checks (A2–A6), no live calls. All green.
+### Phase D (argus-cloud `stage-5-metering`)
+- `migrations/003_findings.sql` (run_findings), `004_explain_batches.sql`,
+  `005_products.sql` (seeded packs).
+- `src/enrichment.ts` — trend line, firstDriftCommit, recurrence from
+  frame_stats + run_findings; ~2K token cap with fixed truncation order;
+  fields injected **server-side from our rows**, never from model output.
+  Suite: `test/enrichment.test.mjs` (15 checks, D6).
+- `src/ciBatch.ts` — enqueue/collect around the Message Batches API at the
+  50% rate; reserve-then-refund; escaped PR line. Suite:
+  `test/cibatch.test.mjs` (18 checks, D2 fixture-level).
+- `web/` — **Next.js (Vercel-ready; stack decision made: Next.js on
+  Vercel)**: `/api/upload` (summary.json v2, key-gated, capped),
+  `/api/explain` (D1, wired to hostedExplain), `/api/ci-explain`
+  (enqueue/collect), `/api/share` (hashed revocable tokens), `/r/[runId]`
+  report page with Explain button (React-escaped, CSP sandboxed).
+  Provider key is server-env only. Local dev: file-backed PGlite via
+  `PGLITE_DATA_DIR`, `web/scripts/seed-dev.mjs`, `NORMA_DEV_OPEN=1`.
 
-### Phase C — metering (argus-cloud, `stage-5-metering`)
-- `migrations/001_foundation.sql` (Stage 4 substrate) + `002_metering.sql`.
-- `src/`: `db.ts` (PGlite default / `pg` via `DATABASE_URL`), `ledger.ts`,
-  `usage.ts`, `resultCache.ts`, `breaker.ts`, `apiKeys.ts`, `webhooks.ts`,
-  `reconcile.ts`, `explainService.ts` (the hosted enforcement pipeline).
-- `test/metering.test.mjs`: 30 checks (C1–C8). All green.
+### Phase D (Argus `stage-5-explain`)
+- `normascope-mcp` `explain` tool: BYO local (D3, `ANTHROPIC_API_KEY` in the
+  MCP server env, zero cloud contact) and org-credits (D4,
+  `NORMASCOPE_CLOUD_URL` + `NORMASCOPE_ORG_KEY` → upload + hosted explain).
+  T6.6 covers the helpful no-key refusal.
+
+### Live local verification (2026-07-29, dev server + real provider calls)
+- D1: interactive explain on an uploaded run → schema-valid findings with
+  `historyVersion/firstDriftCommit/recurrence`; re-request was a free cache
+  hit; findings render server-side on the report page.
+- D4: MCP org-credits mode end-to-end → exactly 1 credit decremented.
+- E3: hostile frame names/labels through upload → inert on the report page;
+  hostile findings escaped in the PR line (unit).
+- E4: org B probed org A's run/share/batch → all 404; no key → 401.
+- E5: MCP SSRF suite (T6.2) green with the explain tool present.
+- D5: no key material in `.next/static` bundles; CSP + security headers
+  verified with curl.
 
 ## NEXT STEPS (in order)
 
-### 1. Run Phase B calibration — UNBLOCKS pricing (needs the key)
-- Doc: `docs/BuildV4.md` → "Phase B — Calibration", tests B1–B4.
-- Action: in the **Argus** repo, `export ANTHROPIC_API_KEY=sk-ant-…` then
-  `npm run calibrate`. Costs ~$0.50–$2. Writes `calibration.md` (gitignored)
-  with blended COGS vs the $0.08 target and 3×-floor pack prices.
-- Then: if COGS ≤ $0.08, copy `calibration.md` → `argus-cloud/docs/`; seed the
-  `products` table + `usage.ts` price table from it. If COGS > $0.08, tune
-  (fewer/smaller crops, tighter DOM budget in `assemble.ts`) and re-run BEFORE
-  pricing anything.
-- Also do the A5.3 live smoke test (one real `norma explain` on a flagged
-  frame) while the key is set.
+1. **MoR decision + sandbox (Harsha)** — Paddle vs Lemon Squeezy. Unblocks
+   C5 live, E7, and real product ids for `products` (remap the seeded
+   `pack_*` slugs in a follow-up migration).
+2. **Deploy** — Vercel project for `web/` + Neon/Supabase Postgres
+   (`DATABASE_URL`), R2 later for artifacts. `harshat.space` subdomain for
+   private testing. Server env: `ANTHROPIC_API_KEY`,
+   `EXPLAIN_DAILY_BUDGET_MICRODOLLARS`.
+3. **Artifact upload (report + crops)** — hosted explain currently grounds
+   in summary.json diff metadata + history, NOT image crops (the prompt says
+   so; findings are hedged accordingly). Crop parity needs multipart artifact
+   upload to R2 — Stage 4 item 2's second half.
+4. **Stage 4 auth/dashboard** — GitHub OAuth + magic links, org management,
+   trends dashboard. The report page's API-key field in the Explain panel is
+   a stopgap until session auth exists.
+5. **Action wiring for D2** — the GitHub Action calls `/api/ci-explain`
+   (POST after upload, poll GET, append `prLine` to the sticky comment).
+6. **Phase E remainder** — E1 injection fixtures against the hosted path,
+   E6 retention posture page, E7 live e2e once MoR + deploy exist. Every
+   unexercised item stays a named open risk, never an assumed pass.
 
-### 2. Decide the hosted stack — UNBLOCKS Phase D
-- Doc: `docs/BuildV3.5.md` → "Stage 4 — Hosted & Paid" (items 2–5 are the
-  HTTP/report/auth/dashboard surface).
-- Open question for Harsha: **Next.js on Vercel** (one deploy: report page +
-  dashboard + API routes; recommended) vs. **plain Node API + server-rendered
-  pages**. Deploy target from spec: Vercel/Fly, Neon/Supabase Postgres, R2.
-- This is a genuine decision, not a default — do not pick it silently.
+## Open risks (named, per doctrine)
 
-### 3. Build Phase D — hosted explain + CI batch + MCP tool
-- Doc: `docs/BuildV4.md` → "Phase D", tests D1–D6.
-- Server-side explain route (provider key in server env only) wired to the
-  existing `hostedExplain` pipeline in `explainService.ts` (already built).
-- CI auto-explain of top-N flagged frames via the **Batches API** (50% rate;
-  `usage.ts` already models `interactive: false`).
-- **History enrichment** (the durable BYO gap): inject `firstDriftCommit` /
-  `recurrence` from `frame_stats` before the provider call; schema-versioned
-  optional fields. These enrichment queries are **locally testable today**
-  against `frame_stats` — a good first Phase D task that needs no key.
-- MCP `explain` tool: BYO local / org-credits when server has an org key.
-
-### 4. Phase E — security validation + live e2e + launch
-- Doc: `docs/BuildV4.md` → "Phase E", tests E1–E7; run `SECURITY-LLM.md`'s
-  scenario list 1:1.
-- Needs: Phase B done, Phase D done, and a live MoR sandbox for E7.
-
-## Prerequisite debt (important)
-
-Build 3.5 **Stage 4** (the hosted product + MoR billing + auth + dashboard)
-was specced but **never built** — argus-cloud went straight to Phase C
-metering. Phase D's HTTP/UI needs that foundation. So step 2/3 above is really
-"build Stage 4's web surface AND Phase D's explain routes together." The
-Phase C metering modules are ready to plug into it.
-
-## Blockers owned by Harsha (zero model budget to resolve)
-
-1. **`ANTHROPIC_API_KEY`** — separate API billing (Console prepaid credits,
-   $5 min; the Claude subscription does NOT cover API). Unblocks B + A5.3 + E1.
-2. **Hosted stack decision** — Next.js vs plain server (see step 2).
-3. **MoR sandbox account** — Paddle vs Lemon Squeezy; spec says evaluate in
-   sandbox and pick one. Unblocks C5 live + E7. (Stripe can't onboard
-   India-registered businesses — that's why MoR.)
-4. **Domain** — `harshat.space` subdomain for private testing (already owned);
-   real domain + DKIM/MoR re-point later.
+- E1 (hosted-path injection fixtures) not yet run 1:1 — CLI-side injection
+  suite is green; hosted prompt uses the same data-delimiter rules.
+- E6 (provider retention posture) unverified; disclosure page not written.
+- E7 blocked on MoR sandbox.
+- Hosted findings are metadata-grounded until artifact upload lands (weaker
+  than CLI's crop-grounded findings; honestly labeled in the prompt).
 
 ## Standing rules (don't regress)
-- Deterministic diff is the ONLY gate; explain never blocks. (BuildV4 mandate)
-- Never fabricate economics — every cost figure traces to a recorded `usage`
-  object × live price. (Economics Doctrine)
+
+- Deterministic diff is the ONLY gate; explain never blocks.
+- Never fabricate economics — every figure traces to recorded `usage` × live
+  price. (Sonnet 5 intro pricing ends 2026-08-31; `usage.ts` records at list
+  prices deliberately.)
 - No paid logic in the public repo; no provider key ever reaches the CLI,
-  Action, a browser, a log, or the repo. (open-core boundary + SECURITY-LLM.md)
-- Full test suites green before any release; `npm test` in each repo.
+  Action, a browser, a log, or the repo.
+- Full test suites green before any release: `npm test` in each repo
+  (Argus: 62 checks; argus-cloud: 63 across metering/enrichment/cibatch).
