@@ -32,7 +32,7 @@ blocked on the MoR sandbox and deployment.
 
 ## Branch / commit map (nothing merged to main yet)
 
-- **Argus (public, npm `norma-scope`)** — branch `stage-5-explain`.
+- **Argus (private repo, public npm package `norma-scope`)** — branch `stage-5-explain`.
   Latest: `1287239` (Phase B run + MCP explain tool D3/D4 + T6.6).
 - **argus-cloud (private)** — branch `stage-5-metering`.
   Latest: `2f711b7` (Phase D: enrichment, CI batch, Next.js web surface).

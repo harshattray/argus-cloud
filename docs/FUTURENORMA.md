@@ -80,7 +80,7 @@ served from R2.
 
 ## 2. What is built (with evidence)
 
-### Argus — public repo, `norma-scope` on npm
+### Argus — **private repo**, public package `norma-scope` on npm
 
 | Area | State | Evidence |
 |---|---|---|
@@ -301,7 +301,9 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 5. **Gates live on substrates we control** — servers, data, network. Never
    client-side locks; they're readable-JS theatre that annoy honest users and
    hand a fork its reason to exist. The durable moat is **data enrichment**.
-6. **No paid logic in the public repo.** No provider key ever reaches the CLI,
+6. **No paid logic in the published package.** (The Argus *repo* is private;
+   the npm package is what's public, and that is the boundary that matters.)
+   No provider key ever reaches the CLI,
    the Action, a browser, a log, or a repo.
 7. **Failed analyses cost the user nothing.** Provider error, refusal, or schema
    failure → full refund, logged.
@@ -405,7 +407,7 @@ the trigger.
 
 | What | Where |
 |---|---|
-| CLI + Action + MCP | `~/Documents/Tal/Argus` (public, npm `norma-scope`) |
+| CLI + Action + MCP | `~/Documents/Tal/Argus` (**private repo**, public npm package `norma-scope`) |
 | Cloud (real) | `~/Documents/Tal/argus-cloud` (private) |
 | Cloud (temporary lab) | `~/Downloads/Projects/portfolio` → `/norma-lab` |
 | Feature explainer | `Argus/normascope101.md` |
