@@ -266,7 +266,11 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
    buy→explain→exhaust→re-buy loop.
 10. **Launch docs**: data-flow disclosure, pricing page with per-review cost,
     BYO instructions, exact model list, honest limitations ("hypotheses, not
-    diagnoses"). File the **Normascope** trademark. Record the FSL/BSL decision.
+    diagnoses"). File the **Normascope** trademark. ~~Record the FSL/BSL
+    decision.~~ **Done 2026-07-29: Apache-2.0** for the client (CLI, MCP,
+    Action) — permissive so it spreads, with the patent grant and trademark
+    clause MIT lacks; `argus-cloud` stays closed. The moat is the data, not the
+    licence (Doctrine 5).
 
 ---
 
@@ -281,6 +285,7 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 | Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
 | Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
+| Explain is Anthropic-only, in BYO **and** hosted | Open. Invisible to us because we have a key; a hard blocker for any account without an Anthropic contract. Scoped in §8. |
 
 ---
 
@@ -304,7 +309,99 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 
 ---
 
-## 8. Quick reference — where everything is
+## 8. Provider flexibility — Anthropic-only today
+
+### What is actually true right now
+
+| Fact | Where |
+|---|---|
+| The Anthropic SDK is used in **exactly one production file** | `Argus/src/explain/client.ts` |
+| The key is resolved by `new Anthropic()` from the environment — **`ANTHROPIC_API_KEY` and nothing else** | `client.ts:49`, gate at `command.ts:55` |
+| Model IDs *are* overridable — `explain.models` in config, or `NORMA_EXPLAIN_{TRIAGE,ANALYSIS,DEEP}_MODEL` | `models.ts:resolveModels` |
+| …but that only picks a **different Anthropic model**. The transport is the Anthropic SDK, so a non-Anthropic model id fails at the API, not at config time | `client.ts` |
+| The calibration harness is Anthropic-hardcoded too | `Argus/scripts/calibrate.mjs:19` |
+| `@anthropic-ai/sdk` is a **hard dependency (~10 MB installed) for every user**, even though explain is opt-in and most users never call it | `Argus/package.json` |
+
+**The seam already exists.** `ModelCaller` is a one-function interface —
+`(call: ModelCall) => Promise<ModelCallResult>` — and `createAnthropicCaller()`
+is injected at `command.ts:130` with `deps.callModel` overriding it (that is how
+the suite runs with zero live calls). Adding a provider is **a second
+implementation of one function**, not a refactor. The architecture is already
+right; only the transport is hardcoded.
+
+### Why this matters — procurement, not preference
+
+An enterprise with an Azure OpenAI or Bedrock contract and no Anthropic MSA
+**cannot run `explain` at all**. Not "prefers not to" — cannot, because legal
+will not approve a new data processor for one CLI subcommand. That is a hard
+adoption blocker in exactly the accounts that buy, and it is invisible in our
+own testing because we have a key.
+
+Second reason: **data residency**. Bedrock / Vertex / Azure keep inference
+inside a cloud tenancy the customer has already signed for. That answers the
+E6 retention question (§6, currently open) with a contract that already exists,
+instead of a disclosure page we have to write and defend.
+
+**Cheapest first win: Claude on Bedrock or Vertex.** Same model family, same
+prompts, same schema semantics, same calibration numbers — only auth and
+transport change. Ship that before any cross-family provider.
+
+### The hosted tier stays single-provider
+
+The economics in §3 are measured against Anthropic list prices, and the 3×
+floor under every pack price depends on them. Multi-provider hosted means
+re-calibrating per provider per model, forever, and Doctrine 2 (never fabricate
+economics) makes that expensive rather than optional. **Flexibility belongs in
+BYO mode.** Hosted stays Anthropic-only until a paying customer asks otherwise.
+
+### What actually breaks across model families — the honest list
+
+| # | Concern | Anthropic today | What a second provider needs |
+|---|---|---|---|
+| 1 | **Structured output** | `output_config.format.json_schema` | OpenAI `response_format: json_schema` (strict); Gemini `responseSchema`; open-weight: no guarantee. **Never fall back to free-text findings** — the report renders findings as structured claims. `validateFindings` already rejects; a weak provider retries once, then fails honestly and Doctrine 7 refunds it. |
+| 2 | **Prompt caching** | Explicit `cache_control` breakpoints, ~0.1× reads, byte-deterministic prefix (A3.4) | OpenAI caches prefixes automatically at a different discount; Gemini needs explicit cached content with a TTL and a minimum prefix length. **Cache economics do not transfer — §3 is Anthropic-specific.** |
+| 3 | **Refusal signal** | `stop_reason === "refusal"`, a first-class field | Others signal via `finish_reason: content_filter` or in-band text. Without a per-provider equivalent, **a refusal gets mis-parsed as a finding.** Test A4.3 needs a variant per provider. |
+| 4 | **Image blocks** | Anthropic content blocks | OpenAI `image_url`/base64 parts, Gemini `inlineData`. Per-provider size and count limits feed straight back into the truncation ladder in `assemble.ts` (A3.1). |
+| 5 | **Cost estimate** | `LIST_PRICES` keyed by Anthropic model id, hardcoded 1.25× / 0.1× cache multipliers | Per-provider price tables — or return `null` for unknown providers, which `estimateCost` already does correctly. |
+| 6 | **Egress** | One destination, one posture | Each provider is a **new destination** for context that has already passed the secret scanner. SECURITY-LLM.md doctrine (one call, no tools, no agentic loop) must be **re-proved** per provider. Doctrine 3: a suite that wasn't run is an open risk, never an assumed pass. |
+
+### Shape of the work
+
+1. `explain.provider` in config + `NORMA_EXPLAIN_PROVIDER`: `anthropic`
+   (default) · `bedrock` · `vertex` · `azure-openai` · `openai` ·
+   `openai-compatible` (base URL — covers Ollama, vLLM, OpenRouter).
+2. One `ModelCaller` per provider behind a factory keyed on that value.
+   Per-provider key env var. `doctor` reports which provider and key are live.
+3. **Provider SDKs become optional dynamic imports, not hard deps.** The CLI
+   should not carry ~10 MB of Anthropic SDK for users who never run explain,
+   let alone four SDKs. Make `@anthropic-ai/sdk` optional in the same change —
+   that is a win on its own, independent of multi-provider.
+4. A **capability matrix** per provider (strict schema · images · caching ·
+   refusal signal). A provider missing strict schema is **rejected at config
+   time with a named reason** — never silently degraded.
+5. Re-run `scripts/calibrate.mjs` per provider; it needs the same seam.
+6. Docs: exact supported model list per provider. Launch-docs item 10 already
+   promises "exact model list" — this makes that promise bigger.
+
+### Decision needed
+
+Ranked by value ÷ risk:
+
+- **(a) Claude via Bedrock / Vertex** — days of work, no prompt changes, no
+  re-calibration, unblocks AWS/GCP-committed accounts. Do this one first.
+- **(b) Azure OpenAI / OpenAI** — needs the schema, refusal, and image mapping
+  above plus its own calibration run. Real work, real payoff.
+- **(c) `openai-compatible` base URL** — cheap to add, impossible to guarantee.
+  Ship it labelled **best-effort / unsupported**, or not at all.
+
+**Sequencing:** this sits behind the §5 "Now" list. Pushing both branches and
+artifact upload beat it. It moves ahead of everything the moment one real
+prospect says "we don't have an Anthropic contract" — treat that sentence as
+the trigger.
+
+---
+
+## 9. Quick reference — where everything is
 
 | What | Where |
 |---|---|
