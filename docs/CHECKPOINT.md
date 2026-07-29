@@ -33,9 +33,9 @@ blocked on the MoR sandbox and deployment.
 ## Branch / commit map (both merged to main 2026-07-30)
 
 - **Argus (private repo, public npm package `norma-scope`)** — branch `stage-5-explain`.
-  Latest: `e3f3fc9` (v0.7.0 packaging: minified bundle, Apache-2.0, optional SDK).
-  Pushed and fast-forward-merged to `main`; `origin/main` is at the same commit.
-  Not tagged, **not published** — `v0.6.0` is still the latest tag and npm release.
+  Latest: `26ad7e2`. Merged to `main`, pushed, tagged **`v0.7.0`**.
+  **Published 2026-07-30: `norma-scope@0.7.0` and `normascope-mcp@0.2.0`**,
+  both Apache-2.0, both verified by installing from the registry.
 - **argus-cloud (private)** — branch `stage-5-metering`.
   Latest: `ab40521` (FUTURENORMA: CLI/MCP mode gap, v0.7.0 packaging state).
   Pushed and fast-forward-merged to `main`; `origin/main` is at the same commit.

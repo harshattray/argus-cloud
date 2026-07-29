@@ -10,8 +10,8 @@ phase-level detail and `BuildV4.md` for the spec that defines "done".
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished** (`norma-scope`; v0.6.0 is what's on npm, v0.7.0 is
-built, merged to main, and awaiting a tag + publish). The **explain engine is finished** and its real cost is
+The **CLI is finished and published** (`norma-scope` v0.7.0 and
+`normascope-mcp` v0.2.0, both live on npm under Apache-2.0 as of 2026-07-30). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The **hosted surface exists twice**: a full Next.js
@@ -94,21 +94,28 @@ served from R2.
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
-| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ v0.7.0, unpublished | Verified from the packed tarball: clean install, real capture→diff→report run, all 20 entry points resolve |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.0` | Installed from the registry: 48 files / 128 kB, optional peer skipped (14 MB), real capture→diff→report run |
+| `normascope-mcp` on npm | ✅ **published** v0.2.0 | Installed from the registry: pulls `norma-scope@0.7.0`, handshake reports 0.2.0, five tools listed |
 
-Branch `stage-5-explain` @ `e3f3fc9` — **pushed and fast-forward-merged to
-`main` 2026-07-30**. `main` and `origin/main` are both at `e3f3fc9`. Not tagged
-(`v0.6.0` is the latest tag) and **not published to npm**.
-Full suite: **62 checks green**.
+Branch `stage-5-explain` @ `26ad7e2` — merged to `main`, pushed, tagged
+**`v0.7.0`**. Full suite: **62 checks green**.
 
-**Publish order matters.** `normascope-mcp` depends on `norma-scope` by name,
-and npm cannot link a workspace *root* as a dependency — so it resolves from
-the registry, and `^0.7.0` will not install until 0.7.0 is published. Publish
-`norma-scope@0.7.0` first, then bump the MCP dep and publish `normascope-mcp`
-second. (Its tsconfig now points at `../../src` for typechecking, because it
-had been silently validating against the last *published* release — its
-dynamic import of `dist/explain/` was checked against a 0.6.0 copy with no
-explain module in it.)
+**Publish order matters, permanently.** `normascope-mcp` depends on
+`norma-scope` by name, and npm cannot link a workspace *root* as a dependency —
+so it always resolves from the registry, and a `^x.y.z` bump will not install
+until that version is published. **Always publish `norma-scope` first**, then
+bump the MCP dep and publish `normascope-mcp` second. Two traps that cost real
+time on the 0.7.0 release, both now fixed but easy to reintroduce:
+
+- The MCP tsconfig points at `../../src` for typechecking (it had been silently
+  validating against the last *published* release — its dynamic import of
+  `dist/explain/` was checked against a 0.6.0 copy with no explain module).
+  **esbuild honours that same `paths` mapping**, so the moment `norma-scope`
+  resolved it inlined a whole copy of the CLI into the server bundle — 77 kB,
+  while `package.json` still declared it as a dependency. `norma-scope` is now
+  explicitly `external` in the MCP build. Check the bundle stays ~9 kB.
+- The MCP handshake version was hardcoded and would have announced 0.1.0 for a
+  0.2.0 release. It now reads `package.json`.
 
 ### argus-cloud — private repo
 
@@ -260,9 +267,9 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
    findings to CLI parity. Biggest quality win available.
 3. **Wire the Action to `/api/ci-explain`** (POST after upload, poll GET, append
    the escaped `prLine` to the sticky comment). Service and tests already exist.
-4. **Publish `normascope-mcp` to npm** and list it in an agent-tool registry —
-   the last open Build 3.5 Stage 3 gate item. Publish `norma-scope@0.7.0`
-   first (§2).
+4. ~~**Publish `normascope-mcp` to npm**~~ **Done 2026-07-30** (v0.2.0, with
+   `norma-scope@0.7.0`). Still open: **list it in an agent-tool registry** —
+   that is the last remaining Build 3.5 Stage 3 gate item.
 5. **`doctor` reports explain readiness** — mode, key, and whether the optional
    SDK is installed. Today `doctor` checks config, Figma, URL, selectors, and
    browser but says *nothing* about explain, so the first time a user learns
