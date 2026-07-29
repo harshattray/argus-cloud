@@ -437,7 +437,7 @@ BYO mode.** Hosted stays Anthropic-only until a paying customer asks otherwise.
 2. One `ModelCaller` per provider behind a factory keyed on that value.
    Per-provider key env var. `doctor` reports which provider and key are live.
 3. ~~**Provider SDKs become optional dynamic imports, not hard deps.**~~
-   **Done 2026-07-30 (v0.7.0, unpublished).** `@anthropic-ai/sdk` is an
+   **Done 2026-07-30, shipped in v0.7.0.** `@anthropic-ai/sdk` is an
    optional peer loaded by dynamic import; a clean install dropped from 27 MB
    to 14 MB and only BYO users who actually run an analysis pay for it. Two
    things a future provider must copy: the import is **type-only** at the top
