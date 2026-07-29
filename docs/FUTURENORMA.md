@@ -1,0 +1,320 @@
+# FUTURENORMA.md — where we are, what's built, what's left
+
+**Private.** Contains credentials, pricing, margins, and strategy.
+Last updated: 2026-07-29.
+
+This is the single orientation document. Read this, then `CHECKPOINT.md` for
+phase-level detail and `BuildV4.md` for the spec that defines "done".
+
+---
+
+## 0. TL;DR — read this paragraph if you read nothing else
+
+The **CLI is finished and published** (`norma-scope` v0.6.0, Build 3.5 Stages
+0–3 merged to main). The **explain engine is finished** and its real cost is
+**measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
+target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
+webhooks, reconciliation). The **hosted surface exists twice**: a full Next.js
+app in `argus-cloud/web/` (not deployed), and a **live, access-gated preview at
+`harshaattray.com/norma-lab`** running inside the portfolio repo so it can be
+used today without standing up new infrastructure.
+
+What's genuinely missing before launch: **a payment provider** (MoR account —
+Harsha's call), **real multi-tenancy** (the lab is single-tenant on purpose),
+**artifact upload** (hosted explain currently reasons over diff metadata, not
+image crops), and **its own domain and deployment**.
+
+---
+
+## 1. ⚠️ Where Normascope Cloud lives right now — and where it's going
+
+> **Guideline — this is deliberate and temporary.**
+>
+> Normascope Cloud is currently deployed as a **protected route inside the
+> portfolio repo** (`harshaattray.com/norma-lab`, repo
+> `github.com/harshattray/my-website`). This is a **testing arrangement only**.
+> It exists so the hosted experience can be used and demoed *today* without
+> provisioning a separate Vercel project, database, domain, and billing account.
+>
+> **Before launch, Cloud moves to its own website.** The real product is
+> `argus-cloud/web/` (Next.js, already written) deployed to its own Vercel
+> project, its own Postgres, and its own domain. The `/norma-lab` route is then
+> deleted from the portfolio.
+>
+> **Rules while it lives in the portfolio:**
+> - Never link to `/norma-lab` from any public page, sitemap, or nav.
+> - Never put anything in it that must survive — treat the data as disposable.
+> - Keep the daily model-spend cap on (`NORMA_LAB_DAILY_BUDGET_USD`); the API
+>   balance is prepaid and small.
+> - Don't grow it into the real product. New Cloud features belong in
+>   `argus-cloud/web/`; the lab only gets what's needed to *evaluate* them.
+> - The lab shares the portfolio's Turso database and R2 bucket. All its tables
+>   are prefixed `norma_` and its R2 objects `norma-lab-*`, so removing it later
+>   is a clean delete.
+
+### Access (single credential, private preview)
+
+| | |
+|---|---|
+| URL | `https://harshaattray.com/norma-lab` |
+| Access code | `hKJpzlEAfxfOUW4oEHywLr4z` |
+| Stored | Vercel env `NORMA_LAB_PASSWORD` (production), and `.norma-lab-password` locally (gitignored) |
+| Session | 30-day JWT with role `norma-lab`, held in `sessionStorage` |
+| Daily model spend cap | `$0.75` (`NORMA_LAB_DAILY_BUDGET_USD`) |
+
+To rotate: `vercel env rm NORMA_LAB_PASSWORD production`, then
+`vercel env add`, then redeploy. Old sessions survive until the JWT expires —
+to kill them immediately, rotate `JWT_SECRET` instead (this also logs out the
+site admin, so rotate deliberately).
+
+### What the lab can do today
+
+Upload a `summary.json` (optionally with `report.html`, stored in R2) → browse
+runs → open a run → per-frame scores → **Explain** / **Deep explain** with live
+history enrichment and a running spend meter. Verified in production on
+2026-07-29 with a real Bose-landing run: findings returned with
+`firstDriftCommit` and `recurrence`, result cache hit was free, 2.5MB report
+served from R2.
+
+---
+
+## 2. What is built (with evidence)
+
+### Argus — public repo, `norma-scope` on npm
+
+| Area | State | Evidence |
+|---|---|---|
+| Diff engine: AA-aware pixelmatch, band alignment, SSIM, region clustering | ✅ Shipped v0.6.0 | T1 suite; 0.43% aligned vs 14.24% unaligned on a real page |
+| Source adapters: `figma` / `images` / `url` | ✅ | T3 suite |
+| Baseline mode (visual regression, no designer) | ✅ | T4 suite |
+| Version-keyed cache, 429 retry, degradation ladder, `snapshot` | ✅ | T2 suite |
+| `summary.json` v2 + published JSON Schema | ✅ | ajv-validated in T5 |
+| Sticky PR comment + composite GitHub Action, `--strict` | ✅ | Verified live on a real PR |
+| MCP server: `list_frames`, `capture`, `compare`, `get_summary`, **`explain`** | ✅ | T6.1–T6.6; SSRF 5/5 refused + logged |
+| Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
+| Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
+| Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
+
+Branch `stage-5-explain` @ `1287239` — **not pushed, not merged**.
+Full suite: **62 checks green**.
+
+### argus-cloud — private repo
+
+| Area | State | Evidence |
+|---|---|---|
+| Stage 4 substrate schema (orgs, users, memberships, hashed api_keys, repos, runs, share_links, frame_stats) | ✅ | `migrations/001` |
+| Credits ledger: grants, expiry, atomic consume/refund, computed balance | ✅ | C1 incl. race test |
+| Usage meter (append-only, microdollar costs, cache splits) | ✅ | C-suite |
+| Org-scoped result cache (org in key hash *and* row) | ✅ | C3 incl. cross-org miss |
+| Circuit breaker + admin spend view | ✅ | C6 |
+| Agent keys with per-key monthly budgets | ✅ | C7 |
+| MoR webhook handling (HMAC, idempotent) | ✅ | C5 (fixture-level) |
+| Monthly reconciliation + <50% margin alert | ✅ | C8 |
+| **History enrichment** (trend, `firstDriftCommit`, `recurrence`, 2K cap) | ✅ | 15 checks (D6) |
+| **CI batch service** (Batches API, 50% rate, reserve→refund, escaped PR line) | ✅ | 18 checks (D2, fixture-level) |
+| **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
+| Credit packs seeded from measured COGS | ✅ | `migrations/005` |
+
+Branch `stage-5-metering` @ `762b669` — **not pushed, not merged**.
+Full suite: **63 checks green**.
+
+### Portfolio repo — the lab
+
+`api/_norma/{login,runs,run,explain}.ts` behind one dispatcher
+(`api/norma/[action].ts`), plus `/norma-lab` and `/norma-lab/run/:id` in the
+frontend. Committed @ `b4eeb86`, deployed to production.
+
+> Note: Vercel's Hobby plan allows **12 serverless functions** and the site was
+> already at the cap. The three bot-preview routes were consolidated into
+> `api/preview/[...path].ts` and the four lab routes into
+> `api/norma/[action].ts`. Public paths are unchanged. **Total is now 11** —
+> if you add a function later and hit the cap, consolidate rather than
+> upgrading the plan, or move the lab to its own project (which is the plan
+> anyway, see §1).
+
+---
+
+## 3. The measured economics (do not re-guess these)
+
+From `docs/calibration.md`, 22 recorded API calls on 2026-07-29:
+
+| Figure | Intro prices | Post-intro list prices |
+|---|---|---|
+| Blended COGS per review | **$0.0115** | **$0.0164** |
+| Deep review | $0.0203 | $0.0200 |
+| Batched analysis | $0.0025/call | — |
+| Target | ≤ $0.08 | ≤ $0.08 — **met ~5× over** |
+
+Packs seeded at the **list-price** 3× floor so nothing loses money when Sonnet 5
+introductory pricing ends **2026-08-31**:
+
+| Pack | COGS | 3× floor | Price |
+|---|---|---|---|
+| 50 reviews | $0.82 | $2.46 | **$3** |
+| 200 reviews | $3.29 | $9.86 | **$12** |
+| 1000 reviews | $16.43 | $49.29 | **$60** |
+
+`usage.ts` deliberately records at **list** prices, never intro prices, so
+recorded spend can never under-state reality.
+
+**Rule:** any figure that reaches a customer must trace to a recorded `usage`
+object × a live price. Never estimate.
+
+---
+
+## 4. Multi-tenancy — how company-specific access will work
+
+The lab is **single-tenant by design**: one shared access code, one dataset.
+That is fine for evaluation and wrong for customers. Here is the real design —
+most of it already exists in `argus-cloud`, unbuilt only at the edges.
+
+### The model already in the schema
+
+```
+org ──┬── memberships ── users          (who can log in)
+      ├── api_keys      (upload + agent keys, hashed, per-key budgets)
+      ├── repos ── runs ── frame_stats  (their data)
+      ├── credit_grants / usage_events  (their money)
+      └── result_cache  (org in the key hash AND the row)
+```
+
+Every table that holds customer data carries `org_id` with
+`ON DELETE CASCADE`. Every query in `explainService.ts` and the web routes
+filters by it. Cross-tenant probes already return 404 (verified: org B
+attempting org A's run, share, and batch — all denied).
+
+### How a new client gets access — the intended flow
+
+1. **Create the org.** `INSERT INTO orgs` (or the admin UI, unbuilt). Plan
+   defaults to `trial`.
+2. **Grant credits.** A `plan_allotment` grant for a trial, or a
+   `pack_purchase` grant created by the MoR webhook after payment. **Balance is
+   the cap** — there is no way to spend past it.
+3. **Issue keys** with `createApiKey(db, orgId, { kind })`:
+   - `upload` keys — for CI/CLI uploads.
+   - `agent` keys — for AI agents, with `monthly_budget_credits` and
+     `rate_per_minute`. Exhaustion returns a clear error and **never reddens CI**.
+   Keys are `nsk_`-prefixed, **sha256-hashed at rest**, shown exactly once.
+4. **Invite humans.** GitHub OAuth for developers, email magic links for
+   designers (designer seats don't require a GitHub account). Membership rows
+   carry `admin | member | designer`. **This is the main unbuilt piece.**
+5. **Isolation is automatic** from there: reports, trends, result cache, and
+   credits are all org-scoped.
+
+### Per-client boundaries that already work
+
+| Boundary | Mechanism |
+|---|---|
+| Data | `org_id` on every row, cascade delete, every query filtered |
+| Cache | `sha256(org‖frame‖buildHash‖designHash‖model‖promptVersion)` — identical content in a different org is a **miss**, never a leak |
+| Spend | Prepaid balance per org; per-run auto-explain cap; per-agent-key monthly budget; global daily breaker above all of it |
+| Keys | Hashed; revocation takes effect on the next request |
+| Reports | Membership, or a revocable/expiring share token |
+
+### What still has to be built for real tenancy
+
+- **Auth + org management UI** — sign-up, org create, invite, key management,
+  revoke. (Stage 4 items 4–5.)
+- **Plan limits as config, not code** — Team = 10 repos, unlimited seats. The
+  price ladder runs on **repos**, never on seats.
+- **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
+  nothing deleted; 14-day trial and 14-day grace.
+- **Deletion + retention** — run/repo/org delete removes objects from storage
+  as well as rows; a 90-day sweep with a dry-run mode.
+- **Admin view** — spend, margin, breaker state, enterprise-lead flags.
+
+### Interim option if a client needs access before that lands
+
+Give them their **own deployment**: the lab pattern (one access code, one
+dataset) cloned per client, or a separate Vercel project per client pointed at
+its own database. Crude, but genuinely isolated, and it buys time without
+faking multi-tenancy. Do **not** hand two clients the same lab code.
+
+---
+
+## 5. What's left, in the order it should be done
+
+### Now — unblocked, no decisions needed
+
+1. **Push both branches.** `stage-5-explain` and `stage-5-metering` exist only
+   locally. This is the single riskiest thing in this document.
+2. **Artifact upload (R2).** Hosted/lab explain currently reasons over
+   `summary.json` metadata + history, **not image crops** — the prompt says so
+   explicitly and findings are hedged accordingly. Uploading crops brings hosted
+   findings to CLI parity. Biggest quality win available.
+3. **Wire the Action to `/api/ci-explain`** (POST after upload, poll GET, append
+   the escaped `prLine` to the sticky comment). Service and tests already exist.
+4. **Publish `normascope-mcp` to npm** and list it in an agent-tool registry —
+   the last open Build 3.5 Stage 3 gate item.
+
+### Next — needs a decision from Harsha
+
+5. **Pick the MoR: Paddle vs Lemon Squeezy.** (Stripe cannot onboard
+   India-registered businesses — that's why MoR.) Unblocks C5 live, E7, and
+   remapping the provisional `pack_*` product ids to real ones.
+6. **Domain.** `harshat.space` subdomain for private testing; real domain later.
+   Migration cost is a BASE_URL change, DNS, an OAuth app, and an MoR re-point.
+
+### Then — the real launch sequence
+
+7. **Deploy `argus-cloud/web/`** to its own Vercel project + Neon/Supabase
+   Postgres + R2. Then **retire `/norma-lab`** from the portfolio (§1).
+8. **Build Stage 4 auth + dashboard** (§4) — the report page's API-key field is
+   a stopgap until sessions exist.
+9. **Phase E security validation**: E1 injection fixtures against the *hosted*
+   path, E6 provider retention posture + disclosure page, E7 the live
+   buy→explain→exhaust→re-buy loop.
+10. **Launch docs**: data-flow disclosure, pricing page with per-review cost,
+    BYO instructions, exact model list, honest limitations ("hypotheses, not
+    diagnoses"). File the **Normascope** trademark. Record the FSL/BSL decision.
+
+---
+
+## 6. Open risks — named, never assumed away
+
+| Risk | Status |
+|---|---|
+| Both stage branches unpushed | **Highest.** Fix immediately. |
+| E1 hosted-path injection fixtures not run 1:1 | Open. CLI-side injection suite is green and the hosted prompt uses the same delimiter rules — but it has not been *proven* on the hosted path. |
+| E6 provider retention posture unverified | Open. Disclosure page unwritten. |
+| E7 live purchase loop | Blocked on MoR. |
+| Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
+| Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
+| Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
+
+---
+
+## 7. Doctrine — the rules that do not bend
+
+1. **The deterministic diff is the only gate.** Explain never blocks, never
+   scores, never fails a build.
+2. **Never fabricate economics.** Every cost figure traces to a recorded `usage`
+   object × a live price.
+3. **Never fabricate security posture.** A suite that wasn't run is an open
+   risk, never an assumed pass.
+4. **Prepaid only.** No code path bills anyone open-endedly.
+5. **Gates live on substrates we control** — servers, data, network. Never
+   client-side locks; they're readable-JS theatre that annoy honest users and
+   hand a fork its reason to exist. The durable moat is **data enrichment**.
+6. **No paid logic in the public repo.** No provider key ever reaches the CLI,
+   the Action, a browser, a log, or a repo.
+7. **Failed analyses cost the user nothing.** Provider error, refusal, or schema
+   failure → full refund, logged.
+8. **Full suites green before any release.** `npm test` in each repo.
+
+---
+
+## 8. Quick reference — where everything is
+
+| What | Where |
+|---|---|
+| CLI + Action + MCP | `~/Documents/Tal/Argus` (public, npm `norma-scope`) |
+| Cloud (real) | `~/Documents/Tal/argus-cloud` (private) |
+| Cloud (temporary lab) | `~/Downloads/Projects/portfolio` → `/norma-lab` |
+| Feature explainer | `Argus/normascope101.md` |
+| Command reference | `Argus/COMMANDS.md` |
+| Phase detail | `argus-cloud/docs/CHECKPOINT.md` |
+| The spec | `argus-cloud/docs/BuildV4.md` |
+| Threat model | `Argus/SECURITY-LLM.md` |
+| Measured costs | `argus-cloud/docs/calibration.md` |
+| Provider key | `argus-cloud/src/.env` (gitignored) + Vercel env |
