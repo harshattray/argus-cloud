@@ -98,7 +98,24 @@ served from R2.
 | `normascope-mcp` on npm | ✅ **published** v0.2.0 | Installed from the registry: pulls `norma-scope@0.7.0`, handshake reports 0.2.0, five tools listed |
 
 Branch `stage-5-explain` @ `26ad7e2` — merged to `main`, pushed, tagged
-**`v0.7.0`**. Full suite: **62 checks green**.
+**`v0.7.0`**. Full suite: **66 checks green**.
+
+**Two branches pushed and awaiting PR (2026-07-31),** both cut from `main`,
+touching disjoint files, mergeable in either order:
+
+- `report-redesign` @ `5d311fb` — HTML report presentation only; same
+  `ComponentResult` data, no new metrics, no command or flag change. Carries
+  three fixes: full-page captures no longer letterbox into unreadable slivers
+  (frames size to the capture's aspect; >2.2:1 scrolls at natural size with the
+  three panes synced), the lightbox no longer overflows the viewport for very
+  tall images, and `makeThumbnail` stopped discarding dimensions it had already
+  parsed.
+- `baseline-only-source` @ `b60bc15` — a baseline-only config no longer has to
+  declare a design source it never reads. `parseConfig` requires `figmaFileKey`
+  only when some frame is non-baseline; `doctor` skips both the source check
+  **and** the Figma token/file checks for such configs. Adds T4.5–T4.8 (the +4
+  above); T4.5/T4.7/T4.8 fail against unfixed source, T4.6 is a regression
+  guard. See §5 item 6 for the loose end it leaves behind.
 
 **Publish order matters, permanently.** `normascope-mcp` depends on
 `norma-scope` by name, and npm cannot link a workspace *root* as a dependency —
@@ -276,6 +293,26 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
    they are missing a piece is the moment they wanted an answer. Nothing is
    lost when that happens (`.bridge/` state persists; only `explain` re-runs),
    but discovery belongs in `doctor`. Small, self-contained.
+6. **`sourceType()` lies for baseline-only configs.** It returns
+   `config.source?.type ?? "figma"`, so a config with no `source` block — now
+   legal for a baseline-only project — reports **`"figma"`** even though no
+   frame will ever call Figma. Nothing is broken today: every consumer is
+   guarded (`source.ts` on `adapterFrames.length > 0`, `compare.ts` only
+   surfaces it for non-baseline frames, `snapshot.ts` on `!figmaFileKey`,
+   `doctor.ts` on the new `usesSource`). But the safety lives in four scattered
+   call sites rather than in the type, so the next consumer to ask "what source
+   is this?" gets a confidently wrong answer. **This already bit once** — the
+   first cut of the baseline-only fix left `doctor`'s token check keyed on
+   `srcType === "figma"`, which would have demanded a `FIGMA_TOKEN` for a
+   project that never contacts Figma and exited 1, moving the failure instead
+   of removing it. Caught by tracing consumers, not by a test. The fix is to
+   make the absence representable — `sourceType()` returning `"none"`, or the
+   call sites asking `usesSource` instead of a type — which ripples into
+   `cache.ts` (the cache key carries `sourceType`) and the `summary.json` v2
+   `source` field, i.e. a **published JSON Schema change**. That ripple is why
+   it is written down instead of done inline. Not urgent; do it before a fourth
+   adapter lands, because a new adapter is exactly when someone reaches for
+   `sourceType()` and trusts it.
 
 ### Next — needs a decision from Harsha
 
