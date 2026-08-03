@@ -63,7 +63,7 @@ AI coding agents ship frontends fast — and blind. They diff text, not pixels. 
 ## Pricing (simple on purpose)
 
 - **Normascope (free, forever):** the full CLI — capture, both comparison modes, all design sources, reports, the GitHub Action, the MCP server. Runs on your infrastructure; we never see your screenshots. **[4.0]** Even AI findings, free with your own Anthropic API key.
-- **Normascope Cloud — $29/mo per organization:** hosted report links, trends & history, team dashboard, unlimited designer seats, org-wide design cache — **for up to 10 repos**. More repos = higher tiers; the price scales with how much of your codebase is verified, never with how many people look. Larger orgs (SSO, audit, retention controls): talk to us. 14-day trial, no card.
+- **Normascope Cloud — $29/mo per organization:** hosted report links, trends & history, team dashboard, unlimited designer seats, org-wide design cache — **for up to 10 repos**. More repos = higher tiers; the price scales with how much of your codebase is verified, never with how many people look. Larger orgs (SSO, audit, retention controls): talk to us. **30-day money-back guarantee** — the free CLI is the trial, and it doesn't expire.
 - **[4.0] Review credits (prepaid packs):** hosted AI findings — auto-explained flagged frames in CI, history-aware analysis, agent budgets. Prepaid, capped, no surprise bills — structurally: we can't send you an overage invoice, because there's no such thing.
 
 ## Objection handling (for calls/DMs)
@@ -91,4 +91,4 @@ AI coding agents ship frontends fast — and blind. They diff text, not pixels. 
 
 > You already review every line of code that ships. Normascope reviews every pixel — in the same PR, without blocking anyone, for less than the cost of one hour of the meeting it replaces.
 
-**CTA:** `npx norma-scope init` — free, five minutes, your machine. When your designer asks for the link: that's Normascope Cloud, and the trial doesn't need a card.
+**CTA:** `npx norma-scope init` — free, five minutes, your machine, and it never expires. When your designer asks for the link: that's Normascope Cloud, backed by a 30-day money-back guarantee.
