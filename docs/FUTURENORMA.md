@@ -10,9 +10,9 @@ phase-level detail and `BuildV4.md` for the spec that defines "done".
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished and published** (`norma-scope` v0.7.1 and
-`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.1 published
-2026-07-31). The **explain engine is finished** and its real cost is
+The **CLI is finished and published** (`norma-scope` v0.7.2 and
+`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.2 published
+2026-08-03). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The **hosted surface exists twice**: a full Next.js
@@ -128,9 +128,19 @@ deliberate: on 0.x a caret is minor-locked, so `normascope-mcp`'s unchanged
 MCP install now resolves 0.7.1 with no second publish. The moment a change
 warrants a minor, the full publish-order dance below applies again.
 
-⚠️ **The `v0.7.1` git tag exists locally but was never pushed** — `git push`
-does not carry tags. `v0.6.0` and `v0.7.0` are on the remote; 0.7.1 is not.
-Run `git push origin v0.7.1`.
+⚠️ **The `v0.7.1` and `v0.7.2` git tags exist locally and were never pushed** —
+`git push` does not carry tags. `v0.6.0` and `v0.7.0` are on the remote; the
+other two are not. Run `git push origin v0.7.1 v0.7.2`. This has now happened
+twice; consider `git push --follow-tags` as the habit.
+
+**0.7.2 shipped 2026-08-03** — `norma-scope` became the canonical bin name
+(`norma` kept as an alias), and every user-facing error message now names it.
+Patch rather than minor for the same MCP-range reason as 0.7.1; verified after
+publishing that a fresh `normascope-mcp` install resolves 0.7.2. ⚠️ **It was
+published from the `naming-conventions` branch before that branch reached
+`main`** — main has since been fast-forwarded, but publishing from an unmerged
+branch means the registry briefly held code the default branch did not. Merge
+first, then publish.
 
 **Publish order matters, permanently.** `normascope-mcp` depends on
 `norma-scope` by name, and npm cannot link a workspace *root* as a dependency —
