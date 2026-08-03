@@ -10,8 +10,8 @@ phase-level detail and `BuildV4.md` for the spec that defines "done".
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished and published** (`norma-scope` v0.7.2 and
-`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.2 published
+The **CLI is finished and published** (`norma-scope` v0.7.3 and
+`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.3 published
 2026-08-03). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
@@ -128,19 +128,29 @@ deliberate: on 0.x a caret is minor-locked, so `normascope-mcp`'s unchanged
 MCP install now resolves 0.7.1 with no second publish. The moment a change
 warrants a minor, the full publish-order dance below applies again.
 
-⚠️ **The `v0.7.1` and `v0.7.2` git tags exist locally and were never pushed** —
-`git push` does not carry tags. `v0.6.0` and `v0.7.0` are on the remote; the
-other two are not. Run `git push origin v0.7.1 v0.7.2`. This has now happened
-twice; consider `git push --follow-tags` as the habit.
+⚠️ **The `v0.7.1`, `v0.7.2` and `v0.7.3` git tags exist locally and were never
+pushed** — `git push` does not carry tags. Only `v0.2.1`, `v0.6.0` and `v0.7.0`
+are on the remote (checked live with `git ls-remote`, 2026-08-03). Run
+`git push origin v0.7.1 v0.7.2 v0.7.3`. **Three releases running now**, two of
+them live on npm with nothing in the repo marking what shipped — make
+`git push --follow-tags` the habit rather than remembering each time.
 
-**0.7.2 shipped 2026-08-03** — `norma-scope` became the canonical bin name
-(`norma` kept as an alias), and every user-facing error message now names it.
-Patch rather than minor for the same MCP-range reason as 0.7.1; verified after
-publishing that a fresh `normascope-mcp` install resolves 0.7.2. ⚠️ **It was
-published from the `naming-conventions` branch before that branch reached
-`main`** — main has since been fast-forwarded, but publishing from an unmerged
-branch means the registry briefly held code the default branch did not. Merge
-first, then publish.
+**0.7.2 and 0.7.3 both shipped 2026-08-03.** 0.7.2 made `norma-scope` the
+canonical bin name (`norma` kept as an alias) and fixed every user-facing
+message to match. 0.7.3 made `.gitignore` coverage automatic: `ensureBridgeDir()`
+writes a `.bridge/.gitignore` at every entry point, because only `init` had
+ever done it and `--target` users never run `init`. Both patch rather than
+minor for the same MCP-range reason as 0.7.1; verified after each publish that
+a fresh `normascope-mcp` install resolves the new version.
+
+⚠️ **0.7.2 was published from the `naming-conventions` branch before it reached
+`main`** — the registry briefly held code the default branch did not. 0.7.3 was
+done the right way round. **Merge first, then publish.**
+
+⚠️ **Watch for divergence when merging a PR on GitHub.** A GitHub merge creates
+a merge commit; a local fast-forward does not. Doing both leaves `main` and
+`origin/main` diverged, and a later `git push` is rejected as non-fast-forward
+— easy to misread as having succeeded. Pull before pushing a release.
 
 **Publish order matters, permanently.** `normascope-mcp` depends on
 `norma-scope` by name, and npm cannot link a workspace *root* as a dependency —

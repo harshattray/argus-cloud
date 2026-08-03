@@ -52,24 +52,39 @@ the free product, it is published, and it works.
 | Calibration harness | ✅ and **executed live** | `calibration.md`, 22 recorded calls |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `COMMANDS.md` |
 
-**Published:** `norma-scope@0.7.2` (2026-08-03) and `normascope-mcp@0.2.0`,
+**Published:** `norma-scope@0.7.3` (2026-08-03) and `normascope-mcp@0.2.0`,
 both Apache-2.0, both verified by installing from the registry. Registry
-reports `latest` = 0.7.2, 48 files / 141,190 B unpacked, `bin` carrying **both**
+reports `latest` = 0.7.3, 50 files / 142,348 B unpacked, `bin` carrying **both**
 `norma-scope` and `norma` — matching `npm pack --dry-run` exactly.
 
-0.7.2 made `norma-scope` the canonical command: the package was `norma-scope`
-but the only bin was `norma`, so documented invocations and error messages
-disagreed. **Patch rather than minor, deliberately** — `normascope-mcp@0.2.0`
-pins `^0.7.0`, and on 0.x a caret is minor-locked, so 0.8.0 would have refused
-to install for every MCP user until the MCP was republished. Verified after
-publishing: a fresh `npm install normascope-mcp` resolves `norma-scope@0.7.2`
-through the unchanged range.
+Two patch releases shipped that day, both patch rather than minor on purpose:
+`normascope-mcp@0.2.0` pins `^0.7.0`, and on 0.x a caret is minor-locked, so
+0.8.0 would have refused to install for every MCP user until the MCP was
+republished. Verified after each: a fresh `npm install normascope-mcp` resolves
+the new version through the unchanged range.
+
+- **0.7.2 — `norma-scope` became the canonical command.** The package was
+  `norma-scope` but the only bin was `norma`, so documented invocations and
+  error messages disagreed. `norma` stays as an alias.
+- **0.7.3 — generated output is ignored automatically.** Only `init` ever wrote
+  `.gitignore` entries, yet `auto`, `target`, `baseline`, `snapshot`, `compare`
+  and `explain` all create `.bridge/` directories — and `--target` is a
+  documented zero-config flow whose users never run `init`. Those repos
+  accumulated megabytes of regenerable output neither tracked nor ignored.
+  `ensureBridgeDir()` now writes a `.bridge/.gitignore` at every entry point;
+  `config.json`, `baseline/` and `design/` stay un-ignored because baseline
+  mode diffs against the *committed* baseline. Verified from the published
+  package: fresh repo, no `init`, `git add -A` after `compare` stages only the
+  two inputs. Suite 70 green (S1.4a–d).
 
 **Loose ends in this tier:**
 
-- ⚠️ **Tags `v0.7.1` and `v0.7.2` exist locally and are not on the remote.**
-  `v0.6.0` and `v0.7.0` are. `git push` does not carry tags —
-  `git push origin v0.7.1 v0.7.2`. (Re-confirmed 2026-08-03.)
+- ⚠️ **Tags `v0.7.1`, `v0.7.2` and `v0.7.3` exist locally and are not on the
+  remote** — only `v0.2.1`, `v0.6.0` and `v0.7.0` are (checked live with
+  `git ls-remote`, 2026-08-03). `git push` does not carry tags, which is why
+  this has now persisted across three releases; two of them are live on npm
+  with nothing in the repo marking what shipped.
+  `git push origin v0.7.1 v0.7.2 v0.7.3`, and use `--follow-tags` thereafter.
 - ❌ **No `upload` command.** See §7.
 - Open: MCP registry listing — the last Build 3.5 Stage 3 gate item.
 - Open: `doctor` says nothing about explain readiness.
