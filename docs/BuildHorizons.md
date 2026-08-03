@@ -100,7 +100,7 @@ What actually gets dropped: nothing structural. Deferred: Figma webhooks (alread
 
 **Positioning shift (the pivot made visible):** the paid product launches as *both* design-fidelity **and** visual regression — a direct Percy/Chromatic alternative with the two structural advantages: **flat per-org pricing with unlimited screenshots** (their per-screenshot metering is the single most-resented pricing in the category, and our captures run on customers' machines so volume is free to us) and the fidelity mode nobody else has.
 
-**Monetize:** Free (full CLI, both modes, Action, artifacts) / **Team ~$29/mo per org** (hosted links, trends, dashboard, designer seats, org cache, unlimited screenshots), 14-day no-card trial, MoR checkout. Trends charts must handle both modes.
+**Monetize:** Free (full CLI, both modes, Action, artifacts) / **Team ~$29/mo per org** (hosted links, trends, dashboard, designer seats, org cache, unlimited screenshots), MoR checkout. **No trial — superseded 2026-08-03, see BuildV5.md §G2c**; the free CLI is the trial and a 30-day money-back guarantee is the risk reversal. Trends charts must handle both modes.
 
 **Scale:**
 - *Tech:* stateless app; R2 for artifacts (zero egress — every report view is egress); `frame_stats` is the only growth table — partition by month when it hurts, not before; background jobs (retention sweep, reconciliation) as scheduled tasks before reaching for a queue.

@@ -1,7 +1,7 @@
 # FUTURENORMA.md — where we are, what's built, what's left
 
 **Private.** Contains credentials, pricing, margins, and strategy.
-Last updated: 2026-07-30.
+Last updated: 2026-07-31.
 
 This is the single orientation document. Read this, then `CHECKPOINT.md` for
 phase-level detail and `BuildV4.md` for the spec that defines "done".
@@ -10,17 +10,18 @@ phase-level detail and `BuildV4.md` for the spec that defines "done".
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished and published** (`norma-scope` v0.7.0 and
-`normascope-mcp` v0.2.0, both live on npm under Apache-2.0 as of 2026-07-30). The **explain engine is finished** and its real cost is
+The **CLI is finished and published** (`norma-scope` v0.7.1 and
+`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.1 published
+2026-07-31). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The **hosted surface exists twice**: a full Next.js
 app in `argus-cloud/web/` (not deployed), and a **live, access-gated preview at
-`harshaattray.com/norma-lab`** running inside the portfolio repo so it can be
+`harshaattray.com/normascope-cloud`** running inside the portfolio repo so it can be
 used today without standing up new infrastructure.
 
 What's genuinely missing before launch: **a payment provider** (MoR account —
-Harsha's call), **real multi-tenancy** (the lab is single-tenant on purpose),
+Harsha's call), **real multi-tenancy** (the preview is single-tenant on purpose),
 **artifact upload** (hosted explain currently reasons over diff metadata, not
 image crops), and **its own domain and deployment**.
 
@@ -31,43 +32,43 @@ image crops), and **its own domain and deployment**.
 > **Guideline — this is deliberate and temporary.**
 >
 > Normascope Cloud is currently deployed as a **protected route inside the
-> portfolio repo** (`harshaattray.com/norma-lab`, repo
+> portfolio repo** (`harshaattray.com/normascope-cloud`, repo
 > `github.com/harshattray/my-website`). This is a **testing arrangement only**.
 > It exists so the hosted experience can be used and demoed *today* without
 > provisioning a separate Vercel project, database, domain, and billing account.
 >
 > **Before launch, Cloud moves to its own website.** The real product is
 > `argus-cloud/web/` (Next.js, already written) deployed to its own Vercel
-> project, its own Postgres, and its own domain. The `/norma-lab` route is then
+> project, its own Postgres, and its own domain. The `/normascope-cloud` route is then
 > deleted from the portfolio.
 >
 > **Rules while it lives in the portfolio:**
-> - Never link to `/norma-lab` from any public page, sitemap, or nav.
+> - Never link to `/normascope-cloud` from any public page, sitemap, or nav.
 > - Never put anything in it that must survive — treat the data as disposable.
-> - Keep the daily model-spend cap on (`NORMA_LAB_DAILY_BUDGET_USD`); the API
+> - Keep the daily model-spend cap on (`NORMASCOPE_CLOUD_DAILY_BUDGET_USD`); the API
 >   balance is prepaid and small.
 > - Don't grow it into the real product. New Cloud features belong in
->   `argus-cloud/web/`; the lab only gets what's needed to *evaluate* them.
-> - The lab shares the portfolio's Turso database and R2 bucket. All its tables
->   are prefixed `norma_` and its R2 objects `norma-lab-*`, so removing it later
+>   `argus-cloud/web/`; the preview only gets what's needed to *evaluate* them.
+> - The preview shares the portfolio's Turso database and R2 bucket. All its tables
+>   are prefixed `norma_` and its R2 objects `normascope-cloud-*`, so removing it later
 >   is a clean delete.
 
 ### Access (single credential, private preview)
 
 | | |
 |---|---|
-| URL | `https://harshaattray.com/norma-lab` |
+| URL | `https://harshaattray.com/normascope-cloud` |
 | Access code | `hKJpzlEAfxfOUW4oEHywLr4z` |
-| Stored | Vercel env `NORMA_LAB_PASSWORD` (production), and `.norma-lab-password` locally (gitignored) |
-| Session | 30-day JWT with role `norma-lab`, held in `sessionStorage` |
-| Daily model spend cap | `$0.75` (`NORMA_LAB_DAILY_BUDGET_USD`) |
+| Stored | Vercel env `NORMASCOPE_CLOUD_PASSWORD` (production), and `.normascope-cloud-password` locally (gitignored) |
+| Session | 30-day JWT with role `normascope-cloud`, held in `sessionStorage` |
+| Daily model spend cap | `$0.75` (`NORMASCOPE_CLOUD_DAILY_BUDGET_USD`) |
 
-To rotate: `vercel env rm NORMA_LAB_PASSWORD production`, then
+To rotate: `vercel env rm NORMASCOPE_CLOUD_PASSWORD production`, then
 `vercel env add`, then redeploy. Old sessions survive until the JWT expires —
 to kill them immediately, rotate `JWT_SECRET` instead (this also logs out the
 site admin, so rotate deliberately).
 
-### What the lab can do today
+### What the preview can do today
 
 Upload a `summary.json` (optionally with `report.html`, stored in R2) → browse
 runs → open a run → per-frame scores → **Explain** / **Deep explain** with live
@@ -94,28 +95,42 @@ served from R2.
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
-| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.0` | Installed from the registry: 48 files / 128 kB, optional peer skipped (14 MB), real capture→diff→report run |
-| `normascope-mcp` on npm | ✅ **published** v0.2.0 | Installed from the registry: pulls `norma-scope@0.7.0`, handshake reports 0.2.0, five tools listed |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.1` | Registry reports 48 files / 141,118 B unpacked, `latest` = 0.7.1 — matching the pre-publish `npm pack --dry-run` exactly |
+| `normascope-mcp` on npm | ✅ **published** v0.2.0 | Fresh install 2026-07-31 resolves `norma-scope@0.7.1` through its unchanged `^0.7.0` range; handshake reports 0.2.0, five tools listed |
 
-Branch `stage-5-explain` @ `26ad7e2` — merged to `main`, pushed, tagged
-**`v0.7.0`**. Full suite: **66 checks green**.
+`main` @ `91a63d5`, **published as `norma-scope@0.7.1` on 2026-07-31**. Full
+suite: **66 checks green**. Two branches landed in that release, both cut from
+`main`, touching disjoint files, fast-forwarded in to keep history linear:
 
-**Two branches pushed and awaiting PR (2026-07-31),** both cut from `main`,
-touching disjoint files, mergeable in either order:
-
-- `report-redesign` @ `5d311fb` — HTML report presentation only; same
+- `report-redesign` → `5d311fb` — HTML report presentation only; same
   `ComponentResult` data, no new metrics, no command or flag change. Carries
   three fixes: full-page captures no longer letterbox into unreadable slivers
   (frames size to the capture's aspect; >2.2:1 scrolls at natural size with the
   three panes synced), the lightbox no longer overflows the viewport for very
   tall images, and `makeThumbnail` stopped discarding dimensions it had already
   parsed.
-- `baseline-only-source` @ `b60bc15` — a baseline-only config no longer has to
+- `baseline-only-source` → `9c2e067` — a baseline-only config no longer has to
   declare a design source it never reads. `parseConfig` requires `figmaFileKey`
   only when some frame is non-baseline; `doctor` skips both the source check
   **and** the Figma token/file checks for such configs. Adds T4.5–T4.8 (the +4
   above); T4.5/T4.7/T4.8 fail against unfixed source, T4.6 is a regression
   guard. See §5 item 6 for the loose end it leaves behind.
+
+**Neither branch had been tested against the other** — no file overlap, but
+`baseline.test.mjs` T4.4 asserts report strings the redesign rewrites. They
+were merged onto a scratch branch and the full suite run there first; the
+rebased `main` tree was then hash-compared against that verified tree before
+pushing. Do this whenever two branches land together.
+
+**A patch bump let the MCP ride along for free.** 0.7.1 rather than 0.8.0 was
+deliberate: on 0.x a caret is minor-locked, so `normascope-mcp`'s unchanged
+`norma-scope: "^0.7.0"` accepts 0.7.1 but would have rejected 0.8.0. A fresh
+MCP install now resolves 0.7.1 with no second publish. The moment a change
+warrants a minor, the full publish-order dance below applies again.
+
+⚠️ **The `v0.7.1` git tag exists locally but was never pushed** — `git push`
+does not carry tags. `v0.6.0` and `v0.7.0` are on the remote; 0.7.1 is not.
+Run `git push origin v0.7.1`.
 
 **Publish order matters, permanently.** `normascope-mcp` depends on
 `norma-scope` by name, and npm cannot link a workspace *root* as a dependency —
@@ -155,10 +170,10 @@ Branch `stage-5-metering` @ `ab40521` — **pushed and fast-forward-merged to
 `main` 2026-07-30**. `main` and `origin/main` are both at `ab40521`.
 Full suite: **63 checks green**.
 
-### Portfolio repo — the lab
+### Portfolio repo — the preview
 
 `api/_norma/{login,runs,run,explain}.ts` behind one dispatcher
-(`api/norma/[action].ts`), plus `/norma-lab` and `/norma-lab/run/:id` in the
+(`api/norma/[action].ts`), plus `/normascope-cloud` and `/normascope-cloud/run/:id` in the
 frontend. Committed @ `b4eeb86`, deployed to production.
 
 > Note: Vercel's Hobby plan allows **12 serverless functions** and the site was
@@ -166,7 +181,7 @@ frontend. Committed @ `b4eeb86`, deployed to production.
 > `api/preview/[...path].ts` and the four lab routes into
 > `api/norma/[action].ts`. Public paths are unchanged. **Total is now 11** —
 > if you add a function later and hit the cap, consolidate rather than
-> upgrading the plan, or move the lab to its own project (which is the plan
+> upgrading the plan, or move the preview to its own project (which is the plan
 > anyway, see §1).
 
 ---
@@ -201,7 +216,7 @@ object × a live price. Never estimate.
 
 ## 4. Multi-tenancy — how company-specific access will work
 
-The lab is **single-tenant by design**: one shared access code, one dataset.
+The preview is **single-tenant by design**: one shared access code, one dataset.
 That is fine for evaluation and wrong for customers. Here is the real design —
 most of it already exists in `argus-cloud`, unbuilt only at the edges.
 
@@ -211,6 +226,8 @@ most of it already exists in `argus-cloud`, unbuilt only at the edges.
 org ──┬── memberships ── users          (who can log in)
       ├── api_keys      (upload + agent keys, hashed, per-key budgets)
       ├── repos ── runs ── frame_stats  (their data)
+      ├── run_artifacts (their images — BuildV5 G2)
+      ├── org_storage   (their quota + reservations — BuildV5 G2b)
       ├── credit_grants / usage_events  (their money)
       └── result_cache  (org in the key hash AND the row)
 ```
@@ -222,11 +239,16 @@ attempting org A's run, share, and batch — all denied).
 
 ### How a new client gets access — the intended flow
 
-1. **Create the org.** `INSERT INTO orgs` (or the admin UI, unbuilt). Plan
-   defaults to `trial`.
-2. **Grant credits.** A `plan_allotment` grant for a trial, or a
-   `pack_purchase` grant created by the MoR webhook after payment. **Balance is
-   the cap** — there is no way to spend past it.
+1. **Create the org.** Provisioned by the MoR purchase webhook — with no trial
+   (BuildV5 §G2c), buying is the only way an org comes into existence. Plan
+   defaults to `free`, which **cannot upload**; `migrations/001`'s
+   `DEFAULT 'trial'` is superseded by a later migration. Direct
+   `INSERT INTO orgs` remains the manual path until the admin UI exists.
+2. **Grant credits.** A `plan_allotment` grant for the Team plan's included
+   allotment, or a `pack_purchase` grant created by the MoR webhook after
+   payment. **Balance is the cap** — there is no way to spend past it. (Note
+   `reconcile.ts` counts allotment spend against pack revenue only — see
+   BuildV5's Build 5.5 risks.)
 3. **Issue keys** with `createApiKey(db, orgId, { kind })`:
    - `upload` keys — for CI/CLI uploads.
    - `agent` keys — for AI agents, with `monthly_budget_credits` and
@@ -248,24 +270,49 @@ attempting org A's run, share, and batch — all denied).
 | Keys | Hashed; revocation takes effect on the next request |
 | Reports | Membership, or a revocable/expiring share token |
 
+Two boundaries **added by BuildV5** — they did not exist when this section was
+written, and they are the newest tenancy surface, so they are the least proven:
+
+| Boundary | Mechanism | State |
+|---|---|---|
+| Storage | Blobs are content-addressed **inside the org prefix** (`org/{orgId}/blob/{sha256}.png`) — identical content in another org is a separate object, never shared. Org delete stays a prefix delete. Objects are private; access is a short-TTL presigned GET scoped to a session or share token | ⬜ BuildV5 G2 |
+| Quota | `org_storage` reservations and counters are org-scoped; **org B must not be able to read, reserve against, or exhaust org A's quota**. Upload entitlement is re-checked per request against the org's *current* plan — key existence is never authorization | ⬜ BuildV5 G2b/G2c |
+
+**Presigned URLs are a new leak vector with no precedent in the earlier
+design.** A URL issued for org A's object is a bearer credential that works for
+anyone holding it, regardless of session — which is why the TTL is 60–120s,
+why the nonce makes it single-use, and why a share-token viewer must never
+receive a URL outliving its token. These join the E4 tenant probe; a boundary
+that has not been probed is an open risk, not an assumed pass.
+
 ### What still has to be built for real tenancy
 
 - **Auth + org management UI** — sign-up, org create, invite, key management,
   revoke. (Stage 4 items 4–5.)
 - **Plan limits as config, not code** — Team = 10 repos, unlimited seats. The
-  price ladder runs on **repos**, never on seats.
+  price ladder runs on **repos**, never on seats. (Partly settled: BuildV5
+  §G2c fixes the plan enum to `free | team | lapsed` and specifies the upload,
+  storage, and quota dimensions. The **repo ladder above Team is still open** —
+  needed for the pricing page at HorizonPath Step 8.)
 - **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
-  nothing deleted; 14-day trial and 14-day grace.
+  nothing deleted; 14-day grace. (No trial — BuildV5 §G2c. Risk reversal is a
+  30-day money-back guarantee.)
 - **Deletion + retention** — run/repo/org delete removes objects from storage
   as well as rows; a 90-day sweep with a dry-run mode.
 - **Admin view** — spend, margin, breaker state, enterprise-lead flags.
 
 ### Interim option if a client needs access before that lands
 
-Give them their **own deployment**: the lab pattern (one access code, one
-dataset) cloned per client, or a separate Vercel project per client pointed at
-its own database. Crude, but genuinely isolated, and it buys time without
-faking multi-tenancy. Do **not** hand two clients the same lab code.
+Give them their **own deployment**: a separate Vercel project per client
+pointed at its own database and bucket. Crude, but genuinely isolated, and it
+buys time without faking multi-tenancy. Do **not** hand two clients the same
+deployment.
+
+> ⚠️ **The preview-cloning variant of this is retired.** It read "clone the preview
+> pattern per client"; the preview itself is deleted at BuildV5 Phase J4, and its
+> single-access-code, shared-database shape was never safe for two clients
+> anyway. A per-client Vercel project is the only remaining interim option.
+> After Step 6 (auth) it stops being needed at all.
 
 ---
 
@@ -325,7 +372,7 @@ faking multi-tenancy. Do **not** hand two clients the same lab code.
 ### Then — the real launch sequence
 
 8. **Deploy `argus-cloud/web/`** to its own Vercel project + Neon/Supabase
-   Postgres + R2. Then **retire `/norma-lab`** from the portfolio (§1).
+   Postgres + R2. Then **retire `/normascope-cloud`** from the portfolio (§1).
 9. **Build Stage 4 auth + dashboard** (§4) — the report page's API-key field is
    a stopgap until sessions exist.
 10. **Phase E security validation**: E1 injection fixtures against the *hosted*
@@ -524,9 +571,12 @@ the trigger.
 |---|---|
 | CLI + Action + MCP | `~/Documents/Tal/Argus` (**private repo**, public npm package `norma-scope`) |
 | Cloud (real) | `~/Documents/Tal/argus-cloud` (private) |
-| Cloud (temporary lab) | `~/Downloads/Projects/portfolio` → `/norma-lab` |
+| Cloud (temporary lab) | `~/Downloads/Projects/portfolio` → `/normascope-cloud` |
 | Feature explainer | `Argus/normascope101.md` |
 | Command reference | `Argus/COMMANDS.md` |
+| **What to build next, in order** | `argus-cloud/docs/HorizonPath.md` — start here |
+| **What is actually built, with evidence** | `argus-cloud/docs/FinishedSPEC.md` |
+| Steps 1–5 executable spec | `argus-cloud/docs/BuildV5.md` — phases F–J |
 | Phase detail | `argus-cloud/docs/CHECKPOINT.md` |
 | The spec | `argus-cloud/docs/BuildV4.md` |
 | Threat model | `Argus/SECURITY-LLM.md` |
