@@ -1,6 +1,6 @@
 # FinishedSPEC.md — what is concretely built
 
-**Private.** Companion to `HorizonPath.md` (what to build next). This document
+**Private.** Companion to `FUTURENORMA.md` §5 (what to build next). This document
 answers only one question: **what exists right now, and what is the evidence?**
 
 Last audited: **2026-08-03**, by reading the code, not the plans. Where a
@@ -249,4 +249,4 @@ and history enrichment. The paid product's **surface** barely exists: no
 images, no trends, no auth, no billing, and no upload command to feed it. The
 distance to first revenue is almost entirely UI and integration work over data
 that is already modelled and stored — which is a far better position than the
-reverse, and is exactly what `HorizonPath.md` sequences.
+reverse, and is exactly what `FUTURENORMA.md` §5 sequences.
