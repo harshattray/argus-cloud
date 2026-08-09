@@ -1,0 +1,12 @@
+{
+  "threshold": 0.5,
+  "app": { "baseUrl": "http://localhost:4173" },
+  "frames": [
+    { "label": "Norma — Hero",          "screenshot": "norma-hero.png",     "mode": "baseline", "route": "/@norma", "capture": "viewport", "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 },
+    { "label": "Norma — Engine",        "screenshot": "norma-engine.png",   "mode": "baseline", "route": "/@norma", "selector": "#engine",        "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 },
+    { "label": "Norma — Try It",        "screenshot": "norma-tryit.png",    "mode": "baseline", "route": "/@norma", "selector": "#try-it",        "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 },
+    { "label": "Norma — Pull Requests", "screenshot": "norma-prs.png",      "mode": "baseline", "route": "/@norma", "selector": "#pull-requests", "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 },
+    { "label": "Norma — Commands",      "screenshot": "norma-commands.png", "mode": "baseline", "route": "/@norma", "selector": "#commands",      "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 },
+    { "label": "Lab — Index",           "screenshot": "lab-index.png",      "mode": "baseline", "route": "/lab",    "capture": "viewport", "viewport": { "width": 1440, "height": 1000 }, "waitMs": 2500 }
+  ]
+}

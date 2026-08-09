@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-05T10:12:49.309Z",
+  "threshold": 5,
+  "totals": {
+    "compared": 1,
+    "flagged": 1,
+    "skipped": 0
+  },
+  "frames": [
+    {
+      "label": "Bose Full Page",
+      "screenshot": "bose-full-page.png",
+      "mode": "fidelity",
+      "source": "figma",
+      "status": "compared",
+      "alignedMismatchPercent": 36.41,
+      "unalignedMismatchPercent": 36.89,
+      "rawMismatchPercent": 39.02,
+      "structuralSimilarity": 62.2,
+      "alignment": "banded",
+      "driftedSections": 3,
+      "significantRegions": 10,
+      "flagged": true
+    }
+  ]
+}

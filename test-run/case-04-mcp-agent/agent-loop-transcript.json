@@ -1,0 +1,125 @@
+[
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "normascope-agent-loop",
+          "version": "1.0.0"
+        }
+      }
+    },
+    "response": {
+      "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "serverInfo": {
+          "name": "normascope",
+          "version": "0.2.0"
+        }
+      },
+      "jsonrpc": "2.0",
+      "id": 1
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/call",
+      "params": {
+        "name": "capture",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"log\": \"Normascope — Auto\\n══════════════════════════════════════════════\\n  norma-hero.png       →  captured from /@norma [viewport] + context\\n  norma-engine.png     →  captured from /@norma [selector] + context\\n  norma-tryit.png      →  captured from /@norma [selector] + context\\n  norma-prs.png        →  captured from /@norma [selector] + context\\n  norma-commands.png   →  captured from /@norma [selector] + context\\n  articles-index.png   →  captured from /articles [viewport] + context\\n  lab-index.png        →  captured from /lab [viewport] + context\\n\\n  Screenshots saved to .bridge/screenshots/\\n══════════════════════════════════════════════\"\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 2
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "compare",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"summary\": {\n    \"schemaVersion\": 2,\n    \"generatedAt\": \"2026-08-05T08:43:00.555Z\",\n    \"threshold\": 0.5,\n    \"totals\": {\n      \"compared\": 7,\n      \"flagged\": 4,\n      \"skipped\": 0\n    },\n    \"frames\": [\n      {\n        \"label\": \"Norma — Hero\",\n        \"screenshot\": \"norma-hero.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 3.42,\n        \"unalignedMismatchPercent\": 3.42,\n        \"rawMismatchPercent\": 4.79,\n        \"structuralSimilarity\": 88.2,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 10,\n        \"flagged\": true\n      },\n      {\n        \"label\": \"Norma — Engine\",\n        \"screenshot\": \"norma-engine.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Try It\",\n        \"screenshot\": \"norma-tryit.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 4.18,\n        \"unalignedMismatchPercent\": 5.97,\n        \"rawMismatchPercent\": 7.8,\n        \"structuralSimilarity\": 77.6,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 3,\n        \"significantRegions\": 6,\n        \"flagged\": true\n      },\n      {\n        \"label\": \"Norma — Pull Requests\",\n        \"screenshot\": \"norma-prs.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 3.57,\n        \"unalignedMismatchPercent\": 3.57,\n        \"rawMismatchPercent\": 5.38,\n        \"structuralSimilarity\": 84.1,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 3,\n        \"flagged\": true\n      },\n      {\n        \"label\": \"Norma — Commands\",\n        \"screenshot\": \"norma-commands.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0.51,\n        \"unalignedMismatchPercent\": 0.49,\n        \"rawMismatchPercent\": 1,\n        \"structuralSimilarity\": 97.8,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 4,\n        \"significantRegions\": 5,\n        \"flagged\": true\n      },\n      {\n        \"label\": \"Articles — Index\",\n        \"screenshot\": \"articles-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Lab — Index\",\n        \"screenshot\": \"lab-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      }\n    ]\n  }\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 3
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "capture",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"log\": \"Normascope — Auto\\n══════════════════════════════════════════════\\n  norma-hero.png       →  captured from /@norma [viewport] + context\\n  norma-engine.png     →  captured from /@norma [selector] + context\\n  norma-tryit.png      →  captured from /@norma [selector] + context\\n  norma-prs.png        →  captured from /@norma [selector] + context\\n  norma-commands.png   →  captured from /@norma [selector] + context\\n  articles-index.png   →  captured from /articles [viewport] + context\\n  lab-index.png        →  captured from /lab [viewport] + context\\n\\n  Screenshots saved to .bridge/screenshots/\\n══════════════════════════════════════════════\"\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 4
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "name": "compare",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"summary\": {\n    \"schemaVersion\": 2,\n    \"generatedAt\": \"2026-08-05T08:43:56.324Z\",\n    \"threshold\": 0.5,\n    \"totals\": {\n      \"compared\": 7,\n      \"flagged\": 0,\n      \"skipped\": 0\n    },\n    \"frames\": [\n      {\n        \"label\": \"Norma — Hero\",\n        \"screenshot\": \"norma-hero.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0.07,\n        \"unalignedMismatchPercent\": 0.07,\n        \"rawMismatchPercent\": 0.1,\n        \"structuralSimilarity\": 99.4,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 1,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Engine\",\n        \"screenshot\": \"norma-engine.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Try It\",\n        \"screenshot\": \"norma-tryit.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Pull Requests\",\n        \"screenshot\": \"norma-prs.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Commands\",\n        \"screenshot\": \"norma-commands.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Articles — Index\",\n        \"screenshot\": \"articles-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Lab — Index\",\n        \"screenshot\": \"lab-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      }\n    ]\n  }\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 5
+    }
+  }
+]

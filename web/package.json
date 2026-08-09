@@ -4,7 +4,7 @@
   "private": true,
   "description": "Normascope Cloud web surface — Next.js on Vercel (Stage 4 + Build 4.0 Phase D)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
@@ -17,9 +17,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^26.1.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.0",
     "typescript": "^6.0.3"
   }
 }

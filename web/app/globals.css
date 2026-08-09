@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+/*
+ * Normascope design tokens (docs/normascopeWeb.md §5). These are the *public
+ * site's* palette — the gated Normascope Cloud surface does not inherit them
+ * and is designed separately (§4.1).
+ *
+ * Semantic colours are load-bearing and must stay consistent everywhere,
+ * including inside mockups, because they encode meaning:
+ *   emerald = reference / clean / passing      rose   = build / failing
+ *   amber   = flagged / above threshold        sky    = MCP + agents
+ *   violet  = CLI
+ */
+@theme {
+  --color-paper: #eee7e4;
+  --color-text: #111111;
+  --color-clay: #a8736e;
+  --color-sand: #ece6e0;
+  --color-ink: #0f0f0f;
+
+  --font-sans: var(--font-poppins), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The wordmark is set in the system grotesque, as on the portfolio page —
+     Poppins' geometric round is wrong for it at display size. */
+  --font-wordmark: -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+  /* Extra semantic surfaces for the annotated/editorial pages. `chalk` is the
+     neutral card fill that reads on both paper and sand without a border. */
+  --color-chalk: #f7f4f2;
+  --color-clay-deep: #8e5c57;
+}
+
+/*
+ * ── Display typography ────────────────────────────────────────────────────
+ *
+ * Poppins is a geometric sans: at weight 900 the counters in a/e/o/s close up
+ * and a display heading turns into a dark blob with no internal rhythm. It was
+ * being set at `font-black` everywhere, which is exactly the size range where
+ * that failure is most visible.
+ *
+ * The fix is optical, not a font swap — Poppins is right for this brand:
+ *
+ *   1. Display headings drop to 600/700. The weight still reads as emphatic
+ *      against 400 body copy, and the counters stay open.
+ *   2. Tracking tightens as size grows. Type designers draw one set of
+ *      sidebearings, optimised for text; at 48px+ those gaps look like holes.
+ *      Each step below removes progressively more.
+ *   3. Line-height falls with size for the same reason — 1.5 at 16px and 1.5
+ *      at 56px are not the same texture.
+ *
+ * 900 is kept for the tiny uppercase eyebrow labels, where heavy weight reads
+ * as *texture* rather than as letterforms and the counters never matter.
+ */
+@utility display-xl {
+  font-weight: 700;
+  font-size: clamp(2.75rem, 1.6rem + 4.4vw, 5rem);
+  line-height: 0.98;
+  letter-spacing: -0.038em;
+}
+
+@utility display-lg {
+  font-weight: 700;
+  font-size: clamp(2.125rem, 1.4rem + 2.6vw, 3.25rem);
+  line-height: 1.04;
+  letter-spacing: -0.032em;
+}
+
+@utility display-md {
+  font-weight: 700;
+  font-size: clamp(1.625rem, 1.25rem + 1.5vw, 2.375rem);
+  line-height: 1.1;
+  letter-spacing: -0.026em;
+}
+
+@utility display-sm {
+  font-weight: 600;
+  font-size: clamp(1.25rem, 1.05rem + 0.7vw, 1.625rem);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+}
+
+/* Sub-display: the bold lead-in on a card or a list item. Small enough that
+   tracking should stay at zero. */
+@utility title-sm {
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  letter-spacing: -0.011em;
+}
+
+/* The eyebrow label — the one place Poppins Black belongs. */
+@utility eyebrow {
+  font-weight: 900;
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+/* Every percentage, count and metric on the site. Lining tabular figures stop
+   numbers jittering when they animate or sit in a column. */
+@utility numeric {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Tailwind v4 resets `border-color` to currentColor; the portfolio's markup
+   assumes a neutral default on bare `border` utilities. */
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Every animation on this site is decorative. None of it is allowed to
+     fight a vestibular disorder. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    ::after,
+    ::before {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

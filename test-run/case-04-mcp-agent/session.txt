@@ -1,0 +1,372 @@
+
+================================================================
+1. initialize
+================================================================
+{
+  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "serverInfo": {
+    "name": "normascope",
+    "version": "0.2.0"
+  }
+}
+
+================================================================
+2. tools/list — what an agent sees
+================================================================
+
+- list_frames
+  List the frames Normascope tracks in this project: label, screenshot name, mode (fidelity/baseline), design source, and whether a capture exists yet.
+  input: []
+
+- capture
+  Capture screenshots of the running app for the configured frames (their routes/selectors). Origin policy is default-deny: only configured origins can be captured; private/link-local/metadata addresses are always refused.
+  input: ["url"]
+
+- compare
+  Run the visual comparison and return the structured summary. Two modes: with no arguments, compares the configured frames (fidelity/baseline per config). With `target` (a mock PNG path inside the project) and `url`, runs the zero-config target-mock flow: capture the URL, diff against the mock. The aligned mismatch percent is the primary score; lower is better.
+  input: ["target","url","selector","width","height"]
+
+- get_summary
+  Return the structured summary of the most recent comparison (summary.json v2: per-frame aligned mismatch %, SSIM, drifted sections, mode, source, flagged).
+  input: []
+
+- explain
+  Explain WHY flagged frames drifted, as structured findings (hypotheses — verify before applying; nothing is auto-applied). Two modes: BYO — with ANTHROPIC_API_KEY in the server env, analysis runs locally against your own key. Org credits — with NORMASCOPE_CLOUD_URL + NORMASCOPE_ORG_KEY set, the current summary is uploaded to Normascope Cloud and analyzed there (metered in credits; findings gain history context). Deterministic diff scores are never affected by this tool.
+  input: ["frame","deep"]
+
+================================================================
+3. list_frames — what this project tracks
+================================================================
+{
+  "ok": true,
+  "source": "figma",
+  "threshold": 0.5,
+  "frames": [
+    {
+      "label": "Norma — Hero",
+      "screenshot": "norma-hero.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "captured": true
+    },
+    {
+      "label": "Norma — Engine",
+      "screenshot": "norma-engine.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "captured": true
+    },
+    {
+      "label": "Norma — Try It",
+      "screenshot": "norma-tryit.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "captured": true
+    },
+    {
+      "label": "Norma — Pull Requests",
+      "screenshot": "norma-prs.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "captured": true
+    },
+    {
+      "label": "Norma — Commands",
+      "screenshot": "norma-commands.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "captured": true
+    },
+    {
+      "label": "Articles — Index",
+      "screenshot": "articles-index.png",
+      "mode": "baseline",
+      "route": "/articles",
+      "captured": true
+    },
+    {
+      "label": "Lab — Index",
+      "screenshot": "lab-index.png",
+      "mode": "baseline",
+      "route": "/lab",
+      "captured": true
+    }
+  ]
+}
+
+================================================================
+4. capture — screenshot the running app
+================================================================
+{
+  "ok": true,
+  "log": "Normascope — Auto\n══════════════════════════════════════════════\n  norma-hero.png       →  captured from /@norma [viewport] + context\n  norma-engine.png     →  captured from /@norma [selector] + context\n  norma-tryit.png      →  captured from /@norma [selector] + context\n  norma-prs.png        →  captured from /@norma [selector] + context\n  norma-commands.png   →  captured from /@norma [selector] + context\n  articles-index.png   →  captured from /articles [viewport] + context\n  lab-index.png        →  captured from /lab [viewport] + context\n\n  Screenshots saved to .bridge/screenshots/\n══════════════════════════════════════════════"
+}
+
+================================================================
+5. compare — score it
+================================================================
+{
+  "ok": true,
+  "summary": {
+    "schemaVersion": 2,
+    "generatedAt": "2026-08-05T08:39:37.500Z",
+    "threshold": 0.5,
+    "totals": {
+      "compared": 7,
+      "flagged": 0,
+      "skipped": 0
+    },
+    "frames": [
+      {
+        "label": "Norma — Hero",
+        "screenshot": "norma-hero.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0.05,
+        "unalignedMismatchPercent": 0.05,
+        "rawMismatchPercent": 0.08,
+        "structuralSimilarity": 99.5,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 1,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Engine",
+        "screenshot": "norma-engine.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "none",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Try It",
+        "screenshot": "norma-tryit.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Pull Requests",
+        "screenshot": "norma-prs.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "none",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Commands",
+        "screenshot": "norma-commands.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Articles — Index",
+        "screenshot": "articles-index.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Lab — Index",
+        "screenshot": "lab-index.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      }
+    ]
+  }
+}
+
+================================================================
+6. get_summary — structured result the agent reads back
+================================================================
+{
+  "ok": true,
+  "summary": {
+    "schemaVersion": 2,
+    "generatedAt": "2026-08-05T08:39:37.500Z",
+    "threshold": 0.5,
+    "totals": {
+      "compared": 7,
+      "flagged": 0,
+      "skipped": 0
+    },
+    "frames": [
+      {
+        "label": "Norma — Hero",
+        "screenshot": "norma-hero.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0.05,
+        "unalignedMismatchPercent": 0.05,
+        "rawMismatchPercent": 0.08,
+        "structuralSimilarity": 99.5,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 1,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Engine",
+        "screenshot": "norma-engine.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "none",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Try It",
+        "screenshot": "norma-tryit.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Pull Requests",
+        "screenshot": "norma-prs.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "none",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Norma — Commands",
+        "screenshot": "norma-commands.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Articles — Index",
+        "screenshot": "articles-index.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      },
+      {
+        "label": "Lab — Index",
+        "screenshot": "lab-index.png",
+        "mode": "baseline",
+        "source": "baseline",
+        "status": "compared",
+        "alignedMismatchPercent": 0,
+        "unalignedMismatchPercent": 0,
+        "rawMismatchPercent": 0,
+        "structuralSimilarity": 100,
+        "alignment": "banded",
+        "driftedSections": 0,
+        "significantRegions": 0,
+        "flagged": false
+      }
+    ]
+  }
+}
+
+================================================================
+7. SECURITY — capture a non-allowlisted origin (must be refused)
+================================================================
+{
+  "ok": false,
+  "error": "capture refused: link-local/metadata range is blocked even when configured"
+}
+
+================================================================
+8. SECURITY — path traversal on a file parameter (must be refused)
+================================================================
+{
+  "ok": false,
+  "error": "target path must stay inside the project"
+}

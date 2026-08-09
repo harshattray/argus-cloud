@@ -1,0 +1,160 @@
+# Normascope — visual regression on every PR.
+#
+# Two-pass design, and the reason for it:
+#
+# Committed baseline PNGs are captured on whatever machine ran `norma-scope
+# baseline` — usually a developer's macOS laptop. CI runs on ubuntu-latest,
+# which rasterises text through a completely different stack. Diffing a macOS
+# baseline against a Linux capture produces enormous mismatch percentages that
+# have nothing to do with the change under review.
+#
+# So this workflow never uses the committed baselines. It builds and captures
+# the BASE branch inside the runner, approves that as the baseline, then builds
+# and captures the PR head in the same runner and compares. Both images come
+# from identical hardware, OS, browser and fonts, so every pixel of difference
+# is attributable to the diff under review.
+#
+# The committed .bridge/baseline/ PNGs remain useful for local pre-commit runs.
+#
+# Normascope is non-blocking: `check --json` exits 0 whatever the scores are.
+# This job only goes red on real infrastructure failure, never on a flagged
+# frame. Add `--strict` if you ever want the opposite.
+
+name: Normascope
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: normascope-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  visual-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Installed into its own prefix, deliberately.
+      #
+      # norma-scope declares `@anthropic-ai/sdk: ^0.112.3` as an optional peer
+      # dependency. `optional` only means npm tolerates it being ABSENT — if the
+      # host project depends on a version outside that range (this repo uses
+      # ^0.115.0), npm 10 fails the whole install with ERESOLVE. Installing into
+      # a scratch prefix keeps norma-scope's dependency tree away from the
+      # project's, so the two can never conflict.
+      - name: Install Normascope
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/norma-cli" norma-scope@0.7.3
+          echo "NORMA=$RUNNER_TEMP/norma-cli/node_modules/.bin/norma-scope" >> "$GITHUB_ENV"
+
+      - name: Serve helper
+        run: |
+          cat > "$RUNNER_TEMP/serve.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -e
+          npm --prefix frontend run preview -- --port 4173 --strictPort >/tmp/preview.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:4173/ && exit 0
+            sleep 1
+          done
+          echo "preview server never came up"; cat /tmp/preview.log; exit 1
+          SH
+          chmod +x "$RUNNER_TEMP/serve.sh"
+
+      # ── Pass 1: the base branch defines the baseline ────────────────────
+      - name: Build and capture the base branch
+        run: |
+          git checkout --force "$BASE_SHA"
+          # The frame set under review is the HEAD's. Capturing the base with
+          # the base's own config would produce baselines under different frame
+          # names, and every frame would then skip as "no approved baseline".
+          git checkout "$HEAD_SHA" -- .bridge/config.json
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+          "$RUNNER_TEMP/serve.sh"
+          "$NORMA" auto
+          "$NORMA" baseline
+          cp -r .bridge/baseline "$RUNNER_TEMP/base-baseline"
+          pkill -f "vite preview" || true
+
+      # ── Pass 2: the PR head, same runner, same everything ───────────────
+      - name: Build and capture the PR head
+        run: |
+          git checkout --force "$HEAD_SHA"
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+          rm -rf .bridge/baseline
+          cp -r "$RUNNER_TEMP/base-baseline" .bridge/baseline
+          "$RUNNER_TEMP/serve.sh"
+          "$NORMA" check --json
+          pkill -f "vite preview" || true
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: normascope-report
+          path: |
+            .bridge/reports/report.html
+            .bridge/reports/summary.json
+            .bridge/diff/
+          if-no-files-found: ignore
+
+      - name: Sticky PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f .bridge/reports/summary.json ] || exit 0
+          "$NORMA" comment > "$RUNNER_TEMP/comment.md"
+          node -e '
+            const fs = require("fs");
+            const body = fs.readFileSync(process.env.RUNNER_TEMP + "/comment.md", "utf-8");
+            const marker = "<!-- normascope-sticky-comment -->";
+            const { REPO, PR, GH_TOKEN } = process.env;
+            const api = async (p, init = {}) => {
+              const r = await fetch("https://api.github.com" + p, {
+                ...init,
+                headers: {
+                  Authorization: "Bearer " + GH_TOKEN,
+                  Accept: "application/vnd.github+json",
+                  "Content-Type": "application/json",
+                  ...init.headers,
+                },
+              });
+              if (!r.ok) throw new Error(p + ": " + r.status);
+              return r.json();
+            };
+            (async () => {
+              const cs = await api(`/repos/${REPO}/issues/${PR}/comments?per_page=100`);
+              const hit = cs.find((c) => typeof c.body === "string" && c.body.includes(marker));
+              if (hit) {
+                await api(`/repos/${REPO}/issues/comments/${hit.id}`, {
+                  method: "PATCH", body: JSON.stringify({ body }),
+                });
+                console.log("updated sticky comment " + hit.id);
+              } else {
+                const made = await api(`/repos/${REPO}/issues/${PR}/comments`, {
+                  method: "POST", body: JSON.stringify({ body }),
+                });
+                console.log("created sticky comment " + made.id);
+              }
+            })();
+          '

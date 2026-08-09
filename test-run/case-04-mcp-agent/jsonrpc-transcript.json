@@ -1,0 +1,294 @@
+[
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "normascope-showcase",
+          "version": "1.0.0"
+        }
+      }
+    },
+    "response": {
+      "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "serverInfo": {
+          "name": "normascope",
+          "version": "0.2.0"
+        }
+      },
+      "jsonrpc": "2.0",
+      "id": 1
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/list",
+      "params": {}
+    },
+    "response": {
+      "result": {
+        "tools": [
+          {
+            "name": "list_frames",
+            "description": "List the frames Normascope tracks in this project: label, screenshot name, mode (fidelity/baseline), design source, and whether a capture exists yet.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {}
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "capture",
+            "description": "Capture screenshots of the running app for the configured frames (their routes/selectors). Origin policy is default-deny: only configured origins can be captured; private/link-local/metadata addresses are always refused.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {
+                "url": {
+                  "description": "Optional base URL override. Must match a configured origin; refused otherwise.",
+                  "type": "string"
+                }
+              }
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "compare",
+            "description": "Run the visual comparison and return the structured summary. Two modes: with no arguments, compares the configured frames (fidelity/baseline per config). With `target` (a mock PNG path inside the project) and `url`, runs the zero-config target-mock flow: capture the URL, diff against the mock. The aligned mismatch percent is the primary score; lower is better.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {
+                "target": {
+                  "description": "Path to a mock/reference PNG inside the project (zero-config mode).",
+                  "type": "string"
+                },
+                "url": {
+                  "description": "URL to capture in zero-config mode. Must match a configured origin.",
+                  "type": "string"
+                },
+                "selector": {
+                  "description": "Optional CSS selector to capture instead of the full page.",
+                  "type": "string"
+                },
+                "width": {
+                  "description": "Viewport width for the capture (match the mock's width).",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "height": {
+                  "description": "Viewport height for the capture.",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "get_summary",
+            "description": "Return the structured summary of the most recent comparison (summary.json v2: per-frame aligned mismatch %, SSIM, drifted sections, mode, source, flagged).",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {}
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "explain",
+            "description": "Explain WHY flagged frames drifted, as structured findings (hypotheses — verify before applying; nothing is auto-applied). Two modes: BYO — with ANTHROPIC_API_KEY in the server env, analysis runs locally against your own key. Org credits — with NORMASCOPE_CLOUD_URL + NORMASCOPE_ORG_KEY set, the current summary is uploaded to Normascope Cloud and analyzed there (metered in credits; findings gain history context). Deterministic diff scores are never affected by this tool.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {
+                "frame": {
+                  "description": "Screenshot filename to analyze; omit to analyze all flagged frames.",
+                  "type": "string"
+                },
+                "deep": {
+                  "description": "Use the deep model (costs more; BYO bills your key, org mode uses 3 credits).",
+                  "type": "boolean"
+                }
+              }
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 2
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "list_frames",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"source\": \"figma\",\n  \"threshold\": 0.5,\n  \"frames\": [\n    {\n      \"label\": \"Norma — Hero\",\n      \"screenshot\": \"norma-hero.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/@norma\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Norma — Engine\",\n      \"screenshot\": \"norma-engine.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/@norma\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Norma — Try It\",\n      \"screenshot\": \"norma-tryit.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/@norma\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Norma — Pull Requests\",\n      \"screenshot\": \"norma-prs.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/@norma\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Norma — Commands\",\n      \"screenshot\": \"norma-commands.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/@norma\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Articles — Index\",\n      \"screenshot\": \"articles-index.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/articles\",\n      \"captured\": true\n    },\n    {\n      \"label\": \"Lab — Index\",\n      \"screenshot\": \"lab-index.png\",\n      \"mode\": \"baseline\",\n      \"route\": \"/lab\",\n      \"captured\": true\n    }\n  ]\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 3
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "capture",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"log\": \"Normascope — Auto\\n══════════════════════════════════════════════\\n  norma-hero.png       →  captured from /@norma [viewport] + context\\n  norma-engine.png     →  captured from /@norma [selector] + context\\n  norma-tryit.png      →  captured from /@norma [selector] + context\\n  norma-prs.png        →  captured from /@norma [selector] + context\\n  norma-commands.png   →  captured from /@norma [selector] + context\\n  articles-index.png   →  captured from /articles [viewport] + context\\n  lab-index.png        →  captured from /lab [viewport] + context\\n\\n  Screenshots saved to .bridge/screenshots/\\n══════════════════════════════════════════════\"\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 4
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "tools/call",
+      "params": {
+        "name": "compare",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"summary\": {\n    \"schemaVersion\": 2,\n    \"generatedAt\": \"2026-08-05T08:39:37.500Z\",\n    \"threshold\": 0.5,\n    \"totals\": {\n      \"compared\": 7,\n      \"flagged\": 0,\n      \"skipped\": 0\n    },\n    \"frames\": [\n      {\n        \"label\": \"Norma — Hero\",\n        \"screenshot\": \"norma-hero.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0.05,\n        \"unalignedMismatchPercent\": 0.05,\n        \"rawMismatchPercent\": 0.08,\n        \"structuralSimilarity\": 99.5,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 1,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Engine\",\n        \"screenshot\": \"norma-engine.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Try It\",\n        \"screenshot\": \"norma-tryit.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Pull Requests\",\n        \"screenshot\": \"norma-prs.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Commands\",\n        \"screenshot\": \"norma-commands.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Articles — Index\",\n        \"screenshot\": \"articles-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Lab — Index\",\n        \"screenshot\": \"lab-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      }\n    ]\n  }\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 5
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "method": "tools/call",
+      "params": {
+        "name": "get_summary",
+        "arguments": {}
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"summary\": {\n    \"schemaVersion\": 2,\n    \"generatedAt\": \"2026-08-05T08:39:37.500Z\",\n    \"threshold\": 0.5,\n    \"totals\": {\n      \"compared\": 7,\n      \"flagged\": 0,\n      \"skipped\": 0\n    },\n    \"frames\": [\n      {\n        \"label\": \"Norma — Hero\",\n        \"screenshot\": \"norma-hero.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0.05,\n        \"unalignedMismatchPercent\": 0.05,\n        \"rawMismatchPercent\": 0.08,\n        \"structuralSimilarity\": 99.5,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 1,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Engine\",\n        \"screenshot\": \"norma-engine.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Try It\",\n        \"screenshot\": \"norma-tryit.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Pull Requests\",\n        \"screenshot\": \"norma-prs.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"none\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Norma — Commands\",\n        \"screenshot\": \"norma-commands.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Articles — Index\",\n        \"screenshot\": \"articles-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      },\n      {\n        \"label\": \"Lab — Index\",\n        \"screenshot\": \"lab-index.png\",\n        \"mode\": \"baseline\",\n        \"source\": \"baseline\",\n        \"status\": \"compared\",\n        \"alignedMismatchPercent\": 0,\n        \"unalignedMismatchPercent\": 0,\n        \"rawMismatchPercent\": 0,\n        \"structuralSimilarity\": 100,\n        \"alignment\": \"banded\",\n        \"driftedSections\": 0,\n        \"significantRegions\": 0,\n        \"flagged\": false\n      }\n    ]\n  }\n}"
+          }
+        ]
+      },
+      "jsonrpc": "2.0",
+      "id": 6
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "method": "tools/call",
+      "params": {
+        "name": "compare",
+        "arguments": {
+          "target": "norma-hero.png",
+          "url": "http://169.254.169.254/latest/meta-data/"
+        }
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": false,\n  \"error\": \"capture refused: link-local/metadata range is blocked even when configured\"\n}"
+          }
+        ],
+        "isError": true
+      },
+      "jsonrpc": "2.0",
+      "id": 7
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "method": "tools/call",
+      "params": {
+        "name": "compare",
+        "arguments": {
+          "target": "../../../../etc/passwd",
+          "url": "http://localhost:5173/@norma"
+        }
+      }
+    },
+    "response": {
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": false,\n  \"error\": \"target path must stay inside the project\"\n}"
+          }
+        ],
+        "isError": true
+      },
+      "jsonrpc": "2.0",
+      "id": 8
+    }
+  }
+]

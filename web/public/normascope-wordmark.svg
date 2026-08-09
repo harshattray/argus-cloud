@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 115.4 36" width="115.4" height="36" role="img" aria-label="Normascope">
+  <title>Normascope</title>
+  <!-- Geometry is pinned with textLength so the mark occupies the same box on
+       every platform, whatever the system grotesque resolves to. -->
+  <g fill="#a8736e" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif">
+    <text x="0" y="21" font-size="40" font-weight="700" letter-spacing="-1.5" textLength="115.4" lengthAdjust="spacing">norma</text>
+    <text x="0" y="33" font-size="13" font-weight="400" letter-spacing="6.5" textLength="61.6" lengthAdjust="spacing">scope</text>
+  </g>
+</svg>
