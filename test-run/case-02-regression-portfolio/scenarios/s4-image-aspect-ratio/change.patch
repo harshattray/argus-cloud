@@ -1,0 +1,40 @@
+diff --git a/frontend/src/pages/Norma.tsx b/frontend/src/pages/Norma.tsx
+index e1e762b..fd77537 100644
+--- a/frontend/src/pages/Norma.tsx
++++ b/frontend/src/pages/Norma.tsx
+@@ -491,7 +491,7 @@ const Norma = () => {
+               {/* Right — live diff preview, gives the header a showcase anchor instead of empty space */}
+               <div className="hidden lg:block w-[340px] shrink-0">
+                 <div className="rounded-2xl bg-white shadow-2xl shadow-black/15 border border-black/5 p-3">
+-                  <div className="relative aspect-[4/3] rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
++                  <div className="relative aspect-square rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
+                     <style>{`
+                       @keyframes norma-ants { to { stroke-dashoffset: -14; } }
+                       @keyframes norma-ants-down { to { stroke-dashoffset: -12; } }
+@@ -1094,7 +1094,7 @@ const Norma = () => {
+               <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                 {/* Your build — button sits low and slightly off-colour */}
+                 <div className="flex flex-col gap-1.5 min-w-0">
+-                  <div className="relative aspect-[4/3] rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
++                  <div className="relative aspect-square rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
+                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-black/5 bg-white/60">
+                       <span className="w-2 h-2 rounded-full bg-[#ec4899]/70 shrink-0" />
+                       <span className="h-1 w-7 rounded-full bg-black/10" />
+@@ -1110,7 +1110,7 @@ const Norma = () => {
+ 
+                 {/* Figma design — button is centred and the "correct" colour */}
+                 <div className="flex flex-col gap-1.5 min-w-0">
+-                  <div className="relative aspect-[4/3] rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
++                  <div className="relative aspect-square rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
+                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-black/5 bg-white/60">
+                       <span className="w-2 h-2 rounded-full bg-[#db2777]/70 shrink-0" />
+                       <span className="h-1 w-7 rounded-full bg-black/10" />
+@@ -1126,7 +1126,7 @@ const Norma = () => {
+ 
+                 {/* Diff overlay — both button positions outlined, gap between them highlighted */}
+                 <div className="flex flex-col gap-1.5 min-w-0">
+-                  <div className="relative aspect-[4/3] rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
++                  <div className="relative aspect-square rounded-lg bg-[#fafafa] border border-black/5 overflow-hidden flex flex-col">
+                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-black/5 bg-white/60">
+                       <span className="w-2 h-2 rounded-full bg-text/20 shrink-0" />
+                       <span className="h-1 w-7 rounded-full bg-black/10" />

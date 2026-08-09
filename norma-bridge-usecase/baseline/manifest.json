@@ -1,0 +1,14 @@
+{
+  "approvedAt": "2026-07-31T06:35:22.109Z",
+  "frames": {
+    "norma-product.png": {
+      "sha256": "3769fc7e236a2449513013a76673760cea28e2a53775c54973bd345db64b8260"
+    },
+    "lab-index.png": {
+      "sha256": "14f3e61ce9bacc554fbb5bd7ecbe273c5c387afe70b87e2a9c5b8a6dbcbc411d"
+    },
+    "articles-index.png": {
+      "sha256": "7a0cf168a1f1ec89ac86020f972e5d9526021e35458916a6f2e942b4418d7f8e"
+    }
+  }
+}

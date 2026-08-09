@@ -1,0 +1,31 @@
+diff --git a/frontend/src/pages/Norma.tsx b/frontend/src/pages/Norma.tsx
+index e1e762b..05f2e78 100644
+--- a/frontend/src/pages/Norma.tsx
++++ b/frontend/src/pages/Norma.tsx
+@@ -678,7 +678,7 @@ const Norma = () => {
+       </div>
+ 
+       {/* ── Two ways in — CLI + MCP, merged ── */}
+-      <div id="try-it" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
++      <div id="try-it" className="w-full py-12 md:py-20 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
+         <div className="max-w-6xl mx-auto">
+           <Label dark>Two ways in</Label>
+           <div className="flex flex-col lg:flex-row lg:items-start gap-12 lg:gap-16">
+@@ -815,7 +815,7 @@ const Norma = () => {
+       </div>
+ 
+       {/* ── Baseline mode — HERO ── */}
+-      <div id="baseline" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
++      <div id="baseline" className="w-full py-12 md:py-20 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
+         <div className="max-w-6xl mx-auto">
+           <Label dark>Baseline mode</Label>
+           <div className="flex flex-col lg:flex-row lg:items-start gap-12 lg:gap-16">
+@@ -907,7 +907,7 @@ const Norma = () => {
+       </div>
+ 
+       {/* ── GitHub Action — HERO ── */}
+-      <div id="pull-requests" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#ece6e0] scroll-mt-14">
++      <div id="pull-requests" className="w-full py-12 md:py-20 px-4 md:px-8 bg-[#ece6e0] scroll-mt-14">
+         <div className="max-w-6xl mx-auto">
+           <Label>Pull requests</Label>
+           <div className="flex flex-col lg:flex-row-reverse lg:items-start gap-12 lg:gap-16">

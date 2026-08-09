@@ -9,6 +9,12 @@ document and any other disagree, **this one wins**. Supporting detail lives in
 `FinishedSPEC.md` (evidence for what exists), `BuildV5.md` (executable spec for
 Steps 1–5), and `normascopeWeb.md` (website requirements).
 
+`PATHWAYS.md` is the implementation companion to this document. It expands the
+settled strategy into product pathways, plan entitlements, CLI/Cloud data flow,
+deletion, privacy controls, experiments, and acceptance gates. It may not
+silently change a decision in this file; any strategic change must be recorded
+here first.
+
 ### Contents
 
 | § | What's in it | Read it when |
@@ -290,6 +296,151 @@ post-intro **list** prices, so nothing loses money after 2026-08-31:
 `pack_1000` moved $60 → $55 so the ladder rewards volume; at $60 it matched
 `pack_200`'s unit rate exactly and gave nobody a reason to size up.
 
+### Customer credits versus AI-provider billing
+
+When an organization buys the subscription or a top-up pack, NormaScope does
+not buy AI tokens from the provider at that instant. The customer's payment
+creates an internal NormaScope entitlement after a verified payment webhook.
+Our provider account is funded separately through its approved billing method,
+prepaid balance, or spending limit.
+
+The two money flows are deliberately separate:
+
+    customer payment
+    → verified webhook
+    → internal monthly or pack credit grant
+
+    explicit hosted-AI request
+    → reserve customer credits
+    → reserve maximum provider cost
+    → call provider using our account
+    → meter actual usage
+    → settle cost and finalize the credit deduction
+
+This means we do not promise instant provider capacity merely because a
+customer has topped up. If our provider account is unavailable, over budget,
+unfunded, or returns an error, hosted AI must fail closed with an honest
+message. The customer's reserved credits must be released or refunded exactly
+once; reports, diffs, history, and other non-AI features continue according to
+their entitlements.
+
+The implementation must therefore enforce all of the following:
+
+- grant credits only from an idempotently verified payment webhook;
+- never call a provider before both customer-credit and provider-dollar
+  reservations succeed;
+- reject unknown or unpriced models;
+- settle actual provider usage and release unused reservation;
+- make timeout, retry, duplicate webhook, and duplicate refund handling
+  idempotent;
+- alert operators when the provider balance or spend budget reaches 50%, 75%,
+  90%, or 100%;
+- keep subscription revenue, pack revenue, provider cost, payment fees,
+  refunds, and goodwill credits separate in reconciliation.
+
+Customer documentation must describe credits as a NormaScope usage allowance,
+not as provider tokens purchased on the customer's behalf.
+
+### Provider substitution and hard-cost management
+
+Anthropic is an internal provider choice, not a customer-facing commitment.
+NormaScope may centrally move hosted AI work to another provider when its
+measured cost, quality, privacy posture, latency, or reliability is better.
+This is a planned provider substitution, not an automatic customer-visible
+fallback.
+
+Customers should see a stable NormaScope AI capability and credit price. The
+server must still record the actual provider, model, routing-policy version,
+usage, and cost internally for audit, debugging, and margin reconciliation.
+Provider names, API keys, raw provider errors, and provider-specific model
+configuration must not leak into the normal customer workflow.
+
+The implementation needs a provider-neutral contract:
+
+    NormaScope operation
+    → routing policy
+    → provider/model adapter
+    → normalized usage and findings
+
+Every provider/model/operation combination must have a hard maximum cost
+derived from its input, output, image, cache, and batch caps. The measured
+blended cost in calibration.md is suitable for pricing and forecasting; it is
+not by itself an authorization limit.
+
+The hard maximum must fit the revenue floor of the credits consumed. If it
+does not, reduce the payload, choose a cheaper model, or charge more credits
+before launch. The product must never knowingly sell a credit class whose
+maximum provider cost can destroy its margin.
+
+Spending protection must be layered:
+
+- maximum cost per request;
+- user/API-key budget;
+- organization billing-period budget;
+- provider-specific daily budget;
+- global NormaScope all-provider daily and monthly budget;
+- concurrency and in-flight reservation limit.
+
+All providers count against the same aggregate NormaScope budget. Having room
+in a second provider account must not allow the application to bypass a
+global breaker.
+
+Changing providers requires a controlled release:
+
+1. run the same calibration fixtures against the candidate provider;
+2. compare cost per successful result, quality, schema validity, latency,
+   refusals, image support, privacy terms, retention, region, and rate limits;
+3. verify the candidate's hard maximum and credit margin;
+4. run an internal canary or shadow evaluation;
+5. version the routing policy;
+6. cut over centrally with rollback available;
+7. reconcile old and new provider spend separately.
+
+Maintain separate production accounts and keys for each provider. Auto-reload,
+if enabled, must have a bounded reload amount, operator alerts, and an
+application-level breaker. It protects availability, not profit. A manual
+funding mode is acceptable at launch if reaching zero safely pauses hosted AI.
+
+The provider and aggregate budgets must alert at 50%, 75%, 90%, and 100%. A
+100% trip stops new provider calls, even when customer credits remain. Local
+reports, diffs, history, and other non-AI features continue.
+
+Before any provider cutover, the release gate must pass largest-payload cost
+tests, concurrent cross-provider reservation tests, timeout/retry settlement
+tests, zero-balance and auto-reload-failure tests, candidate margin tests, and
+provider/model/plan/pack/refund reconciliation.
+
+### Launch hard-stop policy
+
+At launch, use a dedicated production provider account and key. Never use a
+founder's personal key, share the production key with customers, use the
+production key for development, or permit an agent to call a provider directly.
+All calls must pass through NormaScope's server-side budgets and credit ledger.
+
+The initial funding policy should preload only a small provider balance, keep
+automatic reload disabled while real usage is measured, alert at 50% and all
+budget thresholds, and manually approve additional funding. Later auto-reload
+must have a bounded amount, minimum-balance threshold, card/bank alerts,
+NormaScope daily/monthly caps, and an emergency kill switch.
+
+Planning example: 100 organizations with 500 credits each represent 50,000
+internal credits. At the measured post-intro list-price review cost of $0.0164,
+that is approximately $820 of potential provider COGS. It is not a reason to
+pre-purchase $820. Actual usage, hard maximum reservations, and the global
+provider budget determine what is funded.
+
+| State | Hosted AI behavior |
+|---|---|
+| Normal | Requests run within all caps |
+| Budget warning | Requests run; operators are alerted |
+| Budget critical | New expensive/deep requests pause |
+| Provider balance unsafe | Hosted AI pauses |
+| Global breaker tripped | No provider calls |
+| Organization credits exhausted | Only that organization's AI pauses |
+| Provider outage | AI pauses; non-AI reports and comparisons continue |
+
+Never silently fall back to an uncapped internal provider account.
+
 ### The subscription is mandatory — packs are not a way around it
 
 **Credits can only be bought, and only be spent, by an org with an active
@@ -308,6 +459,60 @@ exists. Enforcement points, all server-side:
 paid for; their 12-month expiry keeps running, and they become spendable again
 if the org resubscribes before it lapses. Forfeiting them would be a chargeback
 generator for a rounding error of revenue.
+
+### Shared organization wallet — settled product behavior
+
+Credits are shared by the organization, not allocated automatically per seat.
+Many people may run local reports without consuming Cloud credits or creating
+provider cost. Explicit Cloud uploads consume storage/run/repository quota;
+hosted and automatic AI explanations consume the shared credit wallet.
+
+When an active organization reaches zero credits, only provider-backed AI
+pauses. Local capture, local reports, deterministic GitHub comparisons, hosted
+reports/history/trends, share links, and permitted uploads continue. Automatic
+PR explanations are skipped with an honest message and CI remains green. The
+system never falls back to an uncapped internal provider account.
+
+The next monthly allowance is granted at renewal. Purchased packs remain
+available according to their expiry while the subscription is active. A lapsed
+organization becomes read-only for existing hosted data; new uploads and
+hosted AI are rejected politely.
+
+Organization admins must have visibility and controls for per-organization,
+per-repository, per-agent-key, rate, concurrency, and per-run limits, with
+usage alerts at 50%, 75%, 90%, and 100%. The detailed state matrix and user
+experience live in `PATHWAYS.md` §2.
+
+### Pricing expansion is not yet a launch decision
+
+The settled launch model remains one Cloud subscription at $59/month per
+organization. `PATHWAYS.md` records a post-validation expansion hypothesis,
+not a change to this doctrine:
+
+| Path | Price hypothesis | Active repositories | Credits |
+|---|---:|---:|---:|
+| Starter | $59/month | 3 | 500 |
+| Growth | $89–99/month | 10 | 1,000 |
+| Team | $149/month | 25 | 2,000 |
+| Enterprise | Custom | Custom | Custom |
+
+Repository count alone is not sufficient billing. If a ladder is introduced,
+it must use active repositories (a repository uploading at least one run in the
+billing month), plus measured credit, storage, retention, and governance needs.
+Registered or archived repositories must not create accidental upgrades. A
+customer with six or seven repositories must have a Growth step or a measured
+fair-use conversation; it must not be forced directly from $59 to $149.
+
+Starter must contain the complete core product: hosted reports, history,
+trends, share links, unlimited viewers/designers, GitHub Action integration,
+bounded PR explanations, basic keys, quotas, and self-serve deletion. Higher
+plans may add scale, coordination, governance, audit, retention, support, SSO,
+private deployment, or data-residency controls. They must not make the basic
+report artificially worse.
+
+Any published plan ladder requires actual customer evidence and a new decision
+record here. Until then, keep one public $59 plan and operate fair-use limits
+as policy rather than marketing a ladder.
 
 ### India pricing — deferred
 
@@ -765,10 +970,10 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
 
 1. ~~**Real domain name**~~ **Closed: `normascope.com`.** Registration and DNS
    are needed by Step 7, not before; everything until then is local.
-2. ~~**Repo-count ladder**~~ **Closed 2026-08-05: single tier, no ladder**
-   (Doctrine 9). One price, $59/mo per org. Remaining sub-decision, needed for
-   the pricing page at Step 8: whether the 10-repo figure is published as a
-   fair-use line or dropped entirely in favour of unlimited.
+2. **Post-launch expansion shape** — launch remains one $59/month plan, but the
+   post-validation Growth/Team hypothesis in this file and `PATHWAYS.md` needs
+   real repository, credit, storage, support, and retention data before a
+   ladder or active-repository fair-use line is published.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
 4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
    first. Designer seats are a differentiator; shipping OAuth alone delays it.
@@ -819,11 +1024,23 @@ attempting org A's run, share, and batch — all denied).
    - `agent` keys — for AI agents, with `monthly_budget_credits` and
      `rate_per_minute`. Exhaustion returns a clear error and **never reddens CI**.
    Keys are `nsk_`-prefixed, **sha256-hashed at rest**, shown exactly once.
-4. **Invite humans.** GitHub OAuth for developers, email magic links for
+4. **Connect the CLI explicitly.** The free and paid users use the same
+   `norma-scope` executable. `check`, `compare`, and the pre-commit hook never
+   upload implicitly. A paid repository uses `npx norma-scope upload` after a
+   user or CI configuration has opted in. The first implementation uses
+   `NORMASCOPE_CLOUD_URL` and `NORMASCOPE_ORG_KEY`; a later `cloud login` device
+   flow may use an OS credential store for interactive developers.
+5. **Invite humans.** GitHub OAuth for developers, email magic links for
    designers (designer seats don't require a GitHub account). Membership rows
    carry `admin | member | designer`. **This is the main unbuilt piece.**
-5. **Isolation is automatic** from there: reports, trends, result cache, and
+6. **Isolation is automatic** from there: reports, trends, result cache, and
    credits are all org-scoped.
+
+The upload default for an entitled repository is `flagged`: full artifacts for
+flagged frames, thumbnails or metadata for clean frames. Supported repository
+modes should be `none`, `flagged`, `all`, and eventually `metadata-only`.
+Uploading is a customer-controlled data transfer, not a side effect of using
+the free CLI.
 
 ### Per-client boundaries that already work
 
@@ -865,6 +1082,15 @@ that has not been probed is an open risk, not an assumed pass.
 - **Deletion + retention** — run/repo/org delete removes objects from storage
   as well as rows; a 90-day sweep with a dry-run mode.
 - **Admin view** — spend, margin, breaker state, enterprise-lead flags.
+- **Customer deletion UI** — personal account deletion must not delete an org
+  unless the user is its owner; organization deletion requires re-authentication,
+  typing the org name, key revocation, storage deletion, and a completion receipt.
+- **Privacy controls** — first-run data-flow disclosure, pre-upload manifest,
+  route/selector exclusions, DOM/code exclusions, retention choices, and
+  hosted-report-without-hosted-AI mode.
+- **Screenshot redaction** — the text secret scanner does not protect secrets
+  visible in pixels; add `[data-norma-private]` DOM redaction and configurable
+  screenshot redaction regions before hosted AI is marketed to sensitive teams.
 
 ### Interim option if a client needs access before that lands
 
@@ -890,6 +1116,9 @@ deployment.
 | E6 provider retention posture unverified | Open. Disclosure page unwritten. |
 | E7 live purchase loop | Blocked on MoR. |
 | Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
+| Screenshot-visible secrets and private data | Open. Text secret scanning does not detect credentials or personal data rendered inside pixels; redaction and a pre-upload manifest are required. |
+| Customer deletion path | Open. User-initiated account, run, repository, and organization deletion must remove storage objects as well as database rows and produce a receipt. |
+| Cloud upload surprise | Open until repository-level upload mode, first-run disclosure, and the explicit `upload` trigger are implemented. |
 | Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
 | Explain is Anthropic-only, in BYO **and** hosted | Open. Invisible to us because we have a key; a hard blocker for any account without an Anthropic contract. Scoped in §8. |
@@ -940,6 +1169,24 @@ deployment.
    shipped CLI features fail the test on enforcement, not on user expectations,
    so nothing already free gets clawed back. Applied to the path in
    §4 → "The capture test applied to this path".
+
+10. **Gated execution.** A pathway is not complete when code exists. It is
+    complete only when implementation, normal tests, failure tests,
+    security/tenant/accounting checks, and required external evidence all pass.
+    Work proceeds strictly in order: the next pathway cannot begin while the
+    current pathway is implemented, blocked, or has an unrun gate. A skipped
+    test is an open risk, never a pass. The detailed gate ledger and AI-agent
+    handoff format live in `PATHWAYS.md` §3 and §10.
+
+11. **Economic loss firewall.** No provider-backed feature reaches customers
+    until provider dollars are reserved before the call, actual usage settles
+    the reservation, failures release it, and credits/refunds are idempotent.
+    Global, organization, and machine-key budgets are hard server-side caps;
+    unknown models, unbounded payloads, and unpriced operations fail closed.
+    Concurrent requests and batch collectors must not overspend or settle twice.
+    Subscription, pack, goodwill, payment-fee, refund, storage, and provider
+    costs must reconcile separately. The detailed reservation, hard-cost,
+    settlement, and test requirements live in `PATHWAYS.md` §3 and §10.3.
 
 ---
 

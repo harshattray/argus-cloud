@@ -1,0 +1,31 @@
+{
+  "threshold": 0.1,
+  "source": { "type": "images", "dir": ".bridge/design" },
+  "app": { "baseUrl": "http://localhost:5173" },
+  "frames": [
+    {
+      "label": "Norma — Product Page",
+      "screenshot": "norma-product.png",
+      "mode": "baseline",
+      "route": "/@norma",
+      "viewport": { "width": 1440, "height": 1000 },
+      "waitMs": 1200
+    },
+    {
+      "label": "Lab — Index",
+      "screenshot": "lab-index.png",
+      "mode": "baseline",
+      "route": "/lab",
+      "viewport": { "width": 1440, "height": 1000 },
+      "waitMs": 1200
+    },
+    {
+      "label": "Articles — Index",
+      "screenshot": "articles-index.png",
+      "mode": "baseline",
+      "route": "/articles",
+      "viewport": { "width": 1440, "height": 1000 },
+      "waitMs": 1800
+    }
+  ]
+}

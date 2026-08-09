@@ -1,0 +1,13 @@
+diff --git a/frontend/src/pages/Norma.tsx b/frontend/src/pages/Norma.tsx
+index e1e762b..39a70ef 100644
+--- a/frontend/src/pages/Norma.tsx
++++ b/frontend/src/pages/Norma.tsx
+@@ -465,7 +465,7 @@ const Norma = () => {
+                 <div className="mt-9 flex flex-wrap items-center gap-5">
+                   <button
+                     onClick={copyInstall}
+-                    className="group flex items-center gap-4 bg-[#111]/95 text-white rounded-2xl pl-7 pr-5 py-5 font-mono text-base md:text-lg shadow-xl hover:bg-[#111] hover:shadow-2xl transition-all"
++                    className="group flex items-center gap-4 bg-[#111]/95 text-white rounded-lg pl-5 pr-4 py-3 font-mono text-base md:text-lg shadow-xl hover:bg-[#111] hover:shadow-2xl transition-all"
+                   >
+                     <span className="text-emerald-400">$</span>
+                     <span>npx norma-scope init</span>

@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lets a verification build run without fighting a live `next dev` over
+  // `.next` — the two clobber each other's chunks and the build fails with a
+  // missing vendor-chunk. Unset in normal use, so deploys are unaffected.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
   // Native/WASM database drivers must not be bundled by webpack/turbopack.
   serverExternalPackages: ["@electric-sql/pglite", "pg", "argus-cloud"],
   async headers() {

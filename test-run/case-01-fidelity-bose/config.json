@@ -1,0 +1,9 @@
+{
+  "figmaFileKey": "OMjQNb3hg1LKMV4OwyQ3Ao",
+  "threshold": 5,
+  "app": { "baseUrl": "https://alina-kabanets.github.io" },
+  "frames": [
+    { "label": "Bose Full Page", "screenshot": "bose-full-page.png", "figmaFrameId": "26:51",
+      "width": 1260, "height": 4596, "route": "/bose-landing-page/", "capture": "fullPage" }
+  ]
+}

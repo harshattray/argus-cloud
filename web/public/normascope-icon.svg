@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Normascope">
+  <title>Normascope</title>
+  <!-- Keep in step with web/app/icon.svg and IconSVG in
+       app/(site)/_components/marks.tsx — three copies of one tile. -->
+  <rect width="48" height="48" rx="12" fill="#a8736e"/>
+  <text x="24" y="34.5" text-anchor="middle" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="40" font-weight="700" fill="#ffffff" textLength="23" lengthAdjust="spacingAndGlyphs">n</text>
+</svg>

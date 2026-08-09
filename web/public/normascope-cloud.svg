@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -11 227.4 47" width="227.4" height="47" role="img" aria-label="Normascope Cloud">
+  <title>Normascope Cloud</title>
+  <!-- Geometry is pinned with textLength so the mark occupies the same box on
+       every platform, whatever the system faces resolve to.
+
+       `cloud` is set in mono deliberately — see the MONO note in
+       app/(site)/_components/marks.tsx. A standalone file loaded through <img>
+       cannot reach the page's webfonts, so this copy falls back to the platform
+       monospace rather than JetBrains Mono. It is close but not identical to the
+       in-app mark; outline the word to a <path> if the two must match exactly. -->
+  <g fill="#a8736e" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif">
+    <text x="0" y="21" font-size="40" font-weight="700" letter-spacing="-1.5" textLength="115.4" lengthAdjust="spacing">norma</text>
+    <text x="0" y="33" font-size="13" font-weight="400" letter-spacing="6.5" textLength="61.6" lengthAdjust="spacing">scope</text>
+  </g>
+  <text x="131.4" y="21" fill="#111111" fill-opacity=".85" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="32" font-weight="400" textLength="96" lengthAdjust="spacing">cloud</text>
+</svg>

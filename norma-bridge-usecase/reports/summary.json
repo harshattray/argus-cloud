@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-31T07:01:03.815Z",
+  "threshold": 0.1,
+  "totals": {
+    "compared": 3,
+    "flagged": 1,
+    "skipped": 0
+  },
+  "frames": [
+    {
+      "label": "Norma — Product Page",
+      "screenshot": "norma-product.png",
+      "mode": "baseline",
+      "source": "baseline",
+      "status": "compared",
+      "alignedMismatchPercent": 0.26,
+      "unalignedMismatchPercent": 5.63,
+      "rawMismatchPercent": 7.46,
+      "structuralSimilarity": 98.7,
+      "alignment": "banded",
+      "driftedSections": 2,
+      "significantRegions": 3,
+      "flagged": true
+    },
+    {
+      "label": "Lab — Index",
+      "screenshot": "lab-index.png",
+      "mode": "baseline",
+      "source": "baseline",
+      "status": "compared",
+      "alignedMismatchPercent": 0.03,
+      "unalignedMismatchPercent": 0.37,
+      "rawMismatchPercent": 0.63,
+      "structuralSimilarity": 97.6,
+      "alignment": "banded",
+      "driftedSections": 2,
+      "significantRegions": 0,
+      "flagged": false
+    },
+    {
+      "label": "Articles — Index",
+      "screenshot": "articles-index.png",
+      "mode": "baseline",
+      "source": "baseline",
+      "status": "compared",
+      "alignedMismatchPercent": 0,
+      "unalignedMismatchPercent": 0,
+      "rawMismatchPercent": 0,
+      "structuralSimilarity": 100,
+      "alignment": "banded",
+      "driftedSections": 0,
+      "significantRegions": 0,
+      "flagged": false
+    }
+  ]
+}

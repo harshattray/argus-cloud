@@ -1,0 +1,58 @@
+diff --git a/frontend/src/pages/Norma.tsx b/frontend/src/pages/Norma.tsx
+index e1e762b..ea5f568 100644
+--- a/frontend/src/pages/Norma.tsx
++++ b/frontend/src/pages/Norma.tsx
+@@ -387,7 +387,7 @@ const Norma = () => {
+         </div>
+ 
+         <div className="flex justify-center px-4 md:px-8 lg:px-12">
+-          <div className="w-full max-w-6xl pt-8 pb-8">
++          <div className="w-full max-w-5xl pt-8 pb-8">
+ 
+             {/* Nav */}
+             <div className="flex items-center justify-between mb-16">
+@@ -597,7 +597,7 @@ const Norma = () => {
+         <div className="h-0.5 bg-black/5">
+           <div className="h-full bg-gradient-to-r from-[#A8736E] to-pink-500" style={{ width: `${progress}%` }} />
+         </div>
+-        <div className="max-w-6xl mx-auto px-4 md:px-8 flex items-center gap-2 sm:gap-3 h-12">
++        <div className="max-w-5xl mx-auto px-4 md:px-8 flex items-center gap-2 sm:gap-3 h-12">
+           <button
+             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+             className="shrink-0 flex items-center gap-1.5 sm:gap-2"
+@@ -679,7 +679,7 @@ const Norma = () => {
+ 
+       {/* ── Two ways in — CLI + MCP, merged ── */}
+       <div id="try-it" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
+-        <div className="max-w-6xl mx-auto">
++        <div className="max-w-5xl mx-auto">
+           <Label dark>Two ways in</Label>
+           <div className="flex flex-col lg:flex-row lg:items-start gap-12 lg:gap-16">
+             <div className="lg:w-80 shrink-0">
+@@ -816,7 +816,7 @@ const Norma = () => {
+ 
+       {/* ── Baseline mode — HERO ── */}
+       <div id="baseline" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#0f0f0f] text-white scroll-mt-14">
+-        <div className="max-w-6xl mx-auto">
++        <div className="max-w-5xl mx-auto">
+           <Label dark>Baseline mode</Label>
+           <div className="flex flex-col lg:flex-row lg:items-start gap-12 lg:gap-16">
+             <div className="lg:w-80 shrink-0">
+@@ -908,7 +908,7 @@ const Norma = () => {
+ 
+       {/* ── GitHub Action — HERO ── */}
+       <div id="pull-requests" className="w-full py-20 md:py-32 px-4 md:px-8 bg-[#ece6e0] scroll-mt-14">
+-        <div className="max-w-6xl mx-auto">
++        <div className="max-w-5xl mx-auto">
+           <Label>Pull requests</Label>
+           <div className="flex flex-col lg:flex-row-reverse lg:items-start gap-12 lg:gap-16">
+             <div className="lg:w-80 shrink-0">
+@@ -1151,7 +1151,7 @@ const Norma = () => {
+ 
+       {/* ── Pathways ── */}
+       <div className="w-full py-16 md:py-24 px-4 md:px-8 bg-[#0f0f0f] text-white">
+-        <div className="max-w-6xl mx-auto">
++        <div className="max-w-5xl mx-auto">
+           <Label dark>Choose your path</Label>
+           <h2 className="text-3xl md:text-4xl font-black text-white leading-tight mb-12">
+             Two ways from reference<br className="hidden md:block" /> to a report

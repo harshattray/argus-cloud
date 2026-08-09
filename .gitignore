@@ -6,5 +6,8 @@ dist/
 test/.tmp-*
 .pgdata/
 .next/
+.next-dev/
+.next-verify/
 web/node_modules/
 .DS_Store
+web/tsconfig.tsbuildinfo

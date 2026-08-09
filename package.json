@@ -10,9 +10,14 @@
     "doc": "docs",
     "test": "test"
   },
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "test": "npm run build && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs",
-    "build": "tsc"
+    "build": "tsc",
+    "build:web": "npm run build && npm run build --workspace web",
+    "dev:web": "npm run build && npm run dev --workspace web"
   },
   "repository": {
     "type": "git",

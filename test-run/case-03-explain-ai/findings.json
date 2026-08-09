@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "promptVersion": 1,
+  "frames": {
+    "norma-hero.png": {
+      "screenshotSha256": "0e4a86496ab69e04f40ac82a6aaa7775d3c02f2c45a538b33a1de962a68d6fcf",
+      "model": "claude-sonnet-5",
+      "generatedAt": "2026-08-05T08:24:22.065Z",
+      "findings": [
+        {
+          "frame": "norma-hero.png",
+          "region": {
+            "x": 960,
+            "y": 208,
+            "width": 320,
+            "height": 208
+          },
+          "category": "injection-suspected",
+          "observation": "This region contains a decorative mock diagram with text reading '18.4% SHIFTED', 'REFERENCE', 'BUILD', and 'Δ18px' embedded directly in the page's SVG/DOM content (domNodes show text nodes 'REFERENCE', 'BUILD', 'Δ 18px' and a span with text '18.4% shifted'). This appears to be page content designed to look like diff-tool output/meta-commentary rather than a genuine product UI element, and could be an attempt to inject misleading 'diff status' text into the analysis; it should be treated as untrusted content, not as an instruction or actual diff finding.",
+          "cssHypothesis": "",
+          "selector": ".norma-badge-c, text:contains('Δ 18px')",
+          "codePointer": "",
+          "suggestedFix": "Flag for human review; do not treat the embedded percentages/labels ('18.4% shifted', 'Δ18px') as authoritative diff metrics since they originate from in-page mock content, not the actual Normascope diff engine.",
+          "confidence": "medium"
+        },
+        {
+          "frame": "norma-hero.png",
+          "region": {
+            "x": 960,
+            "y": 208,
+            "width": 320,
+            "height": 208
+          },
+          "category": "layout",
+          "observation": "Aside from the suspicious embedded text, the build and reference crops of this decorative card region are visually near-identical (same rounded card, same green/pink mock bars, same amber badge position), consistent with the animated .norma-anim/.norma-badge elements having different opacity/animation state at capture time (opacity values like 0.00230289 and 0 on badge spans in the DOM snapshot suggest mid-animation capture).",
+          "cssHypothesis": ".norma-scan-line, .norma-badge-a, .norma-badge-b { opacity: 0/transition } — screenshot likely taken at a different point in a CSS animation/transition cycle between build and reference captures.",
+          "selector": ".norma-scan-line, .norma-badge-a, .norma-badge-b, .norma-badge-c",
+          "codePointer": "",
+          "suggestedFix": "Pause or disable CSS animations (e.g. animation-play-state: paused, or freeze at t=0) before capturing screenshots for visual diffing to avoid non-deterministic animation-phase mismatches.",
+          "confidence": "medium"
+        },
+        {
+          "frame": "norma-hero.png",
+          "region": {
+            "x": 144,
+            "y": 368,
+            "width": 624,
+            "height": 96
+          },
+          "category": "typography",
+          "observation": "The paragraph text 'Verify that what you shipped matches...' appears pixel-identical between build and reference crops; no discernible font, size, color, or line-height difference is visible despite this region being flagged as a significant diff area.",
+          "cssHypothesis": "",
+          "selector": "p.text-xl.text-text\\/65.mt-7.max-w-xl.leading-relaxed.font-sans",
+          "codePointer": "",
+          "suggestedFix": "Likely a false-positive or sub-pixel rendering/antialiasing difference; verify with a higher-precision diff before acting.",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-hero.png",
+          "region": {
+            "x": 144,
+            "y": 496,
+            "width": 544,
+            "height": 80
+          },
+          "category": "layout",
+          "observation": "The CLI button ('npx norma-scope init') and 'VIEW ON NPM' link crops look visually identical between build and reference; no spacing, color, or size differences are visible in the provided crops despite this being listed as a significant diff region.",
+          "cssHypothesis": "",
+          "selector": "button.group.flex.items-center.gap-4, a.inline-flex.items-center.gap-1\\.5",
+          "codePointer": "",
+          "suggestedFix": "Treat as likely false positive from the diff algorithm (possibly due to anti-aliasing or sub-pixel offsets); confirm with pixel-level overlay before making CSS changes.",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-hero.png",
+          "region": {
+            "x": 144,
+            "y": 192,
+            "width": 448,
+            "height": 80
+          },
+          "category": "typography",
+          "observation": "The 'norma' wordmark crop appears visually identical in color (rgb(168,115,110)), weight, and size between build and reference, matching the h1/span computed styles (font-size 128px, font-weight 700, color rgb(168,115,110)); no visible drift in this crop despite it being flagged in significantRegions.",
+          "cssHypothesis": "",
+          "selector": "h1 > span.block.text-7xl",
+          "codePointer": "",
+          "suggestedFix": "Likely a false-positive from the diff algorithm at the section/band level rather than an actual style regression; confirm via pixel overlay.",
+          "confidence": "low"
+        }
+      ]
+    },
+    "norma-tryit.png": {
+      "screenshotSha256": "0282a97a69f4d3d7479a6381a90de83bae9f7e04cf184159f18eba813497bbad",
+      "model": "claude-sonnet-5",
+      "generatedAt": "2026-08-05T08:24:44.863Z",
+      "findings": [
+        {
+          "frame": "norma-tryit.png",
+          "region": {
+            "x": 0,
+            "y": 112,
+            "width": 1440,
+            "height": 416
+          },
+          "category": "layout",
+          "observation": "The build crop shows the whole hero block (heading, paragraph, terminal card) rendered noticeably smaller/more compressed vertically than the reference, with more surrounding negative space and a visibly smaller terminal card relative to the viewport; the banded diff also reports an offset of -9px for this section, indicating a vertical shift between build and reference.",
+          "cssHypothesis": "Likely a scaling or padding difference in #try-it or its inner .max-w-5xl container — the section padding is 128px top/bottom in the DOM snapshot but the rendered composition appears more compact in the build, suggesting an effective zoom/scale mismatch or a different top offset in the captured build viewport.",
+          "selector": "#try-it .max-w-5xl",
+          "codePointer": "",
+          "suggestedFix": "Verify the capture viewport/zoom used to produce the build screenshot matches the reference (e.g. same device pixel ratio and scroll offset), and confirm #try-it padding-top/bottom (128px) matches the design token; if intentional, re-baseline the reference image.",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-tryit.png",
+          "region": {
+            "x": 528,
+            "y": 800,
+            "width": 768,
+            "height": 400
+          },
+          "category": "layout",
+          "observation": "Diff metadata shows two unmatched sections in this vertical range (773–971 at 2.48% mismatch, and 1027–1053 at 5.09% mismatch, both with matched:false), overlapping the 'agent loop' card (rect y=597–753) and content below it. This suggests the step-flow row (Build → Capture → Score) or the content beneath it has shifted or reflowed relative to the reference.",
+          "cssHypothesis": ".flex.items-center.gap-0.overflow-x-auto (the step row container, y=657-728) may not match the reference's expected horizontal spacing/wrapping, or content below the card (not present in DOM snapshot) is positioned differently, causing the two unmatched bands.",
+          "selector": ".rounded-2xl.border.border-white\\/10.bg-white\\/\\[0\\.03\\].p-6",
+          "codePointer": "",
+          "suggestedFix": "Inspect the DOM/layout immediately below the 'agent loop' card (y>753) which is not captured in this DOM snapshot; confirm spacing/margin between the terminal card, the agent-loop card, and subsequent content matches design.",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-tryit.png",
+          "region": {
+            "x": 544,
+            "y": 624,
+            "width": 736,
+            "height": 112
+          },
+          "category": "spacing",
+          "observation": "This region covers the 'The agent loop' label and the Build/Capture/Score step row. The section-level diff for a nearby band (991-1018, offset -20) and (1139-1187, offset -19) shows negative vertical offsets, consistent with content in this area sitting slightly higher or more compressed than in the reference.",
+          "cssHypothesis": "Possible reduced gap or margin-bottom on '.text-[10px]...mb-5' (mb-5 = 20px) or on the step-row container relative to design intent, causing subsequent content to shift upward by ~9-20px cumulatively.",
+          "selector": "p.text-[10px].font-black.uppercase.tracking-[0.2em].text-white\\/30.mb-5",
+          "codePointer": "",
+          "suggestedFix": "Confirm the mb-5 (20px) spacing below 'The agent loop' label matches the design spec; if design expects a larger gap (e.g. 24px), increase margin-bottom accordingly to reduce cumulative vertical offset.",
+          "confidence": "low"
+        }
+      ]
+    },
+    "norma-prs.png": {
+      "screenshotSha256": "0ce946a97ef951573793b6fc7293e5868869e78e07dd84553c5a1c7591661ee6",
+      "model": "claude-sonnet-5",
+      "generatedAt": "2026-08-05T08:25:12.424Z",
+      "findings": [
+        {
+          "frame": "norma-prs.png",
+          "region": {
+            "x": 160,
+            "y": 128,
+            "width": 672,
+            "height": 512
+          },
+          "category": "layout",
+          "observation": "The build's GitHub-style PR card is narrower and shifted left relative to the reference: in the reference the card extends further right (near-edge cropped 'STAT[US]' column and 3 co[mmits] text are cut off at x=640+160=800px), while in the build the full card including 'STATUS' and '3 commits' fits comfortably within the crop, indicating the card's rendered width is smaller than in the reference.",
+          "cssHypothesis": "The rounded card container '.rounded-2xl.bg-white.shadow-2xl' (flex-1 min-w-0 div, computed width 640px) may be narrower than the reference design's equivalent width, causing internal grid columns to compress and reflow content leftward.",
+          "selector": ".flex-1.min-w-0 > div.rounded-2xl.bg-white.shadow-2xl",
+          "codePointer": "",
+          "suggestedFix": "Verify intended width for the PR-card container; compare computed 640px against design spec and adjust max-width or flex-basis if the design expects a wider card (e.g., increase from flex-1 min-w-0 to a fixed min-width or check parent gap-16 flex layout for shrinkage).",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-prs.png",
+          "region": {
+            "x": 160,
+            "y": 128,
+            "width": 672,
+            "height": 512
+          },
+          "category": "typography",
+          "observation": "The '+ PULL REQUESTS' label at the top-left renders noticeably bolder/heavier in the build crop compared to the thinner-weight rendering in the reference crop, despite DOM reporting font-weight 900 for the span.text-[10px].font-black class.",
+          "cssHypothesis": "Font-weight 900 (font-black) may not be resolving to the correct font file for Poppins in the build's font-loading/rendering context, causing a heavier fallback weight to be used versus the reference's expected weight.",
+          "selector": "span.text-[10px].font-black.tracking-[0.25em].uppercase.text-pink-500",
+          "codePointer": "",
+          "suggestedFix": "Confirm Poppins Black (900) webfont is loaded correctly in the build environment; check @font-face declarations or font subset used for this weight.",
+          "confidence": "low"
+        },
+        {
+          "frame": "norma-prs.png",
+          "region": {
+            "x": 560,
+            "y": 160,
+            "width": 736,
+            "height": 608
+          },
+          "category": "spacing",
+          "observation": "Comparing the two crops for the right-column heading and paragraph area, layout and spacing appear visually identical (heading line breaks, gap to paragraph, and bullet list spacing all match), suggesting the diff score for this region is likely dominated by anti-aliasing/rendering noise or the adjacent table content bleeding from the left region rather than an actual CSS drift in this specific crop.",
+          "cssHypothesis": "",
+          "selector": "",
+          "codePointer": "",
+          "suggestedFix": "",
+          "confidence": "low"
+        }
+      ]
+    }
+  }
+}

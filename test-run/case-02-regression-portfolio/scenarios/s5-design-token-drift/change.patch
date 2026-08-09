@@ -1,0 +1,13 @@
+diff --git a/frontend/tailwind.config.js b/frontend/tailwind.config.js
+index 6185c2d..7645a79 100644
+--- a/frontend/tailwind.config.js
++++ b/frontend/tailwind.config.js
+@@ -8,7 +8,7 @@ export default {
+     extend: {
+       colors: {
+         pinkbg: '#fbc3bd',
+-        paper: '#eee7e4',
++        paper: '#e6ddd6',
+         text: '#111',
+       },
+       fontFamily: {
