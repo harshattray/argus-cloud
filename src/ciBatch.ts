@@ -1,10 +1,18 @@
+import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { consumeCredits, refundCredits, InsufficientCreditsError, type Consumption } from "./ledger.js";
 import { recordUsage, computeCostMicrodollars, type TokenUsage } from "./usage.js";
 import { makeCacheKey, cacheGet, cachePut } from "./resultCache.js";
-import { isTripped, addSpend, checkAndTrip, type Alert } from "./breaker.js";
+import { isTripped, checkAndTrip, tripBreaker, type Alert } from "./breaker.js";
+import {
+  reserveProviderBudget,
+  settleProviderBudget,
+  releaseProviderBudget,
+  creditsRequired,
+  type BudgetLimits,
+} from "./providerBudget.js";
 import { buildEnrichment, applyEnrichment, saveRunFindings } from "./enrichment.js";
-import { findingsShapeValid, CREDITS_PER_ANALYSIS, AUTO_EXPLAIN_PER_RUN_CAP } from "./explainService.js";
+import { findingsShapeValid, AUTO_EXPLAIN_PER_RUN_CAP } from "./explainService.js";
 
 /**
  * Build 4.0 Phase D — CI auto-explain of top-N flagged frames via the
@@ -27,6 +35,12 @@ export interface BatchEntry {
   model: string;
   credits: number;
   reservation: Consumption[];
+  /**
+   * The provider-dollar reservation taken at enqueue and settled or released at
+   * collect. Optional only so a batch enqueued by an older bundle still
+   * collects cleanly after a rollback deploy — new entries always carry one.
+   */
+  providerReservationId?: string;
   enrichmentText: string | null;
   enrichmentTokens: number;
 }
@@ -49,6 +63,8 @@ export interface CiBatchDeps {
   dailyBudgetMicrodollars: number;
   alert: Alert;
   now?: () => Date;
+  orgMonthlyBudgetMicrodollars?: number | null;
+  keyMonthlyBudgetMicrodollars?: number | null;
 }
 
 export interface EnqueueRequest {
@@ -81,6 +97,15 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
     };
   }
 
+  const limits: BudgetLimits = {
+    globalDailyMicrodollars: deps.dailyBudgetMicrodollars,
+    orgMonthlyMicrodollars: deps.orgMonthlyBudgetMicrodollars ?? null,
+    keyMonthlyMicrodollars: deps.keyMonthlyBudgetMicrodollars ?? null,
+  };
+  // Priced from the model the batch will run on. Batch calls cost half, but the
+  // credit price is the interactive one — CI earns more margin, it does not get
+  // the thinnest cushion (providerBudget.ts, `creditsRequired`).
+  const creditsPerFrame = creditsRequired(req.model) ?? 0;
   const entries: BatchEntry[] = [];
   const requests: BatchSubmission["requests"] = [];
   let accepted = 0;
@@ -110,10 +135,49 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
       });
       continue;
     }
+    // Our dollars first, per frame, at the batch rate. A batch of five frames
+    // is five provider calls and must hold five reservations — reserving for
+    // the batch as a whole would let a partially-collected batch release money
+    // that other frames still need.
+    const providerReservationId = randomUUID();
+    const budget = await reserveProviderBudget(db, {
+      reservationId: providerReservationId,
+      orgId: req.orgId,
+      model: req.model,
+      pass: "analysis",
+      batch: true,
+      limits,
+      now,
+    });
+    if (!budget.ok) {
+      await recordUsage(db, {
+        orgId: req.orgId, runId: req.runId, frame: f.frame, model: req.model, pass: "analysis",
+        interactive: false, auto: true, status: "blocked_no_charge",
+        detail: budget.code === "model_not_priced" ? "model not priced" : `provider budget: ${budget.scope}`,
+      });
+      if (budget.code === "budget_exhausted" && budget.scope === "global-day") {
+        await tripBreaker(
+          db,
+          `daily provider budget would be exceeded during a CI batch (limit $${(budget.limitMicrodollars / 1e6).toFixed(2)})`,
+          deps.alert,
+          now
+        );
+      }
+      skipped.push({
+        frame: f.frame,
+        reason:
+          budget.code === "model_not_priced"
+            ? "model has no verified price — analysis refused, no credits used"
+            : "explain is paused while provider spend is reviewed — no credits used",
+      });
+      continue;
+    }
+
     let reservation: Consumption[];
     try {
-      reservation = await consumeCredits(db, req.orgId, CREDITS_PER_ANALYSIS, now);
+      reservation = await consumeCredits(db, req.orgId, creditsPerFrame, now);
     } catch (err) {
+      await releaseProviderBudget(db, providerReservationId);
       if (err instanceof InsufficientCreditsError) {
         skipped.push({ frame: f.frame, reason: "not enough credits — buy a pack to keep explaining" });
         continue;
@@ -125,8 +189,9 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
       frame: f.frame,
       cacheKey,
       model: req.model,
-      credits: CREDITS_PER_ANALYSIS,
+      credits: creditsPerFrame,
       reservation,
+      providerReservationId,
       enrichmentText: enrichment?.text ?? null,
       enrichmentTokens: enrichment?.tokenEstimate ?? 0,
     });
@@ -142,8 +207,12 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
   try {
     batchId = await deps.submit({ requests });
   } catch (err) {
-    // Submission failed — refund every reservation, nothing was analyzed.
+    // Submission failed — give back both reservations for every frame; nothing
+    // was analyzed, so nothing may stay held.
     for (const entry of entries) {
+      if (entry.providerReservationId) {
+        await releaseProviderBudget(db, entry.providerReservationId);
+      }
       await refundCredits(db, entry.reservation);
       await recordUsage(db, {
         orgId: req.orgId, runId: req.runId, frame: entry.frame, model: entry.model, pass: "analysis",
@@ -200,6 +269,9 @@ export async function collectCiBatch(db: Db, deps: CiBatchDeps, batchId: string)
       pass: "analysis" as const, interactive: false, auto: true,
     };
     const fail = async (reason: string) => {
+      if (entry.providerReservationId) {
+        await releaseProviderBudget(db, entry.providerReservationId);
+      }
       await refundCredits(db, entry.reservation);
       await recordUsage(db, { ...base, status: "failed_no_charge", detail: reason });
       failures.push({ frame: entry.frame, reason: `${reason} — no credits were used` });
@@ -224,7 +296,12 @@ export async function collectCiBatch(db: Db, deps: CiBatchDeps, batchId: string)
     const enrichment = await buildEnrichment(db, { orgId: row.org_id, repoId: row.repo_id, frame: entry.frame });
     const enriched = enrichment ? applyEnrichment(result.json, enrichment) : result.json;
     const cost = computeCostMicrodollars(entry.model, result.usage, { batch: true }) ?? 0;
-    await addSpend(db, cost, now);
+    // Settling records the spend; a second collector finds the reservation
+    // already settled and adds nothing, which is what stops a duplicate
+    // collector double-charging the day (§10.3 1B.3).
+    if (entry.providerReservationId) {
+      await settleProviderBudget(db, entry.providerReservationId, cost, now);
+    }
     await checkAndTrip(db, deps.dailyBudgetMicrodollars, deps.alert, now);
     await recordUsage(db, {
       ...base,

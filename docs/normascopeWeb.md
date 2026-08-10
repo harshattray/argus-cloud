@@ -560,9 +560,27 @@ this safe to leave on:
 - With `RESEND_API_KEY` unset — local dev, previews — it is a no-op, which is
   why it can never decide whether the caller sees success.
 
+**Reading it — added 2026-08-10.** The mail is awareness; the database is the
+measurement. `/admin/waitlist` is the operator view: unique total, today,
+trailing 7 days, this month, a 30-day daily series, source and referrer
+breakdowns, the rows themselves, and `/admin/waitlist/export` for CSV. Query
+layer in `src/waitlist.ts`, covered by `test/waitlist.test.mjs`.
+
+Access is `ADMIN_PASSWORD`, a **different phrase from `PITCH_PASSWORD`** —
+`/pitch` is shown to strangers and expected to leak, `/admin` is other people's
+email addresses. Both gates are default-deny: with the variable unset the tree
+404s rather than opening, so a fresh deploy that forgets it publishes nothing.
+That also means **`ADMIN_PASSWORD` must be set in the deployment environment or
+`/admin` will 404** — the intended failure direction, but worth knowing before
+wondering where the page went.
+
+CSV cells are guarded against spreadsheet formula injection: an address
+beginning `=`, `+`, `-` or `@` is prefixed with a quote, because the export is
+opened in Excel or Sheets by definition.
+
 **Still deliberately not built:** double opt-in, any mail *to the signup*, any
-ESP list or audience integration. Addresses are collected and stored. Exporting
-them is a `SELECT`.
+ESP list or audience integration, and any per-operator identity or audit trail
+for who read the list — that arrives with Pathway 5 auth.
 
 ---
 

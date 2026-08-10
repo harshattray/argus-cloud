@@ -1,7 +1,11 @@
 # FUTURENORMA.md — the source of truth
 
 **Private.** Contains credentials, pricing, margins, and strategy.
-Last updated: **2026-08-05** — absorbed `HorizonPath.md`, which is now deleted.
+
+Last updated: **2026-08-10** — state facts in §0 and §2 refreshed against the
+code and the npm registry (published versions, branch heads, suite counts, and
+the three defect fixes that shipped after 0.7.3). The §4 path now distinguishes
+the public waitlist launch from the later paid Cloud launch.
 
 This is **the single source of truth**: where we are, what is built, what to
 build next in order, what we sell, and the rules that do not bend. Where this
@@ -35,9 +39,9 @@ here first.
 
 ## 0. TL;DR — read this paragraph if you read nothing else
 
-The **CLI is finished and published** (`norma-scope` v0.7.3 and
-`normascope-mcp` v0.2.0, both live on npm under Apache-2.0; 0.7.3 published
-2026-08-03). The **explain engine is finished** and its real cost is
+The **CLI is finished and published** (`norma-scope` v0.7.5 and
+`normascope-mcp` v0.2.2, both live on npm under Apache-2.0; registry verified
+2026-08-10). The **explain engine is finished** and its real cost is
 **measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
 target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The real hosted product is the Next.js app in
@@ -121,16 +125,19 @@ served from R2.
 | Version-keyed cache, 429 retry, degradation ladder, `snapshot` | ✅ | T2 suite |
 | `summary.json` v2 + published JSON Schema | ✅ | ajv-validated in T5 |
 | Sticky PR comment + composite GitHub Action, `--strict` | ✅ | Verified live on a real PR |
-| MCP server: `list_frames`, `capture`, `compare`, `get_summary`, **`explain`** | ✅ | T6.1–T6.6; SSRF 5/5 refused + logged |
+| MCP server: `list_frames`, `capture`, `compare`, `get_summary`, **`explain`** | ✅ | T6.1–T6.7; SSRF 5/5 refused + logged |
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
-| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.3` | Registry reports 50 files / 142,348 B unpacked, `latest` = 0.7.3, published 2026-08-03 |
-| `normascope-mcp` on npm | ✅ **published** v0.2.0 | Its unchanged `^0.7.0` range now resolves `norma-scope@0.7.3`; handshake reports 0.2.0, five tools listed |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.5` | Registry `dist-tags.latest` = **0.7.5**, verified 2026-08-10. (0.7.3 reported 50 files / 142,348 B unpacked; not re-measured for 0.7.5) |
+| `normascope-mcp` on npm | ✅ **published** v0.2.2 | Registry reports **0.2.2**, verified 2026-08-10. Its `norma-scope` floor was raised `^0.7.0` → `^0.7.4` in `8e96b5e` — see below |
 
-`main` @ `9031fb5`, **published as `norma-scope@0.7.3` on 2026-08-03 and pushed**.
-Full suite: **66 checks green**. Two branches landed in that release, both cut from
-`main`, touching disjoint files, fast-forwarded in to keep history linear:
+`main` @ **`12af929`**. Full suite: **83 checks green** (run 2026-08-10).
+
+*The 0.7.3 release, for the history below:* `main` was @ `9031fb5`, published as
+`norma-scope@0.7.3` on 2026-08-03 and pushed, with **66 checks green**. Two
+branches landed in that release, both cut from `main`, touching disjoint files,
+fast-forwarded in to keep history linear:
 
 - `report-redesign` → `5d311fb` — HTML report presentation only; same
   `ComponentResult` data, no new metrics, no command or flag change. Carries
@@ -179,6 +186,46 @@ a merge commit; a local fast-forward does not. Doing both leaves `main` and
 `origin/main` diverged, and a later `git push` is rejected as non-fast-forward
 — easy to misread as having succeeded. Pull before pushing a release.
 
+**0.7.4 and 0.7.5 shipped after the 2026-08-03 audit** — three defect fixes,
+each found by using the tool rather than by a test.
+
+- **`b3db0c7` — capture viewport, and diff sensitivity split by mode.** `init`
+  persisted each Figma frame's dimensions and `auto` used *both* as the browser
+  viewport. But a design frame is an artboard — full-page exports run
+  4,000–9,000px tall — so every `vh` unit resolved against a window no user has:
+  a 100vh hero rendered thousands of pixels tall and everything below it
+  shifted. The resulting size gap then tripped the dimension guard that disables
+  section alignment, losing the analysis exactly where it would have helped.
+  Width still comes from the design; height is now a normal window. Existing
+  configs carry an explicit viewport and are untouched; `doctor` now warns when
+  a configured viewport height is taller than any real screen.
+
+  > ⚠️ **This changes a figure quoted elsewhere.** The committed Bose example
+  > scored **79.7%** with a size warning and no alignment; it now scores
+  > **36.4%** with banded alignment across 3 drifted sections. The 79.7% was the
+  > tool measuring its own misconfiguration, not the site. Anywhere that number
+  > is used as evidence of diff quality is wrong — including the Bose-style
+  > fidelity case study named in §4 Step 9. The **plumbing** evidence from the
+  > 2026-07-29 preview run (§1) still stands; its *score* does not.
+
+- **`ce0a147` — MCP `compare` captures before scoring.** The tool had two
+  branches with opposite capture semantics: zero-config captured then diffed;
+  configured-frames only diffed screenshots already on disk. For an agent that
+  is the worst possible failure — it edits the UI, calls `compare`, and is handed
+  the score of the app *before* its edit. Both branches now capture;
+  `capture: false` opts out. Adds T6.7, covering the configured branch that had
+  no coverage.
+
+- **`8e96b5e` — ERESOLVE install failure on npm 10.** `@anthropic-ai/sdk` was
+  `^0.112.3` in `peerDependencies` with `optional: true`. `optional` only means
+  the peer may be *absent* — it does not widen the range — so any project already
+  depending on the SDK outside that caret could not install `norma-scope` at
+  all. npm 11 tolerates it, npm 10 does not, and Node 20 is still the common
+  `setup-node` pin: broken for users, invisible on a maintainer machine. Both
+  manifests now declare `>=0.112.3`. Also raised the MCP's `norma-scope` floor to
+  `^0.7.4`, because a stale 0.7.0 resolved a `parseConfig` that rejects the
+  baseline-only configs 0.7.3+ accepts.
+
 **Publish order matters, permanently.** `normascope-mcp` depends on
 `norma-scope` by name, and npm cannot link a workspace *root* as a dependency —
 so it always resolves from the registry, and a `^x.y.z` bump will not install
@@ -212,10 +259,20 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **CI batch service** (Batches API, 50% rate, reserve→refund, escaped PR line) | ✅ | 18 checks (D2, fixture-level) |
 | **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
 | Credit packs seeded from measured COGS | ✅ | `migrations/005` |
+| Race-safe migrations (Pathway 1 item 1) | ✅ | 20 real cold starts on real Postgres — `FinishedSPEC.md` §3a |
+| Storage port, filesystem + S3/R2 drivers (Pathway 1 item 2) | ✅ | Contract run against both; S3 leg on real R2 — §3b |
+| Request rate limiting, per key and per org (Pathway 1 item 3) | ✅ for authenticated paths | 20 separate processes share one ceiling — §3c |
+| Provider-dollar reservation before every call (Pathway 1, §10.3 1B.1) | ✅ | 20 separate processes share one budget; settlement idempotent — §3d |
 
-Branch `stage-5-metering` @ `ab40521` — **pushed and fast-forward-merged to
-`main` 2026-07-30**. `main` and `origin/main` are both at `ab40521`.
-Full suite: **63 checks green**.
+`main` @ **`e42810d`** (merge of `normascope-site`, which landed the public
+marketing site, the gated `/pitch` tree and the waitlist route), plus
+uncommitted Pathway 1 work. Full suite: **226 checks green** on PGlite, **237**
+against real Postgres, across eight suites — `migrations`, `storage`,
+`rateLimit`, `providerBudget`, `metering`, `enrichment`, `cibatch`, `waitlist` —
+run 2026-08-10. Migrations are now `001`–`009`.
+
+*Previously:* branch `stage-5-metering` @ `ab40521`, pushed and
+fast-forward-merged to `main` 2026-07-30, with **63 checks green**.
 
 ### Portfolio repo — the preview
 
@@ -252,8 +309,20 @@ object × a live price. Never estimate.
 
 ### The price — decided 2026-08-05
 
-**Normascope Cloud is $59/month per organization.** Single tier. No ladder, no
-lite tier, no trial. Unlimited repos and seats.
+**Normascope Cloud is $59/month per organization.** Single tier at launch. No
+ladder, no lite tier, no trial.
+
+> **This section owns the launch plan contract.** `PATHWAYS.md` §2 mirrors these
+> values as an implementation contract; it does not create a separate authority.
+> The launch plan is: **unlimited viewers/designers, repositories under
+> active-repository fair use**, 500 monthly credits expiring monthly, prepaid
+> packs with no overage invoices, 90-day history, a 30-day money-back guarantee,
+> and no client-side paid locks.
+>
+> **Why this rule exists.** This line previously read "Unlimited repos and
+> seats", while §4 and §5 operated a 10-repo fair-use line and `PATHWAYS.md`
+> §2's Starter hypothesis assumed 3 — three different answers, all written as
+> though decided. See the note under Open Decisions #2.
 
 Why $59 and not $29: the same person buys both the same way — both sit under
 the amount that triggers a company approval process — so the lower price bought
@@ -280,8 +349,48 @@ $60–80/mo paid-tier floor.
 - **Packs are bought on top** and last 12 months (`pack_purchase`).
 - `ledger.ts` consumes **soonest-to-expire first**, so the monthly allowance
   always burns before anything the customer paid extra for. Already implemented.
-- 1 credit = one analysis. A **deep** analysis costs 3 credits (~$0.02 COGS) and
-  is the most profitable action in the product.
+
+#### Credits are derived from cost — decided 2026-08-10
+
+**The rule:** credits are relative to the cost we incur, and **no scenario may
+deny profit**. Not "profitable on average" — an average says nothing about the
+call that costs the most.
+
+It is mechanised, not written down and hoped for. `providerBudget.ts` computes
+each operation's **hard maximum cost** from the caps the request path enforces,
+then derives its credit price so that even the worst possible call clears a
+stated margin floor. `MARGIN_FLOOR = 0.5` (50% at the worst case, the
+conservative analogue of the packs' 64% on measured cost). The suite fails if any
+operation would earn less. Change the model and the price follows it in the same
+commit, because it is the same number.
+
+Prices as derived today, against the cheapest pack net of Paddle
+($0.03535/credit — the binding floor, since included credits are worth more):
+
+| Pass | Model | Worst case | Credits | Revenue | Margin at worst case |
+|---|---|---:|---:|---:|---:|
+| analysis | Sonnet 5 | $0.0784 | **5** | $0.1767 | 55.6% |
+| deep | Opus 4.8 | $0.1307 | **8** | $0.2828 | 53.8% |
+
+> ⚠️ **This replaces "1 credit = one analysis, 3 for deep".** Those prices were
+> chosen against *measured* cost ($0.0164) and lost money at the ceiling. The
+> consequence is real and needs a decision: **500 included credits now buy 100
+> analyses a month, not 500.**
+>
+> The lever that changes this is the model, and cost-wise it is large:
+>
+> | If a pass ran on | Worst case | Credits per call |
+> |---|---:|---:|
+> | Haiku 4.5 | $0.0261 | **2** |
+> | Sonnet 5 | $0.0784 | 5 |
+> | Opus 4.8 | $0.1307 | 8 |
+>
+> Moving analysis to Haiku 4.5 would take it from 5 credits to 2 — 250 analyses
+> in the monthly allowance. That is a **cost** finding only. §8's provider
+> substitution process requires the calibration fixtures re-run against the
+> candidate and its quality, schema validity and refusal rate compared before
+> cutover, and that has not been done. Do not treat 2 credits as available until
+> it has.
 
 Packs, repriced by `migrations/007_repricing.sql`. Floor is 3× COGS at
 post-intro **list** prices, so nothing loses money after 2026-08-31:
@@ -528,8 +637,10 @@ merchant-of-record needed for India-to-India).
 
 ## 4. What to build next, in order
 
-*(Absorbed from `HorizonPath.md` on 2026-08-05. This is the spine: every step
-from here to launch, in order, with what blocks what and what "done" means.)*
+*(Absorbed from `HorizonPath.md` on 2026-08-05 and clarified on 2026-08-10.
+This is the spine from public demand testing to paid Cloud launch.
+`PATHWAYS.md` implements this same order; it must not introduce a competing
+sequence.)*
 
 It does not restate executable detail that exists elsewhere — it points at it:
 
@@ -546,13 +657,18 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 
 ### The three rules that shape the order
 
-1. **Local first; deploy when there is something worth showing.** Nothing in
-   Steps 1–4 needs a domain, an account, or a credit card. Production
-   infrastructure is Step 5, done once, against a product that already works.
-2. **Nothing paid ships before the thing it charges for is visible.** The engine
+1. **Public demand first; paid Cloud later.** Launch `normascope.com` as a
+   public marketing and waitlist site as soon as its demand-test gate passes.
+   This does not mean Cloud is available, and the site must not imply login,
+   upload, subscription, or hosted access. Continue building Cloud privately
+   while measuring waitlist traction.
+2. **Deploy Cloud when there is something worth showing.** Steps 1–4 can be
+   built locally. Step 5 is the private/preview deployment of the real Cloud
+   infrastructure, not the public paid launch.
+3. **Nothing paid ships before the thing it charges for is visible.** The engine
    has been finished for weeks and has earned nothing, because no one can see
    it. Surface before billing.
-3. **One paid tier, and every new feature enhances it.** Normascope Cloud at
+4. **One paid tier, and every new feature enhances it.** Normascope Cloud at
    **$59/mo per org** — no ladder above, no lite tier below, no trial; credit
    packs are consumables bought *on top of* a live subscription, not a tier and
    not a way around one (§3). New work in either repo must pass the
@@ -562,16 +678,17 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 
 | # | Step | Where | Blocked on | Done when |
 |---|---|---|---|---|
-| 0 | Loose ends | Argus | — | Tag pushed, registry listed |
+| P | Public website + waitlist | web/ | — | `normascope.com` explains the CLI and Cloud direction, waitlist works, and no paid Cloud access is implied |
+| 0 | Loose ends | Argus | — | Registry listed, `doctor` reports explain readiness (**not** a tag — §2 settles that tags are not tracked as a task) |
 | 1 | Build substrate | argus-cloud | — | Builds on Vercel; migrations race-safe; storage port has two drivers |
 | 2 | Artifact pipeline | both | 1 | `npx norma-scope upload` ships; hosted explain is crop-grounded; re-calibrated |
 | 3 | The report page | argus-cloud | 2 | Images, findings, history visible; share UI |
 | 4 | Trends | argus-cloud | 2 | Repo view + frame trend chart |
-| 5 | Go live | argus-cloud | 1–4 | Own DB, storage, URL; lab deleted; G suite green on real R2 |
+| 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
 | 6 | Auth + orgs + dashboards | argus-cloud | 5 | GitHub OAuth, magic links, key management, customer account page, admin view |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
 | 8 | Launch gates | both | 7 | E1, E6, legal pages, trademark, refund runbook |
-| 9 | First customers | — | 8 | Revenue |
+| 9 | Paid Cloud launch + first customers | — | 8 | Enable paid access for qualified waitlist users; first revenue |
 | 10+ | Horizons | as needed | 9 | Demand-gated, individually |
 
 **Steps 1–4 are roughly the whole of the remaining product work.** Steps 5–8
@@ -600,10 +717,25 @@ definition.** Not a prohibition — the free CLI is what makes the paid tier
 reachable — but each item needs an adoption reason stated before it starts, and
 it competes against paid-side work rather than sitting in a separate budget.
 
-The single-tier decision also settles two things further down: the repo-count
-ladder is closed (there is no ladder; 10 repos becomes a fair-use line, not a
-tier boundary), and Step 6 shrinks — roles stay, plan-tier logic never needs to
-exist.
+The single-tier decision also settles two things further down, and both are
+about **launch**, not forever:
+
+- **No repo-count ladder is published at launch.** Repositories run on
+  active-repository fair use, operated as policy rather than printed as a tier
+  boundary — `PATHWAYS.md` §2 states the policy, and **the number itself is
+  still open** (§3, Open Decisions #2). Do not quote a figure until it is.
+- **Step 6 ships without plan-tier logic — but not in a way that forecloses
+  it.** Roles stay; there is no tier comparison to implement while one plan
+  exists. Build plan limits as **config read at runtime**, the shape §5 already
+  calls for, so adding a tier later is a row of configuration rather than a
+  rewrite of authorization. Do not hard-code "one plan" into the org, quota, or
+  entitlement checks.
+
+> The earlier wording here said the ladder was "closed" and that plan-tier logic
+> "never needs to exist". That contradicted §3, §5, and `PATHWAYS.md` §2, all of
+> which plan a ladder after validation — and it was the sentence most likely to
+> cause real rework, because it invited a Step 6 built on an assumption the
+> business does not make. Corrected 2026-08-10.
 
 ---
 
@@ -970,10 +1102,27 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
 
 1. ~~**Real domain name**~~ **Closed: `normascope.com`.** Registration and DNS
    are needed by Step 7, not before; everything until then is local.
-2. **Post-launch expansion shape** — launch remains one $59/month plan, but the
-   post-validation Growth/Team hypothesis in this file and `PATHWAYS.md` needs
-   real repository, credit, storage, support, and retention data before a
-   ladder or active-repository fair-use line is published.
+2. **Post-launch expansion shape** — launch remains one $59/month plan, and
+   this section states what that plan offers (decided 2026-08-10).
+   The post-validation Growth/Team hypothesis still needs real repository,
+   credit, storage, support and retention data before any ladder is published.
+
+   > ⚠️ **The sub-decision that is actually open: what number the fair-use line
+   > is, and whether it is ever said out loud.** Three numbers have been written
+   > down at different times — "unlimited" (§3, 2026-08-05), a **10**-repo
+   > fair-use line (§4, §5, inherited from the pre-single-tier design), and
+   > **3** active repositories for Starter in PATHWAYS' expansion hypothesis
+   > (2026-08-10). This was never sloppiness: the 2026-08-05 commit that decided
+   > $59 recorded the sub-decision as *open* — "whether the 10-repo figure is
+   > published as a fair-use line or dropped entirely in favour of unlimited" —
+   > and then both branches stayed in the text.
+   >
+   > **The trap to avoid:** if we operate a 10-repo line now and later publish a
+   > ladder whose Starter is 3, every existing $59 customer loses seven
+   > repositories at the moment we launch tiers. Grandfathering costs revenue;
+   > not grandfathering costs trust. Decide the launch number *before* it is
+   > quoted to anyone — including in a sales call — and make the ladder's
+   > Starter no smaller than it. Needed for the pricing page at Step 8.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
 4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
    first. Designer seats are a differentiator; shipping OAuth alone delays it.
@@ -1010,13 +1159,22 @@ attempting org A's run, share, and batch — all denied).
 ### How a new client gets access — the intended flow
 
 1. **Create the org.** Provisioned by the MoR purchase webhook — with no trial
-   (BuildV5 §G2c), buying is the only way an org comes into existence. Plan
-   defaults to `free`, which **cannot upload**; `migrations/001`'s
-   `DEFAULT 'trial'` is superseded by a later migration. Direct
-   `INSERT INTO orgs` remains the manual path until the admin UI exists.
-2. **Grant credits.** A `plan_allotment` grant for the Team plan's included
+   (BuildV5 §G2c), buying is the only way an org comes into existence. The plan
+   *should* default to `free`, which **cannot upload**.
+
+   > ⚠️ **Corrected 2026-08-10: it does not yet.** This previously said
+   > `migrations/001`'s `DEFAULT 'trial'` "is superseded by a later migration".
+   > **No such migration exists** — checked across `001`–`009`; the column still
+   > reads `plan TEXT NOT NULL DEFAULT 'trial'` and nothing alters it. So a
+   > directly-inserted org lands on a plan value the product no longer has. It
+   > is harmless today because every org is created by hand, and it is owed as
+   > part of BuildV5 §G2c (plan enum → `free | team | lapsed`) at Step 6.
+
+   Direct `INSERT INTO orgs` remains the manual path until the admin UI exists.
+2. **Grant credits.** A `plan_allotment` grant for the paid plan's included
    allotment, or a `pack_purchase` grant created by the MoR webhook after
-   payment. **Balance is the cap** — there is no way to spend past it. (Note
+   payment. (`team` is the *internal enum value* for the one paid plan, not a
+   published tier name — §3 has no "Team" tier at launch.) **Balance is the cap** — there is no way to spend past it. (Note
    `reconcile.ts` counts allotment spend against pack revenue only — see
    BuildV5's Build 5.5 risks.)
 3. **Issue keys** with `createApiKey(db, orgId, { kind })`:
@@ -1071,11 +1229,15 @@ that has not been probed is an open risk, not an assumed pass.
 
 - **Auth + org management UI** — sign-up, org create, invite, key management,
   revoke. (Stage 4 items 4–5.)
-- **Plan limits as config, not code** — Team = 10 repos, unlimited seats. The
-  price ladder runs on **repos**, never on seats. (Partly settled: BuildV5
-  §G2c fixes the plan enum to `free | team | lapsed` and specifies the upload,
-  storage, and quota dimensions. The **repo ladder above Team is still open** —
-  needed for the pricing page at §4 Step 8.)
+- **Plan limits as config, not code** — read every limit from configuration at
+  runtime so a second plan is a configuration row, not an authorization rewrite
+  (§4). **The values come from this document's §3 launch contract**; do not
+  hard-code a repository or seat number here or in the code. Unlimited seats is
+  settled; the repository figure is not (§3, Open Decisions #2). Any future
+  ladder runs on **repos**, never on seats. (Partly
+  settled: BuildV5 §G2c fixes the plan enum to `free | team | lapsed` and
+  specifies the upload, storage and quota dimensions. **No ladder is published
+  at launch** — the pricing page at §4 Step 8 ships the single $59 plan.)
 - **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
   nothing deleted; 14-day grace. (No trial — BuildV5 §G2c. Risk reversal is a
   30-day money-back guarantee.)
@@ -1116,13 +1278,14 @@ deployment.
 | E6 provider retention posture unverified | Open. Disclosure page unwritten. |
 | E7 live purchase loop | Blocked on MoR. |
 | Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
+| ~~Worst-case provider cost exceeds credit revenue~~ | **Closed 2026-08-10.** Credits are now derived from the hard maximum cost with a 50% margin floor, enforced by the suite — analysis 5 credits, deep 8. See §3 "Credits are derived from cost". **The consequence needs a decision:** 500 included credits now buy 100 analyses, not 500. Moving analysis to Haiku 4.5 would make it 2 credits (250 analyses), gated on a calibration run per §8. |
 | Screenshot-visible secrets and private data | Open. Text secret scanning does not detect credentials or personal data rendered inside pixels; redaction and a pre-upload manifest are required. |
 | Customer deletion path | Open. User-initiated account, run, repository, and organization deletion must remove storage objects as well as database rows and produce a receipt. |
 | Cloud upload surprise | Open until repository-level upload mode, first-run disclosure, and the explicit `upload` trigger are implemented. |
 | Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
 | Explain is Anthropic-only, in BYO **and** hosted | Open. Invisible to us because we have a key; a hard blocker for any account without an Anthropic contract. Scoped in §8. |
-| **A paying customer on the CLI would pay twice** | Open, and a **launch blocker for the cloud tier**. Org-credits mode exists only in the MCP server (`server.ts:234–269`); `norma explain` has no cloud branch and goes straight to `createAnthropicCaller()`. So a customer with credits cannot spend them from the CLI — they must also bring an Anthropic key. Harmless today (no paying customers), must close before Cloud launches. Scoped in §8. |
+| **A paying customer on the CLI would pay twice** | Open, and a **launch blocker for the cloud tier**. Org-credits mode exists only in the MCP server (`server.ts:275–311`); `norma explain` has no cloud branch and goes straight to `createAnthropicCaller()`. So a customer with credits cannot spend them from the CLI — they must also bring an Anthropic key. Harmless today (no paying customers), must close before Cloud launches. Scoped in §8. |
 
 ---
 
@@ -1149,11 +1312,22 @@ deployment.
 7. **Failed analyses cost the user nothing.** Provider error, refusal, or schema
    failure → full refund, logged.
 8. **Full suites green before any release.** `npm test` in each repo.
-9. **One paid tier, and every new feature enhances it.** Normascope Cloud at
-   **$59/mo per org** is the only subscription — no ladder above it, no lite
-   tier below it, no trial. Prepaid credit packs are consumables that require a
-   live subscription to buy *or* to spend (§3).
-   Before anything is built, in **either** repo, apply the **capture test**:
+9. **One paid tier at launch, and every new feature enhances it.** Normascope
+   Cloud at **$59/mo per org** is the only subscription **we launch with** —
+   no ladder above it, no lite tier below it, no trial. Prepaid credit packs are
+   consumables that require a live subscription to buy *or* to spend (§3).
+
+   **This is a launch configuration, not a permanent rule.** A ladder is
+   expected after validation, on the schedule in §3 ("Pricing expansion is not
+   yet a launch decision") and `PATHWAYS.md` §2: after the first 5–10 paying
+   organizations, measured against real repository, credit, storage, support and
+   retention data, and recorded as a new decision in §3 before anything is
+   published. What does not bend is the *order* — evidence first, then a tier —
+   not the number of tiers forever.
+
+   The part that does not bend is the rest of this rule: every new feature
+   enhances the paid product rather than fragmenting it, and before anything is
+   built, in **either** repo, apply the **capture test**:
 
    > *Does this require state we store, a key we hold, or a person who isn't
    > the developer?*
@@ -1173,10 +1347,11 @@ deployment.
 10. **Gated execution.** A pathway is not complete when code exists. It is
     complete only when implementation, normal tests, failure tests,
     security/tenant/accounting checks, and required external evidence all pass.
-    Work proceeds strictly in order: the next pathway cannot begin while the
-    current pathway is implemented, blocked, or has an unrun gate. A skipped
-    test is an open risk, never a pass. The detailed gate ledger and AI-agent
-    handoff format live in `PATHWAYS.md` §3 and §10.
+    Work proceeds strictly in order: the next delivery phase cannot begin until
+    the current phase is implemented, verified, and all of its gates are green.
+    A blocked phase, an unrun gate, or a skipped test is an open risk, never a
+    pass. The detailed gate ledger and AI-agent handoff format live in
+    `PATHWAYS.md` §3 and §10.
 
 11. **Economic loss firewall.** No provider-backed feature reaches customers
     until provider dollars are reserved before the call, actual usage settles
@@ -1217,7 +1392,7 @@ cloud tier**:
 
 | Surface | BYO (own key) | Org credits (paid) |
 |---|---|---|
-| MCP server | ✅ `ANTHROPIC_API_KEY` | ✅ `NORMASCOPE_CLOUD_URL` + `NORMASCOPE_ORG_KEY` → `/api/upload` + `/api/explain`, **plain fetch, no SDK** (`server.ts:234–269`) |
+| MCP server | ✅ `ANTHROPIC_API_KEY` | ✅ `NORMASCOPE_CLOUD_URL` + `NORMASCOPE_ORG_KEY` → `/api/upload` + `/api/explain`, **plain fetch, no SDK** (`server.ts:275–311`) |
 | CLI (`norma explain`) | ✅ | ❌ **missing entirely** |
 
 A customer who has bought credits and runs `npx norma-scope explain` gets the

@@ -2,13 +2,14 @@
 
 **Status:** implementation roadmap  
 **Canonical strategy:** [FUTURENORMA.md](./FUTURENORMA.md)  
-**Reviewed:** 2026-08-06
+**Reviewed:** 2026-08-10
 
 ## 0. Purpose
 
-`FUTURENORMA.md` remains the source of truth for doctrine, strategy, pricing,
-security, and current state. This document turns it into an ordered path from
-the current codebase to a durable business.
+`FUTURENORMA.md` is the source of truth for doctrine, strategy, pricing,
+security, current state, and the canonical sequence. This document is the
+implementation companion: it supplies work breakdowns, tests, and gates for
+that sequence. It must not create a second plan or silently change a decision.
 
 The central product thesis is:
 
@@ -76,6 +77,11 @@ The $59 price can work as an entry plan. It should not be the only possible
 revenue level forever.
 
 ## 2. Commercial model
+
+> This is the implementation contract for the launch plan described in
+> `FUTURENORMA.md` §3. `FUTURENORMA.md` remains authoritative; if plan contents
+> change, update that document first and then mirror the executable limits here.
+> Do not add a second price, tier, or repository-policy decision in this file.
 
 ### Launch model
 
@@ -251,6 +257,22 @@ The customer should never be forced from $59 to $149 merely because it has six
 or seven repositories. A Growth step or a measured fair-use conversation is
 needed before a Team upgrade.
 
+> ⚠️ **Starter's 3 repositories is a hypothesis, and it conflicts with the
+> operational line.** FUTURENORMA has carried a 10-repo fair-use figure since
+> before the single-tier decision. If we operate at 10 and later publish a
+> Starter of 3, every existing $59 customer loses seven repositories the day
+> tiers launch — grandfathering costs revenue, not grandfathering costs trust.
+>
+> Two rules follow, and both bind this section:
+>
+> 1. **Do not quote a repository number to anyone** — pricing page, sales call,
+>    or docs — until the launch figure is decided (FUTURENORMA §3, Open
+>    Decisions #2).
+> 2. **A published Starter must be no smaller than the fair-use line we were
+>    already operating.** Raise Starter to meet it, or lower the line before
+>    anyone relies on it. Never shrink an existing customer's allowance to make
+>    a ladder look better.
+
 ### What belongs in each plan
 
 Starter must be a complete product, not a crippled preview:
@@ -309,8 +331,35 @@ Higher plans should sell scale, control, security, and operational assurances.
 ### Mandatory gated execution rule
 
 Implementation is strictly sequential. An agent must not begin a later
-pathway, feature, migration, or dependent UI surface until the current
-pathway’s implementation and verification gate are both green.
+delivery phase, feature, migration, or dependent UI surface until the current
+phase's implementation and verification gate are both green. A capability
+work package may be implemented earlier only when the canonical phase table
+explicitly places it there and its own gate remains green.
+
+### Canonical delivery phases
+
+This is the only execution order. The numbered sections below are capability
+work packages and acceptance criteria; their labels must not be read as a
+second schedule.
+
+| Phase | Delivery milestone | Work packages used | Required condition before advancing |
+|---|---|---|---|
+| P | Public website + waitlist | Public website demand test | `normascope.com` is live, waitlist evidence works, and Cloud availability is described honestly |
+| 0 | Loose ends | Pathway 0 | CLI loose ends are verified |
+| 1 | Cloud substrate and safety | Pathway 1 | Pathway 1 gate is green; no payment, tenant, storage, retention, accounting, or spend-safety blocker remains |
+| 2 | Artifact pipeline | Pathway 2 plus the CLI/Cloud portion of Pathway 4 | Upload, containment, crop grounding, pricing calibration, and upload tests are green |
+| 3 | Hosted report | Pathway 3 plus report-facing CI links from Pathway 4 | Images, findings, history, sharing, tenant, and XSS gates are green |
+| 4 | Trends and CI loop | Pathway 6 plus the remaining Pathway 4 wiring | Trend and CI gates are green; Cloud/provider failure keeps CI safe |
+| 5 | Cloud infrastructure go-live | BuildV5 Phase J and deployment evidence | Real DB/storage, R2 suite, backups, and operational evidence are green |
+| 6 | Auth, organizations, and dashboards | Pathway 5 | Session tenant, role, deletion, and customer-control-plane gates are green |
+| 7 | Billing | Pathway 5 billing work | Paddle sandbox purchase/provision/exhaustion/recovery loop is green |
+| 8 | Paid launch gates | Security, retention, legal, operations, and CLI Cloud-credit closure | Every launch checklist item is verified |
+| 9 | Paid Cloud launch | First-customer runbook | Enable paid access for qualified waitlist users |
+
+Pathways 7–10 are post-launch horizons. They must not start until Phase 9 and
+must each retain their own acceptance gate. This mapping keeps CI work in the
+product-building phases, trends before infrastructure go-live, and auth/billing
+after the real Cloud surface exists.
 
 “Code exists” is not completion. Each pathway has four states:
 
@@ -787,9 +836,10 @@ real R2, Paddle, OAuth, provider retention, or production deployment behavior.
 
 ### Public website demand test — waitlist traction
 
-The public Normascope website may launch before Normascope Cloud is ready to
+The public Normascope website launches before Normascope Cloud is ready to
 charge. Its purpose at this stage is to explain the free CLI, make the Cloud
-direction legible, and measure whether people want the hosted product.
+direction legible, and measure whether people want the hosted product. This is
+the first public release; it is separate from the later paid Cloud launch.
 
 This is a demand test, not a Cloud product launch. Do not wait for the full
 Cloud launch checklist in §7 before publishing the public site; that checklist
@@ -851,7 +901,9 @@ Before publishing `normascope.com`, verify:
 - [ ] duplicate addresses remain one row;
 - [ ] source, referrer origin, and timestamp are recorded;
 - [ ] owner notification is configured and best-effort;
-- [ ] an admin-only count, list, and CSV export are available;
+- [x] an admin-only count, list, and CSV export are available — `/admin/waitlist`,
+  gated by `ADMIN_PASSWORD` (separate from the pitch phrase), verified
+  2026-08-10; see FinishedSPEC.md §4a;
 - [ ] the Cloud page describes private preview / future capabilities honestly;
 - [ ] the site does not claim that visitors can log in, upload, subscribe, or
   use Cloud yet.
@@ -1002,19 +1054,35 @@ Before Cloud billing, verify:
 
 **Goal:** make the existing backend safe to expose.
 
-Implement in this order:
+Implement in this order. **This list is the whole of Pathway 1** — §10.3 expands
+each item, and nothing lives only there:
 
-1. Make migrations race-safe under concurrent serverless cold starts.
-2. Complete filesystem and S3/R2 storage drivers.
-3. Enforce real request rate limits for upload and agent keys.
-4. Fix reconciliation so allotment and pack-funded usage are attributed
-   correctly.
-5. Add the reachable MoR webhook route and Paddle signature adapter.
-6. Add retention sweeps and deletion of database rows and storage blobs.
-7. Add backups, restore rehearsal, and operational alerts.
+1. Make migrations race-safe under concurrent serverless cold starts. (§10.3 1A)
+2. Complete filesystem and S3/R2 storage drivers. (§10.3 1D)
+3. Enforce real request rate limits for upload and agent keys. (§10.3 1C)
+4. Reserve provider dollars before every call; settle, release, and refund
+   idempotently. (§10.3 **1B.1** and **1B.3**)
+5. Derive credit prices from each operation's hard maximum cost, so no operation
+   can be sold below cost. (§10.3 **1B.2**)
+6. Deliver budget alerts at 50%, 75%, 90% and 100%, with an audited manual reset
+   for a tripped breaker. (§10.3 1C, second half)
+7. Fix reconciliation so allotment and pack-funded usage are attributed
+   correctly. (§10.3 1B)
+8. Add the reachable MoR webhook route and Paddle signature adapter.
+9. Add retention sweeps and deletion of database rows and storage blobs.
+10. Add backups, restore rehearsal, and operational alerts.
+
+> Items 4–6 were previously described **only** in §10.3 and were missing from
+> this list. That is not a formatting detail: an agent working from the list
+> finished items 1–3 and reported Pathway 1 nearly done while the largest
+> spend-safety hole in the product — every provider call authorized against a
+> total that only updated *after* the call — was still open. Added 2026-08-10.
+> If §10.3 describes work, it belongs here too.
 
 **Tests:** migration concurrency, quota races, tenant probes, storage deletion,
-rate-limit concurrency, Paddle signatures, reconciliation fixtures, restore.
+rate-limit concurrency, provider-budget reservation race, idempotent
+settlement/refund, margin-floor assertion, alert/breaker, Paddle signatures,
+reconciliation fixtures, restore.
 
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
@@ -1427,17 +1495,21 @@ metering, deletion, and reconciliation in its definition of done.
 
 ## 9. Final sequence
 
-1. Fix substrate, payment, reconciliation, rate-limit, and deletion risks.
-2. Ship upload and crop-grounded explain.
-3. Build the hosted report with visible history.
-4. Wire automatic PR explanations.
-5. Finish auth, organizations, designers, and billing.
-6. Ship trends and quality debt.
-7. Validate the $59 entry plan with real customers.
-8. Add repository/fair-use and higher-plan expansion from observed demand.
-9. Add contracts and bounded journey evidence.
-10. Add verified repair proposals.
-11. Add enterprise controls and provider flexibility when prospects demand them.
+1. Pass the public website and waitlist demand-test gate; publish
+   `normascope.com` with honest Cloud-coming-soon copy.
+2. Complete Pathway 1: substrate, provider-budget safety, reconciliation,
+   payment plumbing, retention, deletion, backups, and operational alerts.
+3. Ship upload and crop-grounded explain.
+4. Build the hosted report with visible history and sharing.
+5. Add trends and wire automatic PR explanations.
+6. Deploy the real Cloud infrastructure privately/under a preview URL.
+7. Finish auth, organizations, designers, dashboards, and plan configuration.
+8. Connect Paddle and pass all launch gates.
+9. Enable paid Cloud for qualified waitlist users and validate the $59 entry
+   plan with the first customers.
+10. Add repository/fair-use and higher-plan expansion from observed demand.
+11. Add contracts, bounded journey evidence, verified repair proposals, and
+    enterprise controls when demand justifies them.
 
 First make Cloud visibly better. Then make it habitual. Then make its
 accumulated history operationally indispensable.
@@ -1648,10 +1720,19 @@ For each model and pass, record:
 - credits required;
 - resulting gross margin after payment fees.
 
-If a standard analysis cannot fit within one credit at its hard maximum, reduce
-the payload cap, use another model, or charge more credits. If deep analysis
-cannot fit within three credits, change its credit price before launch. Never
-retain a friendly credit price while accepting a known hard-cost loss.
+No operation may be sold below its hard maximum cost. Reduce the payload cap,
+use another model, or charge more credits — never retain a friendly credit price
+while accepting a known hard-cost loss, and never close the gap by lowering the
+revenue floor.
+
+> **Settled 2026-08-10: credit prices are derived, not chosen.** Rather than
+> checking a fixed price against cost, `src/providerBudget.ts` computes the
+> credits an operation must charge for its worst case to clear a stated margin
+> floor, and the suite fails if any operation would earn less. The earlier
+> wording here — "if a standard analysis cannot fit within one credit… if deep
+> cannot fit within three" — assumed 1 and 3 credits as fixtures. They were
+> chosen against *measured* cost and lost money at the ceiling; analysis is now
+> 5 credits and deep 8. See `FUTURENORMA.md` §3 and `FinishedSPEC.md` §3e.
 
 Add a calibration fixture for the largest allowed payload and a test asserting
 that every sellable operation satisfies the configured margin floor.

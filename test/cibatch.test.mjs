@@ -12,7 +12,7 @@ const DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "d
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { grantCredits, balance } = await import(path.join(DIST, "ledger.js"));
 const { enqueueCiBatch, collectCiBatch, summarizeForPr, escapeHtml } = await import(path.join(DIST, "ciBatch.js"));
-const { AUTO_EXPLAIN_PER_RUN_CAP } = await import(path.join(DIST, "explainService.js"));
+const { AUTO_EXPLAIN_PER_RUN_CAP, CREDITS_PER_ANALYSIS } = await import(path.join(DIST, "explainService.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -78,7 +78,8 @@ const mkDeps = ({ results, submitError = false } = {}) => {
 
   const enq = await enqueueCiBatch(db, deps, { orgId: org, repoId: repo, runId: run, model: "claude-sonnet-5", frames: frames(2) });
   check("D2.1a", enq.batchId !== null && submissions[0].requests.length === 2, "batch submitted with one request per frame");
-  check("D2.1b", (await balance(db, org)) === 98, "credits reserved at enqueue (2 × 1)");
+  check("D2.1b", (await balance(db, org)) === 100 - 2 * CREDITS_PER_ANALYSIS,
+    `credits reserved at enqueue (2 × ${CREDITS_PER_ANALYSIS})`);
 
   const notReady = await collectCiBatch(db, { ...deps, fetch: async () => null }, enq.batchId);
   check("D2.1c", notReady.done === false, "collect before completion reports not-done, changes nothing");
@@ -98,7 +99,7 @@ const mkDeps = ({ results, submitError = false } = {}) => {
     `usage events billed at the batch rate (${expected} μ$ each)`);
 
   const again = await collectCiBatch(db, deps, enq.batchId);
-  check("D2.1g", again.done && again.findings.length === 0 && (await balance(db, org)) === 98,
+  check("D2.1g", again.done && again.findings.length === 0 && (await balance(db, org)) === 100 - 2 * CREDITS_PER_ANALYSIS,
     "collect is idempotent — no double charge, no re-processing");
 }
 
@@ -112,7 +113,8 @@ const mkDeps = ({ results, submitError = false } = {}) => {
   const enq = await enqueueCiBatch(db, deps, { orgId: org, repoId: repo, runId: run, model: "claude-sonnet-5", frames: frames(7) });
   check("D2.2a", enq.skipped.length === 2 && enq.skipped.every((s) => s.reason.includes("cap")),
     `frames beyond the ${AUTO_EXPLAIN_PER_RUN_CAP}-frame cap skipped with the manual-trigger hint`);
-  check("D2.2b", (await balance(db, org)) === 100 - AUTO_EXPLAIN_PER_RUN_CAP, "only capped frames reserve credits");
+  check("D2.2b", (await balance(db, org)) === 100 - AUTO_EXPLAIN_PER_RUN_CAP * CREDITS_PER_ANALYSIS,
+    "only capped frames reserve credits");
 }
 
 // ═══ D2.3 — submission failure refunds everything; CI stays green ═══
@@ -143,7 +145,8 @@ const mkDeps = ({ results, submitError = false } = {}) => {
   const enq = await enqueueCiBatch(db, deps, { orgId: org, repoId: repo, runId: run, model: "claude-sonnet-5", frames: frames(3) });
   const out = await collectCiBatch(db, deps, enq.batchId);
   check("D2.4a", out.findings.length === 1 && out.failures.length === 2, "refusal + schema failure isolated from the good frame");
-  check("D2.4b", (await balance(db, org)) === 99, "failed frames refunded, good frame charged");
+  check("D2.4b", (await balance(db, org)) === 100 - CREDITS_PER_ANALYSIS,
+    `failed frames refunded, good frame charged ${CREDITS_PER_ANALYSIS}`);
 }
 
 // ═══ D2.5 — PR comment line is escaped (E3 surface) ═══

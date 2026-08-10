@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../../lib/db";
-import { requireApiKey, unauthorized } from "../../../lib/auth";
+import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 
 /**
  * Upload API (Stage 4 item 2, minimal viable): summary.json v2 + run
@@ -36,6 +36,11 @@ export async function POST(request: Request): Promise<Response> {
   const key = await requireApiKey(db, request);
   if (!key) {
     return unauthorized();
+  }
+  // Before the body is read, not after: a 2MB read is the cost being limited.
+  const limited = await rateLimited(db, key);
+  if (limited) {
+    return limited;
   }
 
   const raw = await request.text();

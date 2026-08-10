@@ -11,3 +11,4 @@ test/.tmp-*
 web/node_modules/
 .DS_Store
 web/tsconfig.tsbuildinfo
+.storage/

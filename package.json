@@ -14,7 +14,7 @@
     "web"
   ],
   "scripts": {
-    "test": "npm run build && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs",
+    "test": "npm run build && node test/migrations.test.mjs && node test/storage.test.mjs && node test/rateLimit.test.mjs && node test/providerBudget.test.mjs && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs && node test/waitlist.test.mjs",
     "build": "tsc",
     "build:web": "npm run build && npm run build --workspace web",
     "dev:web": "npm run build && npm run dev --workspace web"
@@ -38,6 +38,8 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
+    "@aws-sdk/s3-request-presigner": "^3.1106.0",
     "@electric-sql/pglite": "^0.5.4",
     "pg": "^8.22.0"
   }

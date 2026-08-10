@@ -1,5 +1,5 @@
 import { getDb } from "../../../lib/db";
-import { requireApiKey, unauthorized } from "../../../lib/auth";
+import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { makeBatchSubmit, makeBatchFetch, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { enqueueCiBatch, collectCiBatch, summarizeForPr } from "argus-cloud/ciBatch.js";
 
@@ -29,6 +29,11 @@ export async function POST(request: Request): Promise<Response> {
   const key = await requireApiKey(db, request);
   if (!key) {
     return unauthorized();
+  }
+  // Ahead of the batch enqueue, which reserves credits for every flagged frame.
+  const limited = await rateLimited(db, key);
+  if (limited) {
+    return limited;
   }
   let body: { runId?: string };
   try {
@@ -90,6 +95,13 @@ export async function GET(request: Request): Promise<Response> {
   const key = await requireApiKey(db, request);
   if (!key) {
     return unauthorized();
+  }
+  // The collect poll is limited too — an unlimited GET is an unlimited request
+  // path. A poll that is refused backs off and the Action reports "skipped";
+  // CI stays green either way (Doctrine: Cloud never reddens a build).
+  const limited = await rateLimited(db, key);
+  if (limited) {
+    return limited;
   }
   const batchId = new URL(request.url).searchParams.get("batchId");
   if (!batchId) {

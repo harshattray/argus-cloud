@@ -1,5 +1,5 @@
 import { getDb } from "../../../lib/db";
-import { requireApiKey, unauthorized } from "../../../lib/auth";
+import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { makeProvider, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { hostedExplain } from "argus-cloud/explainService.js";
 
@@ -23,6 +23,12 @@ export async function POST(request: Request): Promise<Response> {
   const key = await requireApiKey(db, request);
   if (!key) {
     return unauthorized();
+  }
+  // Ahead of the credit reservation and the provider call, both of which cost
+  // real money the moment they start.
+  const limited = await rateLimited(db, key);
+  if (limited) {
+    return limited;
   }
 
   let body: ExplainBody;
