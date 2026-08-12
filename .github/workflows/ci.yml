@@ -1,0 +1,129 @@
+name: CI
+
+# Runs the whole verification on every push and every pull request.
+#
+# **Why this exists.** Until now nothing ran automatically. `npm test` was green
+# because someone remembered to type it, and the repo's own doctrine — an unrun
+# suite is an open risk, not a pass — applied to the suite itself. Two concrete
+# things had already slipped through: `npm test` never typechecked `web/`, so a
+# type error there passed cleanly, and no one had ever run `npm audit`, which
+# has three high-severity findings sitting in it.
+#
+# Keep this file and the `verify` script in step. `verify` is the local
+# equivalent, so "green on my machine" and "green in CI" mean the same thing.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The fast leg: types, then the suite on PGlite.
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Types, suite (PGlite), web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Match the deployment target, not the newest release. Node 20 is
+          # still the common `setup-node` pin, and the ERESOLVE defect fixed in
+          # norma-scope 8e96b5e was invisible on a maintainer machine precisely
+          # because it only bit on the older runtime.
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck the server package
+        run: npm run build
+
+      - name: Typecheck the web app
+        # Separate step so a failure names which half broke. This is the gap
+        # that let broken `web/` types pass a green `npm test`.
+        run: npm run typecheck --workspace web
+
+      - name: Suite (PGlite)
+        run: npm test
+
+      - name: Build the web app
+        run: npm run build --workspace web
+
+  # ---------------------------------------------------------------------------
+  # The leg that counts: the same suite against a real Postgres server.
+  # ---------------------------------------------------------------------------
+  #
+  # PGlite is real Postgres, but it is one in-process database per process, so
+  # every multi-process claim in this repo — the migration lock across 20 cold
+  # starts, 20 processes sharing one provider budget, 20 evaluations of one
+  # alert threshold — is inert there and skips itself. Those are the tests
+  # protecting money and schema integrity, so they cannot be the ones that only
+  # run when someone remembers a shell incantation.
+  postgres:
+    name: Suite (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: normascope_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Suite (real Postgres)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/normascope_test
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Supply chain and secrets.
+  # ---------------------------------------------------------------------------
+  #
+  # PATHWAYS §"Security release gate" requires "dependency and secret scanning
+  # in CI" before paid launch. It was unmet and unrecorded.
+  audit:
+    name: Dependencies and secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan can look at what was committed, not
+          # only at the current tree.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Production dependency audit
+        # Not raw `npm audit --audit-level=high`: that is red today and would
+        # stay red until the next 15 → 16 decision is taken, and a permanently
+        # red check is one nobody reads. `scripts/audit-check.mjs` fails on
+        # anything NEW, on an accepted entry that has gone STALE, and on one
+        # past its review date — while printing the known three every run.
+        run: npm run audit
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

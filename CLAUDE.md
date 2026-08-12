@@ -59,6 +59,63 @@ item; never reconfigure a default cluster. Then leave it reproducible — a smal
 committed script (see `scripts/test-db.sh`) beats commands that lived only in
 one shell session.
 
+## Don't break what works — run `npm run verify`
+
+**Before any change is called done, run it:**
+
+```bash
+npm run verify
+```
+
+It typechecks the server package, typechecks the web app, runs the full suite,
+builds the web app, and audits production dependencies. CI
+(`.github/workflows/ci.yml`) runs the same things on every push, plus the suite
+against a **real Postgres server** and a secret scan. Local and CI are kept
+deliberately identical so "green on my machine" means something.
+
+**The failure this prevents:** nothing ran automatically until 2026-08-12. The
+suite was green because someone remembered to type `npm test` — and the repo's
+own Doctrine 3, *an unrun suite is an open risk*, applied to the suite itself.
+Two things had already slipped through: `npm test` never typechecked `web/`, so
+a type error there passed cleanly, and nobody had ever run `npm audit`.
+
+Four rules, each from something that actually went wrong here:
+
+1. **One source for a fact, in code as in docs.** `providerBudget.ts` said in a
+   comment that `web/lib/provider.ts` read `OPERATIONS` from it. It did not — it
+   declared its own copy of the model names. Credits are derived from
+   `OPERATIONS`, so changing a model in one file and not the other would have
+   called one model and charged for another. Nothing would have failed; the
+   margin would just have been wrong. **A comment claiming an invariant is not
+   the invariant. Import the value.**
+
+2. **The economic path is written twice — change both.** `explainService.ts`
+   (interactive) and `ciBatch.ts` (CI batches) each hand-roll
+   reserve → consume → call → settle/release. Every new rule has to be added to
+   both, and forgetting one fails silently. When you add to one, add a test that
+   covers the *other*. Budget alerts went into both files the same day the CI
+   half had no test asserting the alert channel at all.
+
+3. **A guard you have not watched fail is not a guard.** Break the code
+   deliberately, see the test go red, put it back. `B4b` and `P4b` exist for
+   exactly this: they run the naive implementation through the same harness to
+   prove the real test would have caught it. A test that has only ever been
+   green may be asserting nothing.
+
+4. **Prove concurrency with real processes.** PGlite gives every process its own
+   database, so anything about locking, races, or shared budgets is inert there
+   and skips itself. Those are the tests protecting money and schema integrity.
+   CI now runs them against a real server on every push; locally use
+   `scripts/test-db.sh`.
+
+**When a check fails, fix the code.** Do not weaken an assertion, raise a
+timeout, or mark a test informational. If the check itself is wrong, say so
+plainly and change it in its own commit, with the reason.
+
+**Scope:** these are guards, not gates on your judgement. A red `npm audit` that
+needs a breaking major version is a decision for Harsha, not something to fix
+quietly — surface it and keep going.
+
 ## Writing — keep it plain
 
 These docs get read to make decisions. Write them so the decision is easy.

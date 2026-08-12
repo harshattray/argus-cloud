@@ -627,8 +627,10 @@ action**, not an API route, so `middleware.ts`'s `/admin` gate covers it — an
 > authentication. Step 6's session layer should take the actor from the session
 > and stop trusting the field.
 
-Migrations are now `001`–`010`. Full suite: **276 checks green** on PGlite,
-**291** against real Postgres, across nine suites — run 2026-08-12.
+Migrations are now `001`–`010`. Full suite: **279 checks green** on PGlite,
+**294** against real Postgres, across nine suites — run 2026-08-12. (B9 was
+added by the maintainability sweep below; the CI-batch half of the alerting had
+no test when it shipped.)
 
 ---
 
@@ -920,7 +922,11 @@ absent.
 | Retention sweep unbuilt | **Open.** Storage growth is bounded by nothing but goodwill |
 | No provider-dollar reservation before calls | **Closed** (§3d). Reserved before every call, settled idempotently, proven across 20 separate processes |
 | ~~Worst-case cost exceeds credit revenue~~ | **Closed** (§3e). Credits are derived from the hard maximum with a 50% margin floor, enforced by the suite. **Consequence needs a decision:** the 500 included credits now buy 100 analyses, not 500; analysis on Haiku 4.5 would make it 250, gated on a calibration run |
-| Budget alerts at 50/75/90% | **Open.** The bands are computed and shown; nothing delivers an alert below 100% |
+| Budget alerts at 50/75/90% | **Closed** (§3f). All four thresholds deliver, once per period, proven across 20 separate processes. The breaker reset is audited |
+| Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
+| `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
+| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.22 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe |
+| The economic path is implemented twice | **Open — maintainability, not correctness.** `explainService.ts` and `ciBatch.ts` each hand-roll reserve → consume → call → settle/release, so every rule must be added to both and forgetting one fails silently. Budget alerts hit this the day they were written; B9 now guards the CI half. Extraction is worth its own change, before a third caller exists |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on |
 | Sonnet 5 intro pricing ends 2026-08-31 | **21 days.** Post-intro COGS is already the basis for the pack floor, so no repricing is forced — but verify |

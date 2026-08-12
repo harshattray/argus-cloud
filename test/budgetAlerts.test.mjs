@@ -474,6 +474,65 @@ if (REAL_PG) {
   check("B8.9", resumed.ok === true, "after an attributed reset, explain resumes");
 }
 
+// ---------------------------------------------------------------------------
+// B9 — the CI batch path alerts too
+// ---------------------------------------------------------------------------
+//
+// The economic request path is implemented **twice** — `explainService.ts` for
+// interactive explain and `ciBatch.ts` for CI batches — so every rule has to be
+// added to both, and forgetting one fails silently. Adding budget alerts today
+// meant touching both files; `cibatch.test.mjs` stubs its alert channel as
+// `() => {}` and asserts nothing about it, so the CI half was covered by no
+// test at all. This is that test. It is a regression guard on the duplication,
+// not on the feature.
+{
+  const { enqueueCiBatch } = await import(path.join(DIST, "ciBatch.js"));
+  await db.query("DELETE FROM budget_alerts");
+  await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
+  await resetBreaker(db, { actor: "test-setup", reason: "known state before the CI batch case" });
+
+  const orgId = await makeOrg();
+  const repoId = randomUUID();
+  const runId = randomUUID();
+  await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'r')", [repoId, orgId]);
+  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary) VALUES ($1,$2,$3,'c1','{}')", [
+    runId,
+    orgId,
+    repoId,
+  ]);
+  await grantCredits(db, { orgId, kind: "pack_purchase", credits: 500, expiresAt: new Date(Date.now() + 365 * 864e5) });
+
+  const sink = [];
+  const dailyBudget = hardMaxCostMicrodollars(SONNET, { batch: true }) * 10;
+  await setDaySpend(Math.round(dailyBudget * 0.6)); // 60% before the batch runs
+
+  const enq = await enqueueCiBatch(
+    db,
+    {
+      submit: async () => `batch_${randomUUID().slice(0, 8)}`,
+      fetch: async () => null,
+      dailyBudgetMicrodollars: dailyBudget,
+      alert: alertsInto(sink),
+      now: () => T0,
+    },
+    {
+      orgId,
+      repoId,
+      runId,
+      model: SONNET,
+      frames: [
+        { frame: "a.png", buildHash: "b1", designHash: "d" },
+        { frame: "b.png", buildHash: "b2", designHash: "d" },
+      ],
+    }
+  );
+
+  check("B9.1", enq.batchId !== null, "a CI batch enqueues inside the budget");
+  check("B9.2", sink.some((m) => m.startsWith("Normascope budget alert")), `and its reservations page an operator too — the CI path is not a silent one (${sink.length} alert(s))`);
+  check("B9.3", sink.filter((m) => m.startsWith("Normascope budget alert")).length === 1, "one alert for the batch, not one per frame");
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);
 await db.close();
 process.exit(failures === 0 ? 0 : 1);

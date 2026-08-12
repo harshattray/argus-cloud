@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Provider, ProviderRequest, ProviderResult } from "argus-cloud/explainService.js";
 import type { BatchSubmit, BatchFetch, BatchResult, BatchSubmission } from "argus-cloud/ciBatch.js";
 import type { TokenUsage } from "argus-cloud/usage.js";
-import { HARD_CAPS } from "argus-cloud/providerBudget.js";
+import { HARD_CAPS, OPERATIONS } from "argus-cloud/providerBudget.js";
 
 /**
  * The hosted provider seam (Build 4.0 Phase D). The provider key lives in
@@ -16,9 +16,20 @@ import { HARD_CAPS } from "argus-cloud/providerBudget.js";
  * never shown; crop parity arrives with artifact upload.
  */
 
+/**
+ * Which model runs which pass — **read from `providerBudget.ts`, never declared
+ * here**.
+ *
+ * This file used to carry its own copy, and `providerBudget.ts` claimed in a
+ * comment that it did not. That is the drift the derived-credit rule exists to
+ * stop: credits are computed from `OPERATIONS`, so a model changed here and not
+ * there would have been priced as the old model — the request path calling one
+ * model while the ledger charged for another. Nothing would have failed; the
+ * margin would just have been wrong.
+ */
 export const HOSTED_MODELS = {
-  analysis: "claude-sonnet-5",
-  deep: "claude-opus-4-8",
+  analysis: OPERATIONS.analysis.model,
+  deep: OPERATIONS.deep.model,
 } as const;
 
 /**

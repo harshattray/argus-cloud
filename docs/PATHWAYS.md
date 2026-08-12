@@ -474,7 +474,11 @@ or choose a provider/budget decision.
 
 No paid Cloud launch is verified until the relevant pathways have evidence for:
 
-- [ ] dependency and secret scanning in CI;
+- [x] dependency and secret scanning in CI — `.github/workflows/ci.yml`, added
+  2026-08-12. Dependency findings are gated by `scripts/audit-check.mjs`, which
+  fails on anything new, stale, or past its review date rather than on a fixed
+  threshold. Three high-severity advisories are recorded and **unconfirmed**;
+  see `FinishedSPEC.md` §9;
 - [ ] tenant-isolation and authorization probes;
 - [ ] stored-XSS and sandbox/CSP probes;
 - [ ] prompt-injection and hostile-content suites;
