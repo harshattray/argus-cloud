@@ -668,7 +668,10 @@ Stated so they do not creep in:
 
 - Real Cloud auth — OAuth, magic links, orgs, seats, invites.
 - Billing, checkout, pricing pages, Paddle integration.
-- A trends or dashboard UI beyond what the gated preview needs.
+- The full Cloud organization/operator control planes. Those belong to the
+  authenticated Cloud product and are specified in `FUTURENORMA.md` and
+  `PATHWAYS.md`; the public site may show honest, non-functional previews of
+  them but must not imply that they are available before paid Cloud launch.
 - The `upload` CLI command (BuildV5 G1) — this is a website, not a CLI change.
 - A blog or changelog.
 - Any fix to the known bugs in `FinishedSPEC.md` §7 beyond #11, which is a hard

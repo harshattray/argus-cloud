@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type FormEvent } from "react";
+import { emailProblem, EMAIL_MESSAGE } from "../../../lib/waitlistEmail";
 
 /* The brand spark, redrawn here rather than imported from `ui`: that module
    imports this one, and closing the loop would drag the whole server-side kit
@@ -48,6 +49,7 @@ export function WaitlistForm({
   const [error, setError] = useState<string | null>(null);
   const mountedAt = useRef(Date.now());
   const honeypot = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLInputElement>(null);
 
   /* Keyed off the instance, not the source: the Cloud page renders two of these
      and both are `source="cloud"`, so deriving ids from the source put two
@@ -60,6 +62,19 @@ export function WaitlistForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (state === "busy") return;
+
+    /* The form carries `noValidate` so the error is rendered in our own markup
+       rather than a browser bubble — which also means `required` and
+       type="email" on the field are inert, and an empty box used to reach the
+       server. This is the check that replaces them. Same rules and the same
+       sentences as the API, because both read them from one module. */
+    const problem = emailProblem(email);
+    if (problem) {
+      setState("error");
+      setError(EMAIL_MESSAGE[problem]);
+      field.current?.focus();
+      return;
+    }
 
     setState("busy");
     setError(null);
@@ -144,6 +159,7 @@ export function WaitlistForm({
         Email address
       </label>
       <input
+        ref={field}
         id={`waitlist-${uid}`}
         type="email"
         inputMode="email"

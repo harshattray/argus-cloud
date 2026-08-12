@@ -58,6 +58,20 @@ export async function createDb(): Promise<Db> {
     return wrap(pool as never);
   }
 
+  // A deployment with no DATABASE_URL must not reach the fallback below.
+  // PGlite is in-process: every serverless instance would get its own empty
+  // database, accept writes, return success, and discard them when the
+  // invocation ends — losing signups with nothing in any log to show for it.
+  // Failing to boot is strictly better than silently eating data, so on Vercel
+  // the variable is mandatory. Local dev, tests and CI keep the fallback.
+  if (process.env.VERCEL) {
+    throw new Error(
+      "DATABASE_URL is not set. Refusing to start with the in-process PGlite " +
+        "fallback, which would accept writes and lose them. Set DATABASE_URL in " +
+        "the Vercel project's environment variables (all environments)."
+    );
+  }
+
   const { PGlite } = await import("@electric-sql/pglite");
   // PGLITE_DATA_DIR gives local dev a persistent database (.pgdata/ is
   // gitignored) so the seed script and the dev server share state; unset, it
