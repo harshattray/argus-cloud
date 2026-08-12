@@ -37,7 +37,51 @@ const WINDOW_MINUTES = 60;
 /** Same default the explain routes use, so the page and the cap agree. */
 const DAILY_BUDGET_MICRODOLLARS = Number(process.env.EXPLAIN_DAILY_BUDGET_MICRODOLLARS ?? 50_000_000);
 
-const dollars = (microdollars: number) => `$${(microdollars / 1e6).toFixed(4)}`;
+/**
+ * Money, with the cents demarcated from the dollars.
+ *
+ * These figures carry four decimal places because provider costs are genuinely
+ * fractions of a cent, and a rounded `$0.00` would hide real spend. But at one
+ * size and one weight, `$47.0000` reads at a glance as four hundred and seventy
+ * thousand — the operator page's whole job is to be read at a glance, so that
+ * is a real misreading, not a nitpick.
+ *
+ * The fraction is smaller and lighter so the magnitude is the part the eye
+ * lands on, and the integer part is grouped so a four-figure budget cannot be
+ * mistaken for a three-figure one either. Sized in `em` so it scales with
+ * whatever it sits inside; `tabular-nums` on both halves so columns still line
+ * up.
+ *
+ * 0.72em rather than something smaller, because this also renders inside 13px
+ * body text, where a heavier reduction lands under 9px. Demarcating the
+ * fraction must not make it unreadable — the sub-cent digits are the reason
+ * four places are shown at all.
+ */
+const FRACTION = "text-[0.72em] font-normal text-text/45";
+
+function Dollars({ microdollars }: { microdollars: number }) {
+  const [whole, fraction] = (microdollars / 1e6).toFixed(4).split(".");
+  return (
+    <span className="tabular-nums">
+      ${Number(whole).toLocaleString("en-US")}
+      <span className={FRACTION}>.{fraction}</span>
+    </span>
+  );
+}
+
+/** The same treatment for the percentage sitting beside those figures. */
+function Percent({ value }: { value: number | null }) {
+  if (value === null) {
+    return <span>—</span>;
+  }
+  const [whole, fraction] = value.toFixed(1).split(".");
+  return (
+    <span className="tabular-nums">
+      {Number(whole).toLocaleString("en-US")}
+      <span className={FRACTION}>.{fraction}</span>%
+    </span>
+  );
+}
 
 function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -100,15 +144,15 @@ export default async function LimitsPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
               <p className="text-[12px] text-text/40">Spent</p>
-              <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(budget.committedMicrodollars)}</p>
+              <p className="numeric text-[19px] font-semibold tabular-nums"><Dollars microdollars={budget.committedMicrodollars} /></p>
             </div>
             <div>
               <p className="text-[12px] text-text/40">Reserved, in flight</p>
-              <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(budget.outstandingMicrodollars)}</p>
+              <p className="numeric text-[19px] font-semibold tabular-nums"><Dollars microdollars={budget.outstandingMicrodollars} /></p>
             </div>
             <div>
               <p className="text-[12px] text-text/40">Daily cap</p>
-              <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(DAILY_BUDGET_MICRODOLLARS)}</p>
+              <p className="numeric text-[19px] font-semibold tabular-nums"><Dollars microdollars={DAILY_BUDGET_MICRODOLLARS} /></p>
             </div>
             <div>
               <p className="text-[12px] text-text/40">Used</p>
@@ -117,7 +161,7 @@ export default async function LimitsPage() {
                   crossed !== null && crossed >= 90 ? "text-clay" : ""
                 }`}
               >
-                {budget.usedPercent === null ? "—" : `${budget.usedPercent.toFixed(1)}%`}
+                <Percent value={budget.usedPercent} />
               </p>
             </div>
           </div>
@@ -151,18 +195,18 @@ export default async function LimitsPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
                   <p className="text-[12px] text-text/40">Funded</p>
-                  <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(balance.balanceMicrodollars)}</p>
+                  <p className="numeric text-[19px] font-semibold tabular-nums"><Dollars microdollars={balance.balanceMicrodollars} /></p>
                 </div>
                 <div>
                   <p className="text-[12px] text-text/40">Spent since</p>
-                  <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(balance.usedMicrodollars)}</p>
+                  <p className="numeric text-[19px] font-semibold tabular-nums"><Dollars microdollars={balance.usedMicrodollars} /></p>
                 </div>
                 <div>
                   <p className="text-[12px] text-text/40">Remaining</p>
                   <p
                     className={`numeric text-[19px] font-semibold tabular-nums ${balance.usedPercent >= 90 ? "text-clay" : ""}`}
                   >
-                    {dollars(balance.remainingMicrodollars)}
+                    <Dollars microdollars={balance.remainingMicrodollars} />
                   </p>
                 </div>
                 <div>
@@ -251,7 +295,7 @@ export default async function LimitsPage() {
                   <span className="text-text/60">{a.scope}</span>
                   <span className="numeric text-[12.5px] text-text/45">{a.period}</span>
                   <span className="numeric tabular-nums text-text/45">
-                    {dollars(a.usedMicrodollars)} of {dollars(a.limitMicrodollars)}
+                    <Dollars microdollars={a.usedMicrodollars} /> of <Dollars microdollars={a.limitMicrodollars} />
                   </span>
                   <span className="numeric tabular-nums text-text/45">
                     {timeFormat.format(new Date(a.firstSeenAt))}
