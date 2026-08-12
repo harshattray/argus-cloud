@@ -89,6 +89,12 @@ const alertsInto = (sink) => (message) => sink.push(message);
 {
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  // Outstanding reservations count toward the day alongside committed spend
+  // (`globalDayStatus`), which is the point of reserving. Clearing the two
+  // tables above but not this one only looked right on PGlite, where every
+  // suite gets its own database. Against one real server the reservations
+  // providerBudget.test.mjs left behind added $0.08 to every reading here.
+  await db.query("DELETE FROM provider_reservations");
   const limit = 1_000_000; // $1/day
   const sink = [];
   const alert = alertsInto(sink);
@@ -157,6 +163,7 @@ const alertsInto = (sink) => (message) => sink.push(message);
 
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
   await setDaySpend(600_000);
   const subject = async () => ({
     scope: "global-day",
@@ -188,6 +195,7 @@ const alertsInto = (sink) => (message) => sink.push(message);
 {
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
   await setDaySpend(600_000);
   const limit = 1_000_000;
   const sink = [];
@@ -211,6 +219,7 @@ if (REAL_PG) {
   const { spawn } = await import("node:child_process");
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
   await setDaySpend(600_000);
 
   // A wall-clock barrier, not just a simultaneous spawn. Twenty node processes
@@ -291,6 +300,7 @@ if (REAL_PG) {
 {
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
   const orgA = await makeOrg();
   const orgB = await makeOrg();
   const orgLimit = 1_000_000;
@@ -339,6 +349,7 @@ if (REAL_PG) {
 {
   await db.query("DELETE FROM budget_alerts");
   await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
   check("B6.1", (await providerBalanceStatus(db, T0)) === null, "with no funding recorded there is no balance to report — nothing is invented");
 
   await recordProviderFunding(db, {
