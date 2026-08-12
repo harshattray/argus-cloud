@@ -69,18 +69,25 @@ function Dollars({ microdollars }: { microdollars: number }) {
   );
 }
 
-/** The same treatment for the percentage sitting beside those figures. */
+/**
+ * The percentage beside those figures. Grouped, but **not** demarcated.
+ *
+ * It was given the same small-and-light fraction for consistency and looked
+ * wrong: one decimal place is too short to be mistaken for magnitude, so the
+ * treatment bought nothing, and it left the unit stranded — `2,494` full size,
+ * `.1` small, `%` full size again. A unit set behind a lighter gap reads as
+ * detached from its number, and de-emphasising the `%` instead would be worse
+ * on a page where every other figure is dollars.
+ *
+ * The rule the dollars case actually establishes: demarcate a fraction when it
+ * is long enough to be misread as part of the magnitude. Four digits are; one
+ * is not.
+ */
 function Percent({ value }: { value: number | null }) {
   if (value === null) {
     return <span>—</span>;
   }
-  const [whole, fraction] = value.toFixed(1).split(".");
-  return (
-    <span className="tabular-nums">
-      {Number(whole).toLocaleString("en-US")}
-      <span className={FRACTION}>.{fraction}</span>%
-    </span>
-  );
+  return <span className="tabular-nums">{value.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>;
 }
 
 function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
