@@ -286,33 +286,20 @@ const baseReq = (orgId, over = {}) => ({
     `deep pass (${CREDITS_PER_DEEP} credits) also refused once over budget`);
 }
 
-// ═══ C8 — reconciliation dry-run on a seeded month ════════════════════════
-
+// ═══ C8 — reconciliation ══════════════════════════════════════════════════
+//
+// Moved to `test/reconcile.test.mjs` (2026-08-13, Pathway 1 item 7). The
+// checks that lived here seeded into the *current* month, which every other
+// suite in this file also writes into, so they could only assert `>=` and a
+// margin ranging over whatever else had run. The reconciliation the product
+// now needs — subscription revenue, cost split by funding grant, goodwill and
+// unattributed spend kept apart — is not assertable that way. The new suite
+// seeds an isolated past month and asserts exact figures, including a guard
+// (R3.4) that runs the old formula over the same data to prove it false-alarms.
 {
-  const month = new Date().toISOString().slice(0, 7);
-
-  // Healthy org: one $79 pack sold, modest spend.
-  const orgH = await makeOrg("c8-healthy");
-  await grantCredits(db, { orgId: orgH, kind: "pack_purchase", credits: 200, expiresAt: farFuture, sourceRef: "evt-c8-h", priceMicrodollars: 79_000_000 });
-  await recordUsage(db, { orgId: orgH, model: "claude-sonnet-5", pass: "analysis", status: "charged", costMicrodollars: 5_000_000, creditsCharged: 1 });
-  const healthyAlerts = [];
-  const healthy = await reconcileMonth(db, month, (m) => healthyAlerts.push(m));
-  check("C8.1",
-    healthy.packRevenueMicrodollars >= 79_000_000 && healthy.grossMargin !== null && !healthy.alerted && healthyAlerts.length === 0,
-    `healthy month: revenue $${(healthy.packRevenueMicrodollars / 1e6).toFixed(0)}, margin ${(healthy.grossMargin * 100).toFixed(1)}%, no alert`);
-
-  // Unhealthy: provider spend overwhelms revenue → margin < 50% → alert.
-  const orgU = await makeOrg("c8-unhealthy");
-  await grantCredits(db, { orgId: orgU, kind: "pack_purchase", credits: 200, expiresAt: farFuture, sourceRef: "evt-c8-u", priceMicrodollars: 10_000_000 });
-  // Reconciliation is global (provider spend vs all credit revenue in the
-  // month), so the seeded spend must dominate the month's total revenue.
-  await recordUsage(db, { orgId: orgU, model: "claude-opus-4-8", pass: "deep", status: "charged", costMicrodollars: 150_000_000, creditsCharged: 3 });
-  const alerts = [];
-  const bad = await reconcileMonth(db, month, (m) => alerts.push(m));
-  check("C8.2", bad.alerted && alerts.length === 1 && alerts[0].includes("reprice"),
-    `margin ${(bad.grossMargin * 100).toFixed(1)}% < 50% fires the reprice alert`);
-  check("C8.3", bad.chargedAnalyses >= 2 && bad.providerSpendMicrodollars >= 65_000_000,
-    "report totals derive from the append-only usage meter");
+  const report = await reconcileMonth(db, new Date().toISOString().slice(0, 7), () => {});
+  check("C8.1", typeof report.cogs.totalMicrodollars === "number" && report.month.length === 7,
+    "reconcileMonth still reads this suite's own month without throwing");
 }
 
 await db.close();

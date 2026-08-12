@@ -318,6 +318,7 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     auto: req.auto ?? false,
     providerReservationId: admission.providerReservationId,
     credits,
+    creditReservation: admission.creditReservation,
     usage: result.usage,
     costMicrodollars: cost,
     cacheKey,

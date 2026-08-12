@@ -294,6 +294,7 @@ export async function collectCiBatch(db: Db, deps: CiBatchDeps, batchId: string)
       repoId: row.repo_id,
       providerReservationId: entry.providerReservationId,
       credits: entry.credits,
+      creditReservation: entry.reservation,
       usage: result.usage,
       costMicrodollars: cost,
       cacheKey: entry.cacheKey,

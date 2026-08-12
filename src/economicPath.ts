@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { consumeCredits, refundCredits, InsufficientCreditsError, type Consumption } from "./ledger.js";
-import { recordUsage, type TokenUsage } from "./usage.js";
+import { recordUsage, attributeCost, recordCostAttribution, type TokenUsage } from "./usage.js";
+import type { GrantKind } from "./ledger.js";
 import { cachePut } from "./resultCache.js";
 import { checkAndTrip, tripBreaker, type Alert } from "./breaker.js";
 import {
@@ -172,6 +173,43 @@ export async function reserveBoth(db: Db, req: ReserveRequest): Promise<ReserveO
   return { ok: true, providerReservationId, creditReservation };
 }
 
+/**
+ * Reads each consumed grant's kind back from the database.
+ *
+ * `Consumption` carries only a grant id and an amount, and it deliberately
+ * stays that way: `ciBatch.ts` serialises reservations into `explain_batches`
+ * and collects them minutes later, possibly on a different bundle. Widening
+ * the serialised shape means a batch enqueued before a deploy and collected
+ * after it would be missing a field the collector expects. One read at
+ * settlement is the version-proof answer, and settlement already costs several
+ * queries.
+ *
+ * A grant that no longer exists is dropped rather than guessed at. That can
+ * only happen if its organization was deleted, in which case the usage event
+ * has cascaded away too and there is nothing left to attribute.
+ */
+async function resolveGrantKinds(
+  db: Db,
+  consumption: Consumption[]
+): Promise<{ grantId: string; grantKind: GrantKind; credits: number }[]> {
+  if (consumption.length === 0) {
+    return [];
+  }
+  const ids = consumption.map((c) => c.grantId);
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = (
+    await db.query<{ id: string; kind: GrantKind }>(
+      `SELECT id, kind FROM credit_grants WHERE id IN (${placeholders})`,
+      ids
+    )
+  ).rows;
+  const kinds = new Map(rows.map((r) => [r.id, r.kind]));
+  return consumption.flatMap((c) => {
+    const kind = kinds.get(c.grantId);
+    return kind ? [{ grantId: c.grantId, grantKind: kind, credits: c.amount }] : [];
+  });
+}
+
 export interface SettleRequest {
   orgId: string;
   apiKeyId?: string | null;
@@ -184,6 +222,13 @@ export interface SettleRequest {
   auto: boolean;
   providerReservationId: string | undefined;
   credits: number;
+  /**
+   * The per-grant split `reserveBoth` returned. Reconciliation needs it to
+   * know whether this cost was funded by the monthly allowance, a purchased
+   * pack, or a goodwill grant — three different revenue stories that used to
+   * be one undifferentiated total.
+   */
+  creditReservation: Consumption[];
   usage: TokenUsage;
   costMicrodollars: number;
   cacheKey: string;
@@ -211,7 +256,7 @@ export async function settleCharged(db: Db, req: SettleRequest): Promise<void> {
     await settleProviderBudget(db, req.providerReservationId, req.costMicrodollars, req.now);
   }
   await checkAndTrip(db, req.dailyBudgetMicrodollars, req.alert, req.now);
-  await recordUsage(db, {
+  const usageEventId = await recordUsage(db, {
     orgId: req.orgId,
     apiKeyId: req.apiKeyId ?? null,
     runId: req.runId ?? null,
@@ -226,6 +271,11 @@ export async function settleCharged(db: Db, req: SettleRequest): Promise<void> {
     creditsCharged: req.credits,
     detail: req.detail ?? "",
   });
+  await recordCostAttribution(
+    db,
+    usageEventId,
+    attributeCost(req.costMicrodollars, await resolveGrantKinds(db, req.creditReservation))
+  );
   await cachePut(db, req.orgId, req.cacheKey, req.model, req.findings);
   if (req.repoId && req.runId) {
     await saveRunFindings(db, {

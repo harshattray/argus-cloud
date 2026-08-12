@@ -1,4 +1,5 @@
 import type { Db } from "./db.js";
+import type { GrantKind } from "./ledger.js";
 
 /**
  * Append-only usage meter (Economics Doctrine rule 5): every provider call,
@@ -70,14 +71,16 @@ export interface UsageEvent {
   detail?: string;
 }
 
-export async function recordUsage(db: Db, event: UsageEvent): Promise<void> {
+/** Appends one usage event and returns its id, for attribution rows. */
+export async function recordUsage(db: Db, event: UsageEvent): Promise<number> {
   const usage = event.usage ?? ZERO_USAGE;
-  await db.query(
+  const result = await db.query<{ id: string | number }>(
     `INSERT INTO usage_events
        (org_id, api_key_id, run_id, frame, model, pass, interactive, auto, status,
         input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens,
         cost_microdollars, credits_charged, detail)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     RETURNING id`,
     [
       event.orgId,
       event.apiKeyId ?? null,
@@ -97,6 +100,79 @@ export async function recordUsage(db: Db, event: UsageEvent): Promise<void> {
       event.detail ?? "",
     ]
   );
+  return Number(result.rows[0]!.id);
+}
+
+/** One grant's share of a charge — what `usage_credit_sources` stores. */
+export interface CostAttribution {
+  grantId: string;
+  grantKind: GrantKind;
+  credits: number;
+  costMicrodollars: number;
+}
+
+/**
+ * Splits a charge's provider cost across the grants that funded it, in
+ * proportion to the credits each supplied.
+ *
+ * Exported and pure because the property that matters is arithmetic, not
+ * database behaviour: **the parts sum to exactly the whole.** Integer
+ * microdollars do not divide evenly — three grants funding a 5-credit,
+ * 78,400µ$ analysis floor to 78,399 — and a rounding loss of one microdollar
+ * per event is a margin report that slowly stops reconciling with the meter it
+ * is derived from. The remainder goes to the largest share, which is
+ * deterministic (ties break on the earlier grant, and `consumeCredits` returns
+ * grants expiry-first) rather than merely close.
+ *
+ * A zero-credit or zero-cost charge attributes nothing; there is nothing to
+ * apportion and a row claiming otherwise would be noise in the report.
+ */
+export function attributeCost(
+  costMicrodollars: number,
+  funding: { grantId: string; grantKind: GrantKind; credits: number }[]
+): CostAttribution[] {
+  const totalCredits = funding.reduce((sum, f) => sum + f.credits, 0);
+  if (totalCredits <= 0) {
+    return [];
+  }
+  const parts = funding.map((f) => ({
+    ...f,
+    costMicrodollars: Math.floor((costMicrodollars * f.credits) / totalCredits),
+  }));
+  let remainder = costMicrodollars - parts.reduce((sum, p) => sum + p.costMicrodollars, 0);
+  if (remainder > 0) {
+    let largest = 0;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i]!.credits > parts[largest]!.credits) {
+        largest = i;
+      }
+    }
+    parts[largest]!.costMicrodollars += remainder;
+    remainder = 0;
+  }
+  return parts;
+}
+
+/**
+ * Records what funded one charged usage event.
+ *
+ * Only ever called for a `charged` event. The failure path refunds the credits
+ * and writes a `failed_no_charge` event instead, so an attribution row and a
+ * refund can never describe the same reservation.
+ */
+export async function recordCostAttribution(
+  db: Db,
+  usageEventId: number,
+  attributions: CostAttribution[]
+): Promise<void> {
+  for (const a of attributions) {
+    await db.query(
+      `INSERT INTO usage_credit_sources (usage_event_id, grant_id, grant_kind, credits, cost_microdollars)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (usage_event_id, grant_id) DO NOTHING`,
+      [usageEventId, a.grantId, a.grantKind, a.credits, a.costMicrodollars]
+    );
+  }
 }
 
 /** Charged auto-analyses for a run — drives the per-run cap. */
