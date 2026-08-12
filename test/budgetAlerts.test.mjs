@@ -27,7 +27,7 @@ const REAL_PG = Boolean(process.env.DATABASE_URL?.trim());
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { isTripped, tripBreaker, resetBreaker, breakerHistory } = await import(path.join(DIST, "breaker.js"));
-const { grantCredits } = await import(path.join(DIST, "ledger.js"));
+const { grantCredits, balance } = await import(path.join(DIST, "ledger.js"));
 const { hostedExplain } = await import(path.join(DIST, "explainService.js"));
 const { globalDayStatus, orgMonthStatus, keyMonthStatus, hardMaxCostMicrodollars } = await import(
   path.join(DIST, "providerBudget.js")
@@ -530,7 +530,105 @@ if (REAL_PG) {
 
   check("B9.1", enq.batchId !== null, "a CI batch enqueues inside the budget");
   check("B9.2", sink.some((m) => m.startsWith("Normascope budget alert")), `and its reservations page an operator too — the CI path is not a silent one (${sink.length} alert(s))`);
-  check("B9.3", sink.filter((m) => m.startsWith("Normascope budget alert")).length === 1, "one alert for the batch, not one per frame");
+
+  // Each frame reserves separately, so a batch can genuinely cross more than
+  // one mark — 75% on the first frame, 90% on the second. That is several
+  // crossings seconds apart, not one event paged repeatedly, and the bound that
+  // matters is per *threshold*: four in a day, never the same one twice.
+  const budgetAlerts = sink.filter((m) => m.startsWith("Normascope budget alert"));
+  const rows = await db.query("SELECT threshold, COUNT(*) AS n FROM budget_alerts WHERE scope = 'global-day' GROUP BY threshold");
+  check("B9.3", rows.rows.every((r) => Number(r.n) === 1), "no threshold is recorded twice, however many frames the batch holds");
+  check("B9.4", budgetAlerts.length <= 4, `and the batch cannot page more than the four thresholds (${budgetAlerts.length})`);
+
+  // A second batch reserves more, so it may legitimately cross a *higher* mark
+  // — that is the budget genuinely moving, and silencing it would be the bug.
+  // What must never happen is the same mark paging twice.
+  await enqueueCiBatch(
+    db,
+    {
+      submit: async () => `batch_${randomUUID().slice(0, 8)}`,
+      fetch: async () => null,
+      dailyBudgetMicrodollars: dailyBudget,
+      alert: alertsInto(sink),
+      now: () => T0,
+    },
+    { orgId, repoId, runId, model: SONNET, frames: [{ frame: "c.png", buildHash: "b3", designHash: "d" }] }
+  );
+  const after = await db.query("SELECT threshold, COUNT(*) AS n FROM budget_alerts WHERE scope = 'global-day' GROUP BY threshold");
+  check("B9.5", after.rows.every((r) => Number(r.n) === 1), "a second batch may cross a higher mark, but never pages one already sent");
+  check("B9.6", after.rows.length >= rows.rows.length, `and the marks only accumulate (${rows.rows.length} → ${after.rows.length})`);
+}
+
+// ---------------------------------------------------------------------------
+// B10 — both paths refuse a tenant ceiling the same way
+// ---------------------------------------------------------------------------
+//
+// The guard on the extraction itself. Before `economicPath.ts`, an org or key
+// pinned against its own dollar ceiling alerted on the interactive path and was
+// silent on the CI path — a divergence with no reason behind it, found only by
+// reading the two implementations side by side. Both now share one function, so
+// this asserts the behaviour they share rather than the code they share: delete
+// the alert from `reserveBoth` and both halves of this go red at once.
+{
+  const { enqueueCiBatch } = await import(path.join(DIST, "ciBatch.js"));
+  await db.query("DELETE FROM budget_alerts");
+  await db.query("DELETE FROM provider_spend_days");
+  await db.query("DELETE FROM provider_reservations");
+  await resetBreaker(db, { actor: "test-setup", reason: "known state before the parity case" });
+
+  const mkOrg = async () => {
+    const orgId = await makeOrg();
+    await grantCredits(db, { orgId, kind: "pack_purchase", credits: 500, expiresAt: new Date(Date.now() + 365 * 864e5) });
+    return orgId;
+  };
+  // An org ceiling far below one call's worst case: the reservation cannot fit,
+  // and the refusal is the org's alone — the global day is wide open.
+  const tinyOrgCeiling = 1;
+  const generousDay = hardMaxCostMicrodollars(SONNET) * 1000;
+
+  const interactiveSink = [];
+  const orgA = await mkOrg();
+  const interactive = await hostedExplain(
+    db,
+    {
+      provider: async () => ({ kind: "ok", json: { findings: [] }, usage: { inputTokens: 1, outputTokens: 1, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 } }),
+      dailyBudgetMicrodollars: generousDay,
+      orgMonthlyBudgetMicrodollars: tinyOrgCeiling,
+      alert: alertsInto(interactiveSink),
+      now: () => T0,
+    },
+    { orgId: orgA, frame: "home.png", buildHash: "p1", designHash: "d", model: SONNET, pass: "analysis" }
+  );
+
+  const batchSink = [];
+  const orgB = await mkOrg();
+  const repoB = randomUUID();
+  const runB = randomUUID();
+  await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'r')", [repoB, orgB]);
+  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary) VALUES ($1,$2,$3,'c1','{}')", [runB, orgB, repoB]);
+  const batched = await enqueueCiBatch(
+    db,
+    {
+      submit: async () => "batch_never",
+      fetch: async () => null,
+      dailyBudgetMicrodollars: generousDay,
+      orgMonthlyBudgetMicrodollars: tinyOrgCeiling,
+      alert: alertsInto(batchSink),
+      now: () => T0,
+    },
+    { orgId: orgB, repoId: repoB, runId: runB, model: SONNET, frames: [{ frame: "home.png", buildHash: "p1", designHash: "d" }] }
+  );
+
+  const refused = (sink) => sink.filter((m) => m.includes("provider budget refused a call"));
+  check("B10.1", !interactive.ok && interactive.code === "provider_budget_exhausted", "the interactive path refuses at the org ceiling");
+  check("B10.2", batched.batchId === null && batched.skipped.length === 1, "the CI path refuses the same frame");
+  check("B10.3", refused(interactiveSink).length === 1 && refused(batchSink).length === 1,
+    `and BOTH page an operator — the CI path used to be silent here (${refused(interactiveSink).length} vs ${refused(batchSink).length})`);
+  check("B10.4", !(await isTripped(db)), "neither trips the global breaker — one tenant's ceiling must not pause explain for everyone");
+
+  const blocked = await db.query("SELECT org_id FROM usage_events WHERE status = 'blocked_no_charge' AND org_id IN ($1, $2)", [orgA, orgB]);
+  check("B10.5", blocked.rows.length === 2, "and both record the refusal as a no-charge event rather than refusing silently");
+  check("B10.6", (await balance(db, orgA)) === 500 && (await balance(db, orgB)) === 500, "no credits were taken on either path");
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);

@@ -1,14 +1,5 @@
-import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
-import { consumeCredits, refundCredits, InsufficientCreditsError } from "./ledger.js";
-import {
-  reserveProviderBudget,
-  settleProviderBudget,
-  releaseProviderBudget,
-  creditsForPass,
-  creditsRequired,
-  type BudgetLimits,
-} from "./providerBudget.js";
+import { creditsForPass, creditsRequired, type BudgetLimits } from "./providerBudget.js";
 import {
   recordUsage,
   computeCostMicrodollars,
@@ -16,11 +7,11 @@ import {
   creditsUsedByKeyInMonth,
   type TokenUsage,
 } from "./usage.js";
-import { makeCacheKey, cacheGet, cachePut } from "./resultCache.js";
-import { isTripped, checkAndTrip, tripBreaker, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
-import { evaluateAllBudgets } from "./budgetAlerts.js";
+import { makeCacheKey, cacheGet } from "./resultCache.js";
+import { isTripped, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
+import { reserveBoth, settleCharged, releaseBoth } from "./economicPath.js";
 import type { ApiKeyRecord } from "./apiKeys.js";
-import { buildEnrichment, applyEnrichment, saveRunFindings, type Enrichment } from "./enrichment.js";
+import { buildEnrichment, applyEnrichment, type Enrichment } from "./enrichment.js";
 
 /**
  * Hosted explain pipeline (Build 4.0 Phase C) — the enforcement point every
@@ -222,77 +213,59 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     orgMonthlyMicrodollars: deps.orgMonthlyBudgetMicrodollars ?? null,
     keyMonthlyMicrodollars: deps.keyMonthlyBudgetMicrodollars ?? null,
   };
-  const providerReservationId = randomUUID();
-  const budget = await reserveProviderBudget(db, {
-    reservationId: providerReservationId,
+  // 5 and 6 — both reservations, or neither. The ordering, the unwind, the
+  // breaker trip and the budget alerts all live in `economicPath.ts` so the CI
+  // batch path cannot drift from this one (see that file's header).
+  const admission = await reserveBoth(db, {
     orgId: req.orgId,
     apiKeyId: req.apiKey?.id ?? null,
+    runId: req.runId ?? null,
+    frame: req.frame,
     model: req.model,
     pass: req.pass,
     batch: req.batch ?? false,
+    auto: req.auto ?? false,
+    credits,
     limits,
+    alert: deps.alert,
     now,
+    context: "for an interactive explain",
   });
-  if (!budget.ok) {
-    // No provider call, no credits touched, and the reason is recorded — a
-    // refused reservation is an operational event, not a customer fault.
-    await recordUsage(db, {
-      ...base,
-      status: "blocked_no_charge",
-      detail: budget.code === "model_not_priced" ? "model not priced" : `provider budget: ${budget.scope}`,
-    });
-    if (budget.code === "model_not_priced") {
-      return { ok: false, code: "model_not_priced", message: budget.message, ciStaysGreen: true };
+  if (!admission.ok) {
+    switch (admission.code) {
+      case "model_not_priced":
+        return { ok: false, code: "model_not_priced", message: admission.message, ciStaysGreen: true };
+      case "provider_budget_exhausted":
+        // A tripped breaker is the paused-everywhere condition and says so; a
+        // tenant ceiling is this org's problem alone and must read differently.
+        return admission.breakerTripped
+          ? { ok: false, code: "explain_paused", message: EXPLAIN_PAUSED_MESSAGE, ciStaysGreen: true }
+          : { ok: false, code: "provider_budget_exhausted", message: admission.message, ciStaysGreen: true };
+      case "insufficient_credits":
+        return {
+          ok: false,
+          code: "insufficient_credits",
+          message: "not enough credits — buy a pack to keep explaining. Diffs, reports, and uploads are unaffected.",
+          ciStaysGreen: true,
+        };
     }
-    if (budget.scope === "global-day") {
-      // The global ceiling is the 100% condition, and it must be sticky: a
-      // human decides when spending resumes. A tenant-scoped refusal must not
-      // pause explain for everyone, so only this scope trips.
-      await tripBreaker(
-        db,
-        `daily provider budget would be exceeded (limit $${(budget.limitMicrodollars / 1e6).toFixed(2)}, ` +
-          `spent $${(budget.committedMicrodollars / 1e6).toFixed(4)}, reserved $${(budget.outstandingMicrodollars / 1e6).toFixed(4)}, ` +
-          `this call could cost $${(budget.requestedMicrodollars / 1e6).toFixed(4)})`,
-        deps.alert,
-        now
-      );
-      return { ok: false, code: "explain_paused", message: EXPLAIN_PAUSED_MESSAGE, ciStaysGreen: true };
-    }
-    deps.alert(
-      `Normascope provider budget refused a call: ${budget.scope} limit $${(budget.limitMicrodollars / 1e6).toFixed(2)}, ` +
-        `already spent $${(budget.committedMicrodollars / 1e6).toFixed(4)}, reserved $${(budget.outstandingMicrodollars / 1e6).toFixed(4)}.`
-    );
-    return { ok: false, code: "provider_budget_exhausted", message: budget.message, ciStaysGreen: true };
-  }
-
-  // 5b — the reservation just raised committed capacity, so this is the moment
-  // to say whether a budget has crossed 50/75/90/100%. Observation only: it
-  // cannot refuse anything and it never throws (Pathway 1 item 6).
-  await evaluateAllBudgets(db, { orgId: req.orgId, apiKeyId: req.apiKey?.id ?? null, limits }, deps.alert, now);
-
-  // 6 — reserve the customer's credits. If this fails, give our dollars back:
-  // nothing was called, so nothing may stay held.
-  let reservation;
-  try {
-    reservation = await consumeCredits(db, req.orgId, credits, now);
-  } catch (err) {
-    await releaseProviderBudget(db, providerReservationId);
-    if (err instanceof InsufficientCreditsError) {
-      return {
-        ok: false,
-        code: "insufficient_credits",
-        message: "not enough credits — buy a pack to keep explaining. Diffs, reports, and uploads are unaffected.",
-        ciStaysGreen: true,
-      };
-    }
-    throw err;
   }
 
   // 7 — provider call; any failure returns both reservations in full.
   const fail = async (detail: string): Promise<ExplainOutcome> => {
-    await releaseProviderBudget(db, providerReservationId);
-    await refundCredits(db, reservation);
-    await recordUsage(db, { ...base, status: "failed_no_charge", detail });
+    await releaseBoth(db, {
+      orgId: req.orgId,
+      apiKeyId: req.apiKey?.id ?? null,
+      runId: req.runId ?? null,
+      frame: req.frame,
+      model: req.model,
+      pass: req.pass,
+      batch: req.batch ?? false,
+      auto: req.auto ?? false,
+      providerReservationId: admission.providerReservationId,
+      creditReservation: admission.creditReservation,
+      detail,
+    });
     return {
       ok: false,
       code: "analysis_failed",
@@ -329,34 +302,30 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     return fail("response failed schema validation");
   }
 
-  // 8 — inject history fields (our data, not the model's), settle, meter,
-  // cache, persist for future recurrence, return.
-  //
-  // `settleProviderBudget` records the real spend and frees the unused part of
-  // the reservation. It is the only writer of provider spend on this path —
-  // calling `addSpend` here as well would double-count the day.
+  // 8 — inject history fields (our data, not the model's), then settle: record
+  // the real spend, meter, cache, and persist for future recurrence.
   const findings = enrichment ? applyEnrichment(result.json, enrichment) : result.json;
   const cost = computeCostMicrodollars(req.model, result.usage, { batch: req.batch }) ?? 0;
-  await settleProviderBudget(db, providerReservationId, cost, now);
-  await checkAndTrip(db, deps.dailyBudgetMicrodollars, deps.alert, now);
-  await recordUsage(db, {
-    ...base,
-    status: "charged",
+  await settleCharged(db, {
+    orgId: req.orgId,
+    apiKeyId: req.apiKey?.id ?? null,
+    repoId: req.repoId ?? null,
+    runId: req.runId ?? null,
+    frame: req.frame,
+    model: req.model,
+    pass: req.pass,
+    batch: req.batch ?? false,
+    auto: req.auto ?? false,
+    providerReservationId: admission.providerReservationId,
+    credits,
     usage: result.usage,
     costMicrodollars: cost,
-    creditsCharged: credits,
+    cacheKey,
+    findings,
+    dailyBudgetMicrodollars: deps.dailyBudgetMicrodollars,
+    alert: deps.alert,
+    now,
     detail: enrichment ? `enrichment_tokens=${enrichment.tokenEstimate}` : "",
   });
-  await cachePut(db, req.orgId, cacheKey, req.model, findings);
-  if (req.repoId && req.runId) {
-    await saveRunFindings(db, {
-      orgId: req.orgId,
-      repoId: req.repoId,
-      runId: req.runId,
-      frame: req.frame,
-      model: req.model,
-      findings,
-    });
-  }
   return { ok: true, findings, cached: false, creditsCharged: credits };
 }

@@ -627,10 +627,45 @@ action**, not an API route, so `middleware.ts`'s `/admin` gate covers it — an
 > authentication. Step 6's session layer should take the actor from the session
 > and stop trusting the field.
 
-Migrations are now `001`–`010`. Full suite: **279 checks green** on PGlite,
-**294** against real Postgres, across nine suites — run 2026-08-12. (B9 was
+Migrations are now `001`–`010`. Full suite: **291 checks green** on PGlite,
+**306** against real Postgres, across nine suites — run 2026-08-12. (B9 was
 added by the maintainability sweep below; the CI-batch half of the alerting had
 no test when it shipped.)
+
+---
+
+### 3g. Money moves in one place — the economic path, extracted ✅
+
+`explainService.ts` and `ciBatch.ts` each hand-rolled the same sequence —
+reserve provider dollars, reserve credits, unwind if either fails, later settle
+or refund. Two implementations of one rule. `src/economicPath.ts` now holds it
+once, as `reserveBoth`, `settleCharged` and `releaseBoth`; the two callers lost
+174 lines and gained 123.
+
+**This was not a tidying exercise. The duplication was already producing bugs.**
+
+| Found | What it was |
+|---|---|
+| Tenant-ceiling refusals were silent on one path | An org or key pinned against its dollar ceiling alerted an operator from interactive explain and alerted nobody from a CI batch. Nobody decided that; the two copies had simply drifted. Both alert now — a **behaviour change**, guarded by B10 |
+| Provider dollars held when credits ran out | Reserving dollars before credits means a customer who cannot pay leaves a reservation already taken. It was released correctly — but **nothing tested it**, and the failure is silent: the reservation is neither settled nor released, so it holds capacity against the global day for its full 15-minute TTL. One org out of credits would quietly lower the ceiling for every other org, with budget refusals nobody could account for. P9.9–P9.11 |
+
+The second one was found by the discipline, not by reading: deleting the release
+line left **every suite green**. That is what "a guard you have not watched fail
+is not a guard" is for.
+
+**What deliberately stayed duplicated.** Result-cache lookups, the per-run cap,
+and the wording of refusals. They differ in shape — the batch path caps frames
+as it builds a batch, the interactive path counts a run's history — and folding
+them in would need a flag each, which is how a shared function becomes harder to
+read than the duplication it replaced. The rule applied: **extract what is
+identical and moves money, not what merely rhymes.**
+
+**One consequence worth knowing.** `evaluateAllBudgets` moved inside
+`reserveBoth`, so it cannot be added to one path and forgotten on the other. A
+CI batch therefore evaluates per frame rather than once per batch, and a batch
+that climbs through two marks now sends two alerts rather than one. The
+per-threshold dedupe still bounds it at four per day per scope, and B9.3–B9.6
+assert that no mark is ever paged twice.
 
 ---
 
@@ -926,7 +961,8 @@ absent.
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
 | 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.22 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe |
-| The economic path is implemented twice | **Open — maintainability, not correctness.** `explainService.ts` and `ciBatch.ts` each hand-roll reserve → consume → call → settle/release, so every rule must be added to both and forgetting one fails silently. Budget alerts hit this the day they were written; B9 now guards the CI half. Extraction is worth its own change, before a third caller exists |
+| The economic path is implemented twice | **Closed** (§3g). One module, `economicPath.ts`; no other file may move money. The extraction found two live defects — see below |
+| Provider dollars held when credits run out | **Closed** (§3g, P9.9–P9.11). Was real and untested: an org refused for credits left its provider reservation held for the full TTL, quietly reducing the global ceiling for every other org |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on |
 | Sonnet 5 intro pricing ends 2026-08-31 | **21 days.** Post-intro COGS is already the basis for the pack floor, so no repricing is forced — but verify |

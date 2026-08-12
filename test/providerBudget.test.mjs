@@ -395,6 +395,34 @@ if (REAL_PG) {
   const unpriced = await hostedExplain(db, deps(okProvider), req({ model: "claude-imaginary-9", buildHash: "b3" }));
   check("P9.7", !unpriced.ok && unpriced.code === "model_not_priced" && unpriced.ciStaysGreen, "an unpriced model fails closed before any reservation");
   check("P9.8", !(await isTripped(db)), "and none of that tripped the breaker — only the global ceiling does that");
+
+  // Our dollars are reserved BEFORE the customer's credits, so a customer who
+  // cannot pay leaves a reservation already taken. It must be given back.
+  //
+  // Nothing covered this until 2026-08-12, and it was found by deleting the
+  // release and watching every suite stay green. The damage is quiet: the
+  // reservation is never settled and never released, so it holds capacity
+  // against the global day for its full TTL. One org out of credits would
+  // reduce the ceiling for every other org, and the only symptom would be
+  // budget refusals nobody could account for.
+  await db.query("DELETE FROM provider_reservations");
+  const brokeOrg = await makeOrg();
+  await grantCredits(db, { orgId: brokeOrg, kind: "pack_purchase", credits: 1, expiresAt: new Date(Date.now() + 365 * 864e5) });
+  const poor = await hostedExplain(db, deps(okProvider), {
+    orgId: brokeOrg, frame: "x.png", buildHash: "b9", designHash: "d", model: SONNET, pass: "analysis",
+  });
+  const held = (await db.query("SELECT state FROM provider_reservations WHERE org_id = $1", [brokeOrg])).rows;
+  check("P9.9", !poor.ok && poor.code === "insufficient_credits", "an org without the credits for a call is refused");
+  check(
+    "P9.10",
+    held.length === 1 && held[0].state === "released",
+    `and the provider dollars reserved a moment earlier are released, not left holding the day's capacity (state: ${held[0]?.state ?? "no reservation row"})`
+  );
+  const stillFree = await reserveProviderBudget(db, {
+    reservationId: randomUUID(), orgId, model: SONNET, pass: "analysis",
+    limits: { globalDailyMicrodollars: hardMaxCostMicrodollars(SONNET) + Number((await db.query("SELECT COALESCE(SUM(spend_microdollars),0) AS t FROM provider_spend_days")).rows[0].t) },
+  });
+  check("P9.11", stillFree.ok, "so the capacity is genuinely available to the next request");
 }
 
 // --- P10: credits are derived from cost, and no sale can lose money -------

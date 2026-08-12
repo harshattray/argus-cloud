@@ -89,12 +89,15 @@ Four rules, each from something that actually went wrong here:
    margin would just have been wrong. **A comment claiming an invariant is not
    the invariant. Import the value.**
 
-2. **The economic path is written twice — change both.** `explainService.ts`
-   (interactive) and `ciBatch.ts` (CI batches) each hand-roll
-   reserve → consume → call → settle/release. Every new rule has to be added to
-   both, and forgetting one fails silently. When you add to one, add a test that
-   covers the *other*. Budget alerts went into both files the same day the CI
-   half had no test asserting the alert channel at all.
+2. **Money moves in one place — keep it that way.** `reserveBoth`,
+   `settleCharged` and `releaseBoth` in `src/economicPath.ts` are the only code
+   that reserves, settles, refunds or releases. `explainService.ts` and
+   `ciBatch.ts` call them; nothing else may call `reserveProviderBudget`,
+   `consumeCredits`, `refundCredits`, `settleProviderBudget` or
+   `releaseProviderBudget` directly. **A third caller copies the sequence again
+   — don't.** Those two files used to hand-roll it separately and had already
+   drifted: a tenant hitting its dollar ceiling alerted an operator on one path
+   and was silent on the other, for no reason anyone had decided.
 
 3. **A guard you have not watched fail is not a guard.** Break the code
    deliberately, see the test go red, put it back. `B4b` and `P4b` exist for
