@@ -550,10 +550,85 @@ stops testing the behaviour the moment the price is allowed to move.
 > validity and refusal rate compared before cutover; that needs live API calls
 > and has not been done. **Do not treat 2 credits as available until it has.**
 
-> ⬜ **Still open across §3d and §3e:** alerts at 50%, 75% and 90% are computed
-> (`thresholdCrossed`, and the operator page shows the band) but nothing
-> *delivers* one — only the 100% trip alerts, through `console.error`. The
-> release gate in PATHWAYS §3 wants all four reaching a human.
+> ✅ **Closed by §3f:** the 50/75/90% alerts that §3d and §3e computed but never
+> delivered now reach a human.
+
+---
+
+### 3f. Budget alerts, and a reset with a name on it — Pathway 1, item 6 ✅
+
+Two things were missing and both were about the human, not the arithmetic.
+
+**Spend protection existed at one point: the refusal at 100%.** The percentages
+were computed and shown on the operator page, but nothing sent anything, so the
+first news of a budget was explain pausing — at which point there is no decision
+left to make. `src/budgetAlerts.ts` delivers at 50, 75, 90 and 100% for the
+global day, an organization's month, an API key's month, and the funded provider
+account balance.
+
+**The breaker could be cleared invisibly.** `resetBreaker(db)` took no arguments
+and wrote no record, so the one control that stops spending left no trace of who
+released it. It now requires an actor and a reason, checked in the function *and*
+by a `CHECK` constraint, and appends to `breaker_events` — as do trips, in the
+same transaction that flips the state.
+
+| Rule | How it is enforced |
+|---|---|
+| One alert per threshold per period | `budget_alerts` primary key `(scope, subject, period, threshold)` |
+| Concurrent instances do not duplicate | The row is claimed *before* the send; only the claimer sends |
+| A crash mid-send does not lose the alert | `claimed_at` + `ALERT_RETRY_AFTER_SECONDS` re-arms it |
+| A send that throws is retried at once | The row is re-armed immediately with the error recorded |
+| A new day/month/funding re-arms | `period` is part of the key |
+| An unattributed reset is impossible | Required arguments *and* a database `CHECK` |
+| A trip always has an audit row | Both writes are one transaction |
+
+**Where the alert message is decided.** A budget that goes 40% → 95% has crossed
+three marks. All three are recorded, but **one** message is sent, naming 90% and
+saying which marks it passed on the way. Three pages for one event trains an
+operator to ignore the channel.
+
+**Claim-then-deliver is a deliberate trade.** Marking a row delivered only after
+a successful send lets every concurrent evaluation claim the same row — the first
+cut did exactly that and B4 caught it, 20 alerts for one event. Claiming first
+costs a lost alert if the process dies between claim and send; `claimed_at`
+bounds that to two minutes. A bounded duplicate beats an unbounded loss.
+
+`test/budgetAlerts.test.mjs` — **50 checks** on PGlite, **54** against real
+Postgres, all green. The concurrency claim is
+proven the way §3a and §3d prove theirs: **20 separate processes**, released
+together on a wall-clock barrier, page a human exactly once. The control that
+gives it teeth — read-what-has-been-alerted, decide, send — pages **20 times**
+for the same event. Without the barrier the control only collided twice in
+twenty; process start-up stagger, not concurrency, and it would have been weak
+evidence dressed as strong.
+
+The end-to-end case (B8) asserts the state matrix FUTURENORMA §3 sets out: at
+100% the next explain is refused *before* the provider is called, the refusal is
+recorded as `blocked_no_charge` rather than a customer failure, `ciStaysGreen`
+stays true, clearing the day's spend does **not** clear the breaker, and only an
+attributed reset resumes it.
+
+**Provider balance.** `provider_fundings` records what the account was funded
+with and who entered it; depletion is measured against `provider_spend_days`
+from that date, so there is no second ledger of spend. With no funding recorded
+the status is null and nothing is alerted — the launch policy is a small
+preloaded float with auto-reload off, and an unfunded provider account is the
+one failure a daily cap cannot prevent.
+
+Operator surface: `/admin/limits` gained the balance, the alert log (with
+undelivered rows called out as a broken channel, not a quiet one), the
+trip-and-reset history, and the reset control itself. The control is a **server
+action**, not an API route, so `middleware.ts`'s `/admin` gate covers it — an
+`/api/*` route would sit outside that matcher and need its own auth.
+
+> ⬜ **Known limit, stated rather than hidden:** behind the admin password there
+> is no session, so the actor on a reset is **self-declared**. It records who
+> says they made the call, which is what an incident review needs, but it is not
+> authentication. Step 6's session layer should take the actor from the session
+> and stop trusting the field.
+
+Migrations are now `001`–`010`. Full suite: **276 checks green** on PGlite,
+**291** against real Postgres, across nine suites — run 2026-08-12.
 
 ---
 

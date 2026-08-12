@@ -359,7 +359,7 @@ if (REAL_PG) {
 {
   await db.query("DELETE FROM provider_reservations");
   await db.query("DELETE FROM provider_spend_days");
-  await resetBreaker(db);
+  await resetBreaker(db, { actor: "test-operator", reason: "suite continues after a deliberate trip" });
   const orgId = await makeOrg();
   await grantCredits(db, { orgId, kind: "pack_purchase", credits: 50, expiresAt: new Date(Date.now() + 365 * 864e5) });
 

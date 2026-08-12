@@ -979,8 +979,11 @@ DOM, source, prompts, or AI responses as analytics payloads.
 
 #### Required control surfaces
 
-“Dashboard” means two separate products with different permissions, not one
-unrestricted master screen.
+"Dashboard" means two separate products with different permissions, not one
+unrestricted master screen. These are two navigation shells within the same
+Cloud application: the organization console for customers and the operator
+console for us. They must be designed and tested as complete control planes,
+not assembled as unrelated feature pages.
 
 **Organization dashboard — customer-facing**
 
@@ -1020,6 +1023,51 @@ from ordinary customer support. Operator access must not grant casual access
 to customer screenshots, DOM, source, prompts, or AI responses; content access
 requires a logged break-glass procedure.
 
+#### Control-plane information architecture
+
+All customer and operator pages must fit the following navigation. A new page
+needs an explicit owner area before implementation.
+
+| Console | Area | Owns |
+|---|---|---|
+| Organization | Overview | status, recent activity, unresolved work, credits, storage, attention items |
+| Organization | Runs and reports | repositories, runs, frames, reports, findings, history, shares |
+| Organization | Trends | recurrence, first drift, quality debt, repository and org trends |
+| Organization | Explain and automation | hosted explain, CI explain, caps, skipped work, AI state |
+| Organization | Organization | members, roles, invitations, repositories, keys, notifications, policies |
+| Organization | Billing and usage | subscription, invoices, packs, allowance, usage ledger, payment management |
+| Organization | Privacy and data | upload mode, disclosure, exclusions, retention, export, deletion |
+| Operator | Operations | health, incidents, queues, breakers, provider, backups, restore, sweeps |
+| Operator | Organizations | tenant inventory, account state, activity, storage, credits, support context |
+| Operator | Revenue and reconciliation | payments, webhooks, refunds, chargebacks, credits, cost, margin, discrepancies |
+| Operator | Usage and spend | provider cost, cache, reservations, budgets, concurrency, rate limits, anomalies |
+| Operator | Security and abuse | sign-ins, upload abuse, tenant probes, key events, injection alerts |
+| Operator | Controls | scoped pauses, kill switches, expiry, rollback, and reason capture |
+| Operator | Audit and support | operator actions, break-glass access, incident notes, customer context |
+
+The shared UI contract is mandatory: persistent navigation, organization and
+environment context, breadcrumbs, deep-linkable filters, search, pagination,
+clear loading/empty/stale/partial-failure/paused/read-only states, accessible
+keyboard and screen-reader support, responsive layouts, readable contrast, and
+reduced-motion behavior. Every critical number shows its time window, source,
+and timezone. Every destructive or operational action is scoped, confirmed,
+audited, and produces a result or completion receipt.
+
+The role matrix is server-enforced and must be reflected in navigation:
+
+| Role | Customer console | Operator console |
+|---|---|---|
+| Organization owner/admin | full organization control, billing, deletion, member/key management | none by default |
+| Member | reports, runs, trends, permitted explain/automation | none |
+| Designer | reports, findings, trends, comments/share access as granted | none |
+| Share viewer | one authorized shared run only | none |
+| Support operator | no customer console impersonation by default | scoped support views; break-glass content access only with reason and audit |
+| Finance/reliability/security operator | no customer console impersonation by default | domain-specific console areas and controls only |
+
+No new admin or account page is complete until it has an information-architecture
+area, server-side role tests, tenant-isolation tests, audit-event definition,
+empty/error/paused states, and a usable keyboard/screen-reader path.
+
 #### Dashboard release gate
 
 Before the paid product is called operationally ready:
@@ -1035,6 +1083,14 @@ Before the paid product is called operationally ready:
 - [ ] dashboards continue to show safe read-only history during outages or
   payment failure;
 - [ ] dashboard data is deletion-aware and follows documented retention.
+- [ ] every customer and operator page belongs to the canonical information
+  architecture and is reachable through stable navigation;
+- [ ] role/navigation checks prove users cannot discover or call another
+  console's routes, data, exports, or object URLs;
+- [ ] core workflows pass responsive, keyboard, screen-reader, and reduced-
+  motion checks;
+- [ ] destructive, financial, and operational actions show scope, confirmation,
+  audit context, and completion/failure state.
 
 #### Measurement gate
 
@@ -1057,17 +1113,17 @@ Before Cloud billing, verify:
 Implement in this order. **This list is the whole of Pathway 1** — §10.3 expands
 each item, and nothing lives only there:
 
-1. Make migrations race-safe under concurrent serverless cold starts. (§10.3 1A)
-2. Complete filesystem and S3/R2 storage drivers. (§10.3 1D)
-3. Enforce real request rate limits for upload and agent keys. (§10.3 1C)
-4. Reserve provider dollars before every call; settle, release, and refund
+1. ✅ Make migrations race-safe under concurrent serverless cold starts. (§10.3 1A)
+2. ✅ Complete filesystem and S3/R2 storage drivers. (§10.3 1D)
+3. ✅ Enforce real request rate limits for upload and agent keys. (§10.3 1C)
+4. ✅ Reserve provider dollars before every call; settle, release, and refund
    idempotently. (§10.3 **1B.1** and **1B.3**)
-5. Derive credit prices from each operation's hard maximum cost, so no operation
+5. ✅ Derive credit prices from each operation's hard maximum cost, so no operation
    can be sold below cost. (§10.3 **1B.2**)
-6. Deliver budget alerts at 50%, 75%, 90% and 100%, with an audited manual reset
-   for a tripped breaker. (§10.3 1C, second half)
-7. Fix reconciliation so allotment and pack-funded usage are attributed
-   correctly. (§10.3 1B)
+6. ✅ Deliver budget alerts at 50%, 75%, 90% and 100%, with an audited manual reset
+   for a tripped breaker. (§10.3 1C, second half) — `FinishedSPEC.md` §3f
+7. ⬅️ **next.** Fix reconciliation so allotment and pack-funded usage are
+   attributed correctly. (§10.3 1B)
 8. Add the reachable MoR webhook route and Paddle signature adapter.
 9. Add retention sweeps and deletion of database rows and storage blobs.
 10. Add backups, restore rehearsal, and operational alerts.
@@ -1206,6 +1262,12 @@ without manually opening Cloud.
 ### Pathway 5 — Complete auth, organizations, and collaboration
 
 **Goal:** turn a demo tenant into a safe multi-user product.
+
+This pathway builds the complete organization console and the first complete
+operator console surface together. Do not scatter account, billing, usage,
+deletion, and support pages across unrelated routes. Implement the shared shell,
+navigation, role matrix, and page ownership map before adding individual
+workflows.
 
 Implement:
 
@@ -1993,7 +2055,9 @@ and a completion receipt. Personal deletion must not delete an organization
 unless the user owns it.
 
 **Pathway 5 gate:** browser session probes, role probes, deletion probes,
-customer ledger checks, and sandbox billing provisioning pass.
+customer ledger checks, operator authorization probes, control-action audit
+tests, responsive/accessibility checks for core workflows, and sandbox billing
+provisioning pass.
 
 #### 5D. Shared-wallet exhaustion tests
 

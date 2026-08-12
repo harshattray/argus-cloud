@@ -254,7 +254,7 @@ const baseReq = (orgId, over = {}) => ({
   check("C6.3", run.rows.length === 1 && alerts.length === 1,
     "uploads/reports/diffs unaffected; alert fired exactly once");
 
-  await resetBreaker(db);
+  await resetBreaker(db, { actor: "test-operator", reason: "suite continues after a deliberate trip" });
   const resumed = await hostedExplain(db, deps(okProvider), baseReq(org, { buildHash: "c6-3" }));
   check("C6.4", resumed.ok === true && !(await isTripped(db)), "manual reset resumes explain");
 }

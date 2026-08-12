@@ -263,13 +263,16 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Storage port, filesystem + S3/R2 drivers (Pathway 1 item 2) | ✅ | Contract run against both; S3 leg on real R2 — §3b |
 | Request rate limiting, per key and per org (Pathway 1 item 3) | ✅ for authenticated paths | 20 separate processes share one ceiling — §3c |
 | Provider-dollar reservation before every call (Pathway 1, §10.3 1B.1) | ✅ | 20 separate processes share one budget; settlement idempotent — §3d |
+| Credits derived from each operation's hard maximum (Pathway 1 item 5, §10.3 1B.2) | ✅ | Suite fails if any operation earns below the margin floor — §3e |
+| Budget alerts at 50/75/90/100% + audited manual reset (Pathway 1 item 6) | ✅ | 20 separate processes page a human once; unattributed reset impossible — §3f |
 
-`main` @ **`e42810d`** (merge of `normascope-site`, which landed the public
-marketing site, the gated `/pitch` tree and the waitlist route), plus
-uncommitted Pathway 1 work. Full suite: **226 checks green** on PGlite, **237**
-against real Postgres, across eight suites — `migrations`, `storage`,
-`rateLimit`, `providerBudget`, `metering`, `enrichment`, `cibatch`, `waitlist` —
-run 2026-08-10. Migrations are now `001`–`009`.
+Branch `pathway-1-spend-safety` @ **`4c82a8d`** (cut from `main` @ `e42810d`,
+the merge of `normascope-site` that landed the public marketing site, the gated
+`/pitch` tree and the waitlist route), plus uncommitted item-6 work. Full suite:
+**276 checks green** on PGlite, **291** against real Postgres, across nine
+suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
+`metering`, `enrichment`, `cibatch`, `waitlist` — run 2026-08-12. Migrations are
+now `001`–`010`.
 
 *Previously:* branch `stage-5-metering` @ `ab40521`, pushed and
 fast-forward-merged to `main` 2026-07-30, with **63 checks green**.
@@ -685,7 +688,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 3 | The report page | argus-cloud | 2 | Images, findings, history visible; share UI |
 | 4 | Trends | argus-cloud | 2 | Repo view + frame trend chart |
 | 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
-| 6 | Auth + orgs + dashboards | argus-cloud | 5 | GitHub OAuth, magic links, key management, customer account page, admin view |
+| 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
 | 8 | Launch gates | both | 7 | E1, E6, legal pages, trademark, refund runbook |
 | 9 | Paid Cloud launch + first customers | — | 8 | Enable paid access for qualified waitlist users; first revenue |
@@ -960,8 +963,9 @@ because there is no session layer.**
 
 **Gate:** cross-tenant probes denied at the session layer, not just in SQL.
 
-**Our own admin view** (internal, no public route, admin role only — small, and
-mostly a read over data that already exists):
+**Our own operator console** (internal, no public route, restricted operator
+roles, and built as a real control plane rather than a small collection of
+support pages):
 
 - Every org: plan, subscription state, credit balance, credits consumed this
   month, storage used, last activity.
@@ -970,11 +974,87 @@ mostly a read over data that already exists):
   system. `reconcile.ts` already computes the global version.
 - Provider spend today against the breaker's daily budget.
 - Manual actions with an audit trail: issue goodwill credits (`ledger.ts`
-  already has the grant kind), reset the breaker, revoke a key.
+  already has the grant kind), reset the breaker, revoke a key, and apply
+  scoped operational pauses.
 
-Build it as a page behind the admin role, not a separate app. It is how you
-answer "is this customer profitable" and "why did their bill look odd" without
-opening a SQL client.
+Build it as one protected operator console inside the Cloud app, not as a
+separate app or a scattered set of hidden routes. It is how you answer “is this
+customer profitable?”, “what is failing?”, and “why did their bill look odd?”
+without opening a SQL client.
+
+#### Control-plane UI contract
+
+The product has two deliberate interfaces with separate navigation and
+permissions:
+
+1. **Organization console** — the customer-facing workspace for admins,
+   members, designers, and read-only share viewers.
+2. **Operator console** — the internal workspace for support, finance,
+   reliability, and security operators. It never becomes visible merely because
+   a user belongs to an organization.
+
+Both consoles use the same product shell and design system, but they do not
+share authorization, navigation, or data visibility. A route is not a UI
+boundary: every page, server action, API call, export, and object URL must
+enforce the same role and organization scope on the server.
+
+The organization console has a stable information architecture:
+
+- **Overview:** current status, recent runs, unresolved findings, credits,
+  storage, and actions needing attention.
+- **Runs and reports:** repositories, runs, frames, history, findings, and
+  share links.
+- **Trends:** repository and organization quality trends, recurrence, first
+  drift, and quality debt.
+- **Explain and automation:** hosted explanations, CI explanation activity,
+  caps, skipped work, and AI-exhaustion state.
+- **Organization:** members, roles, invitations, repositories, API/agent keys,
+  notifications, and automatic-explain policies.
+- **Billing and usage:** subscription, renewal, invoices, allowance versus
+  packs, usage ledger, storage, and payment management.
+- **Privacy and data:** upload mode, pre-upload disclosure, retention,
+  exclusions, exports, deletion, and completion receipts.
+
+The operator console has a separate stable information architecture:
+
+- **Operations overview:** service health, incidents, queues, breakers,
+  provider status, backups, restore status, and deletion sweeps.
+- **Organizations:** searchable tenant inventory, account state, activity,
+  storage, credits, repositories, and support context.
+- **Revenue and reconciliation:** subscriptions, packs, webhooks, refunds,
+  chargebacks, credit movements, provider cost, margin, and discrepancies.
+- **Usage and spend:** provider/model/operation costs, cache rate, budgets,
+  reservations, concurrency, rate limits, and anomalies.
+- **Security and abuse:** suspicious sign-ins, upload abuse, cross-tenant probe
+  failures, key events, injection alerts, and incident evidence.
+- **Controls:** scoped pauses for AI, uploads, captures, sharing, providers,
+  organizations, and keys; every action requires a reason and records expiry or
+  rollback when possible.
+- **Audit and support:** immutable operator actions, break-glass access,
+  customer-visible event context, and incident notes.
+
+The shared usability contract is part of the product, not visual polish:
+
+- persistent navigation with the current organization and environment visible;
+- consistent breadcrumbs, page titles, filters, search, pagination, and URL
+  state so support can link directly to a view;
+- clear loading, empty, stale, partial-failure, paused, exhausted, and
+  read-only states;
+- tables for investigation and cards only for summaries; no critical action
+  hidden behind an unexplained number;
+- destructive actions require recent authentication, an explicit scope, a
+  typed confirmation where appropriate, and a visible completion receipt;
+- every number has a time window, source, and timezone; customer totals and
+  operator totals reconcile to the same ledger;
+- keyboard access, responsive layouts, readable contrast, reduced motion, and
+  screen-reader labels are required for all core workflows;
+- no raw provider errors, secrets, prompts, screenshots, or cross-tenant data
+  appear in ordinary customer or operator views.
+
+The two consoles share components, but not data shortcuts. Any new admin or
+account feature must first be assigned to one of these information-architecture
+areas, its role matrix, its audit event, and its acceptance test. Do not add a
+one-off page when an existing area can own the workflow.
 
 ---
 
@@ -1023,6 +1103,10 @@ Nothing here is optional, and none of it is invisible if skipped.
   currently bounded by nothing.
 - **Ops** — backups with a *rehearsed* restore, uptime alerts that reach a phone,
   `npm audit`, security headers.
+- **Control-plane UI** — the organization and operator consoles pass their
+  navigation, role, tenant-isolation, audit, responsive, keyboard, and
+  screen-reader gates. No paid launch with scattered or support-only control
+  surfaces.
 - **Legal + docs** — ToS, Privacy, subprocessors, security contact, data-flow
   disclosure, pricing page with per-review cost, BYO instructions, exact model
   list, honest limitations ("hypotheses, not diagnoses").

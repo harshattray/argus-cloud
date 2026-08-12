@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { rateLimitTotals, rateLimitBySubject, MAX_SUBJECT_ROWS } from "argus-cloud/rateLimit.js";
 import { globalDayStatus, thresholdCrossed } from "argus-cloud/providerBudget.js";
-import { isTripped } from "argus-cloud/breaker.js";
+import { isTripped, breakerHistory } from "argus-cloud/breaker.js";
+import { recentAlerts, providerBalanceStatus, undeliveredAlertCount } from "argus-cloud/budgetAlerts.js";
 import { getDb } from "../../../lib/db";
+import { resetBreakerAction } from "./actions";
 
 /**
  * Rate-limit activity — the operator visibility half of PATHWAYS.md §10.3 "1C"
@@ -49,11 +51,15 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
 
 export default async function LimitsPage() {
   const db = await getDb();
-  const [totals, subjects, budget, paused] = await Promise.all([
+  const [totals, subjects, budget, paused, alerts, undelivered, balance, breaker] = await Promise.all([
     rateLimitTotals(db, WINDOW_MINUTES),
     rateLimitBySubject(db, WINDOW_MINUTES),
     globalDayStatus(db, DAILY_BUDGET_MICRODOLLARS),
     isTripped(db),
+    recentAlerts(db, 12),
+    undeliveredAlertCount(db),
+    providerBalanceStatus(db),
+    breakerHistory(db, 8),
   ]);
   const crossed = thresholdCrossed(budget.usedPercent);
 
@@ -126,6 +132,136 @@ export default async function LimitsPage() {
               Past the {crossed}% mark. At 100% a call is refused before it is made and explain pauses until
               someone clears it; reports, diffs, uploads, and CI are unaffected.
             </p>
+          )}
+        </section>
+
+        {/* The funded provider balance. Launch policy is a small preloaded float
+            with auto-reload off, so the point of this card is to be read before
+            it empties — an unfunded provider account is the one failure the
+            daily cap cannot prevent. */}
+        <section className="mb-6 rounded-xl border border-black/10 bg-white px-4 py-3.5">
+          <h2 className="eyebrow text-text/45 mb-3">Provider account balance</h2>
+          {balance === null ? (
+            <p className="text-[13.5px] text-text/50">
+              No funding recorded. Nothing is estimated here — record what the provider account was funded with
+              to get depletion alerts at 50, 75, 90 and 100%.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-[12px] text-text/40">Funded</p>
+                  <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(balance.balanceMicrodollars)}</p>
+                </div>
+                <div>
+                  <p className="text-[12px] text-text/40">Spent since</p>
+                  <p className="numeric text-[19px] font-semibold tabular-nums">{dollars(balance.usedMicrodollars)}</p>
+                </div>
+                <div>
+                  <p className="text-[12px] text-text/40">Remaining</p>
+                  <p
+                    className={`numeric text-[19px] font-semibold tabular-nums ${balance.usedPercent >= 90 ? "text-clay" : ""}`}
+                  >
+                    {dollars(balance.remainingMicrodollars)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[12px] text-text/40">Recorded</p>
+                  <p className="numeric text-[13.5px] tabular-nums text-text/60">
+                    {timeFormat.format(new Date(balance.recordedAt))}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 text-[12px] text-text/40">
+                Our record of spend, not the provider&rsquo;s. A difference between the two is worth looking at.
+              </p>
+            </>
+          )}
+        </section>
+
+        {/* Explain paused is the one state that needs a human, so the control
+            that clears it lives next to the reason it tripped. */}
+        <section className="mb-6 rounded-xl border border-black/10 bg-white px-4 py-3.5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="eyebrow text-text/45">Circuit breaker</h2>
+            <p className="text-[12px] text-text/35">{paused ? "TRIPPED" : "clear"}</p>
+          </div>
+          {paused && (
+            <form action={resetBreakerAction} className="mb-4 grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+              <input
+                name="actor"
+                required
+                placeholder="your name"
+                className="rounded-lg border border-black/15 px-3 py-2 text-[13.5px]"
+              />
+              <input
+                name="reason"
+                required
+                placeholder="why it is safe to spend again"
+                className="rounded-lg border border-black/15 px-3 py-2 text-[13.5px]"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-clay px-4 py-2 text-[13.5px] font-medium text-white hover:opacity-90"
+              >
+                Reset
+              </button>
+              <p className="text-[12px] text-text/40 sm:col-span-3">
+                Both fields are required and are kept permanently. Resetting resumes provider calls immediately.
+              </p>
+            </form>
+          )}
+          {breaker.length === 0 ? (
+            <p className="text-[13.5px] text-text/40">Never tripped.</p>
+          ) : (
+            <ul className="space-y-1.5 text-[13px]">
+              {breaker.map((event) => (
+                <li key={event.id} className="flex flex-wrap gap-x-2 border-t border-black/6 pt-1.5 first:border-0 first:pt-0">
+                  <span className={event.action === "tripped" ? "font-semibold text-clay" : "font-semibold text-text/60"}>
+                    {event.action}
+                  </span>
+                  <span className="numeric tabular-nums text-text/45">{timeFormat.format(new Date(event.createdAt))}</span>
+                  <span className="text-text/45">{event.actor}</span>
+                  <span className="text-text/60">{event.reason}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Budget alerts. An undelivered row means the channel is broken, which
+            is a different problem from a quiet one and must not read the same. */}
+        <section className="mb-6 rounded-xl border border-black/10 bg-white px-4 py-3.5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="eyebrow text-text/45">Budget alerts · 50 / 75 / 90 / 100%</h2>
+            <p className={`text-[12px] ${undelivered > 0 ? "font-semibold text-clay" : "text-text/35"}`}>
+              {undelivered > 0 ? `${undelivered} undelivered — check the alert channel` : "all delivered"}
+            </p>
+          </div>
+          {alerts.length === 0 ? (
+            <p className="text-[13.5px] text-text/40">No budget has crossed 50% yet.</p>
+          ) : (
+            <ul className="space-y-1.5 text-[13px]">
+              {alerts.map((a) => (
+                <li
+                  key={`${a.scope}:${a.subjectId}:${a.period}:${a.threshold}`}
+                  className="flex flex-wrap gap-x-2 border-t border-black/6 pt-1.5 first:border-0 first:pt-0"
+                >
+                  <span className="font-semibold tabular-nums">{a.threshold}%</span>
+                  <span className="text-text/60">{a.scope}</span>
+                  <span className="numeric text-[12.5px] text-text/45">{a.period}</span>
+                  <span className="numeric tabular-nums text-text/45">
+                    {dollars(a.usedMicrodollars)} of {dollars(a.limitMicrodollars)}
+                  </span>
+                  <span className="numeric tabular-nums text-text/45">
+                    {timeFormat.format(new Date(a.firstSeenAt))}
+                  </span>
+                  {a.deliveredAt === null && (
+                    <span className="font-semibold text-clay">undelivered{a.lastError ? ` — ${a.lastError}` : ""}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </section>
 

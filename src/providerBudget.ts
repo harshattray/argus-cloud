@@ -585,6 +585,68 @@ export async function globalDayStatus(
   };
 }
 
+/**
+ * The same question for one organization's billing month. Read by the alerts in
+ * `budgetAlerts.ts`: §10.3 1C requires the 50/75/90/100% warnings for "global
+ * **and** organization budgets", and the global day says nothing about a single
+ * tenant burning through the ceiling an operator set for it.
+ *
+ * Committed spend comes from `usage_events` and outstanding from live
+ * reservations — the same two sources `reserveProviderBudget` authorizes
+ * against, so the warning and the refusal can never disagree.
+ */
+export async function orgMonthStatus(
+  db: Db,
+  orgId: string,
+  limitMicrodollars: number | null | undefined,
+  now: Date = new Date()
+): Promise<BudgetStatus> {
+  return monthStatus(db, "org-month", "org_id", orgId, limitMicrodollars, now);
+}
+
+/** The same, for one API key — the scope that contains a runaway agent. */
+export async function keyMonthStatus(
+  db: Db,
+  apiKeyId: string,
+  limitMicrodollars: number | null | undefined,
+  now: Date = new Date()
+): Promise<BudgetStatus> {
+  return monthStatus(db, "key-month", "api_key_id", apiKeyId, limitMicrodollars, now);
+}
+
+async function monthStatus(
+  db: Db,
+  scope: BudgetScope,
+  column: "org_id" | "api_key_id",
+  subjectId: string,
+  limitMicrodollars: number | null | undefined,
+  now: Date
+): Promise<BudgetStatus> {
+  const month = utcMonth(now);
+  const [monthStart, monthEnd] = monthBounds(month);
+  const num = async (sql: string, params: unknown[]): Promise<number> =>
+    Number((await db.query<{ total: string | number | null }>(sql, params)).rows[0]?.total ?? 0);
+
+  const committed = await num(
+    `SELECT COALESCE(SUM(cost_microdollars), 0) AS total FROM usage_events
+     WHERE ${column} = $1 AND created_at >= $2 AND created_at < $3`,
+    [subjectId, monthStart, monthEnd]
+  );
+  const outstanding = await num(
+    `SELECT COALESCE(SUM(max_microdollars), 0) AS total FROM provider_reservations
+     WHERE state = 'reserved' AND ${column} = $1 AND month = $2 AND expires_at > $3`,
+    [subjectId, month, now.toISOString()]
+  );
+  const limit = limitMicrodollars ?? null;
+  return {
+    scope,
+    limitMicrodollars: limit,
+    committedMicrodollars: committed,
+    outstandingMicrodollars: outstanding,
+    usedPercent: limit !== null && limit > 0 ? ((committed + outstanding) / limit) * 100 : null,
+  };
+}
+
 /** Alert thresholds required by FUTURENORMA §3 and PATHWAYS §10.3 1C. */
 export const ALERT_THRESHOLDS = [50, 75, 90, 100] as const;
 

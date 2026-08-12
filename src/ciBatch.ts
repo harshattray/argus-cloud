@@ -11,6 +11,7 @@ import {
   creditsRequired,
   type BudgetLimits,
 } from "./providerBudget.js";
+import { evaluateAllBudgets } from "./budgetAlerts.js";
 import { buildEnrichment, applyEnrichment, saveRunFindings } from "./enrichment.js";
 import { findingsShapeValid, AUTO_EXPLAIN_PER_RUN_CAP } from "./explainService.js";
 
@@ -198,6 +199,12 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
     requests.push({ customId: f.frame, frame: f.frame, model: req.model, enrichmentText: enrichment?.text ?? null });
     accepted++;
   }
+
+  // Once for the batch, not once per frame: a run of five frames raises the
+  // budget five times but is one event to an operator, and the dedupe in
+  // `budget_alerts` would collapse the repeats anyway at the cost of five
+  // round-trips (Pathway 1 item 6).
+  await evaluateAllBudgets(db, { orgId: req.orgId, limits }, deps.alert, now);
 
   if (entries.length === 0) {
     return { batchId: null, cachedFindings, skipped };

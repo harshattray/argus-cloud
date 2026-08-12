@@ -14,7 +14,7 @@
     "web"
   ],
   "scripts": {
-    "test": "npm run build && node test/migrations.test.mjs && node test/storage.test.mjs && node test/rateLimit.test.mjs && node test/providerBudget.test.mjs && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs && node test/waitlist.test.mjs",
+    "test": "npm run build && node test/migrations.test.mjs && node test/storage.test.mjs && node test/rateLimit.test.mjs && node test/providerBudget.test.mjs && node test/budgetAlerts.test.mjs && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs && node test/waitlist.test.mjs",
     "build": "tsc",
     "build:web": "npm run build && npm run build --workspace web",
     "dev:web": "npm run build && npm run dev --workspace web"

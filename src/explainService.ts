@@ -18,6 +18,7 @@ import {
 } from "./usage.js";
 import { makeCacheKey, cacheGet, cachePut } from "./resultCache.js";
 import { isTripped, checkAndTrip, tripBreaker, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
+import { evaluateAllBudgets } from "./budgetAlerts.js";
 import type { ApiKeyRecord } from "./apiKeys.js";
 import { buildEnrichment, applyEnrichment, saveRunFindings, type Enrichment } from "./enrichment.js";
 
@@ -263,6 +264,11 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     );
     return { ok: false, code: "provider_budget_exhausted", message: budget.message, ciStaysGreen: true };
   }
+
+  // 5b — the reservation just raised committed capacity, so this is the moment
+  // to say whether a budget has crossed 50/75/90/100%. Observation only: it
+  // cannot refuse anything and it never throws (Pathway 1 item 6).
+  await evaluateAllBudgets(db, { orgId: req.orgId, apiKeyId: req.apiKey?.id ?? null, limits }, deps.alert, now);
 
   // 6 — reserve the customer's credits. If this fails, give our dollars back:
   // nothing was called, so nothing may stay held.
