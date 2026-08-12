@@ -900,11 +900,18 @@ rules: no email addresses in URLs, query strings, or logs.
 Before publishing `normascope.com`, verify:
 
 - [ ] every Join early access action lands on `/cloud#waitlist`;
-- [ ] a new address round-trips into Postgres and produces the visitor
-  confirmation;
-- [ ] duplicate addresses remain one row;
-- [ ] source, referrer origin, and timestamp are recorded;
-- [ ] owner notification is configured and best-effort;
+- [x] a new address round-trips into Postgres and produces the visitor
+  confirmation — verified 2026-08-13 against the **real production Neon
+  database** over HTTP, with the row read back from a separate process;
+  see FinishedSPEC.md §4f;
+- [x] duplicate addresses remain one row — same address in different case
+  added no row, verified 2026-08-13;
+- [x] source, referrer origin, and timestamp are recorded — verified
+  2026-08-13, including the referrer query string being stripped;
+- [ ] owner notification is configured and best-effort — **still open.**
+  `RESEND_API_KEY` is unset, so `notify()` is a no-op. The best-effort
+  behaviour (a mail failure never costs a stored signup) is written and
+  reviewed but has not been exercised against the live provider;
 - [x] an admin-only count, list, and CSV export are available — `/admin/waitlist`,
   gated by `ADMIN_PASSWORD` (separate from the pitch phrase), verified
   2026-08-10; see FinishedSPEC.md §4a;
@@ -916,6 +923,13 @@ Before publishing `normascope.com`, verify:
   proprietorship of Harsha Attray;
 - [ ] the future Paddle seller/payment identity is documented and consistent
   with the proprietor information before billing is enabled.
+
+> **What the three ticks above do and do not mean (2026-08-13).** They were
+> proven against the real production database, which is what makes them worth
+> ticking — but the requests came from localhost, not from a deployment. The
+> storage path is proven; the deployed path is not. The preview deploy that
+> FUTURENORMA §4 Step 1 (F1) still owes is what closes that gap, and it is also
+> the only way to exercise owner notification end to end.
 
 Once live, measure interest using unique signups and signup rate by source,
 not raw form submissions. Review the signal weekly before changing Cloud
@@ -1126,10 +1140,14 @@ each item, and nothing lives only there:
    can be sold below cost. (§10.3 **1B.2**)
 6. ✅ Deliver budget alerts at 50%, 75%, 90% and 100%, with an audited manual reset
    for a tripped breaker. (§10.3 1C, second half) — `FinishedSPEC.md` §3f
-7. ⬅️ **next.** Fix reconciliation so allotment and pack-funded usage are
-   attributed correctly. (§10.3 1B)
-8. Add the reachable MoR webhook route and Paddle signature adapter.
-9. Add retention sweeps and deletion of database rows and storage blobs.
+7. ✅ Fix reconciliation so allotment and pack-funded usage are attributed
+   correctly. (§10.3 1B) — `FinishedSPEC.md` §3h
+8. ✅ Add the reachable MoR webhook route and Paddle signature adapter. —
+   `FinishedSPEC.md` §3i. The route, signature scheme, replay window,
+   idempotency and state ordering are verified; the **Paddle sandbox loop is
+   `Blocked`** on an account, which is Phase 7's gate, not this item's.
+9. ⬅️ **next.** Add retention sweeps and deletion of database rows and storage
+   blobs.
 10. Add backups, restore rehearsal, and operational alerts.
 
 > Items 4–6 were previously described **only** in §10.3 and were missing from

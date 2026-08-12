@@ -44,6 +44,33 @@ untracked `USER-GUIDE.md`, and six untracked `assets/normascope-cloud-*`
 concept directories. The suite results above are for the working trees, not for
 the commits.
 
+**Re-run 2026-08-13** on branch `pathway-1-spend-safety`, after the deployment
+substrate work in §4f, the reconciliation work in §3h and the webhook work in §3i: `npm run verify` —
+which typechecks the server package, typechecks `web/`, runs the full suite,
+builds the web app and audits production dependencies — **exits 0**.
+
+| Command | Result |
+|---|---|
+| `npm test` (PGlite) | **353 checks, 0 failures**, 11 suites |
+| `DATABASE_URL=… npm test` (real Postgres 17) | **368 checks, 0 failures**, 11 suites |
+| `npm run verify` | exits 0 |
+
+The three `npm audit` highs are the already-signed-off
+`next`/`postcss`/`sharp` rows, inside their review dates. Working tree still
+dirty: `src/db.ts`, `web/next.config.mjs`, both `WaitlistForm` components,
+`web/app/api/waitlist/route.ts`, plus untracked `vercel.json` and
+`web/lib/waitlistEmail.ts`.
+
+**The suite is now discovered, not listed.** `npm test` runs
+`scripts/run-tests.mjs`, which picks up every `test/*.test.mjs`. It replaced a
+hand-maintained chain of `&&` in `package.json` that had to be edited each time
+a suite was added — a step that can be forgotten, and a suite nobody registered
+is a suite nobody runs (Doctrine 3). It also runs every suite rather than
+stopping at the first failure, and prints the total the docs quote instead of
+leaving it to `grep -c PASS`. Order is alphabetical and deliberately arbitrary:
+the suites share one database against a real server, so a suite that only
+passes in a particular position is borrowing state rather than passing.
+
 ---
 
 ## 2. Argus — the CLI, Action, and MCP server
@@ -669,6 +696,182 @@ assert that no mark is ever paged twice.
 
 ---
 
+### 3h. Reconciliation knows which pot the money came from — Pathway 1, item 7 ✅
+
+**The bug.** `reconcile.ts` summed every provider dollar spent in a month and
+divided by **pack revenue alone**. Two things were wrong and both push the same
+way:
+
+1. **Subscription revenue was invisible** — nothing in the schema recorded it.
+   `plan_allotment` grants carry `price_microdollars = 0`, correctly, because
+   the allowance is not sold; the subscription is. So the $59/mo, the larger
+   half of the business, was worth nothing to the report.
+2. **A charge did not know what funded it.** `ledger.ts` consumes
+   soonest-to-expire first, so one analysis can draw credits from an allowance,
+   a pack and a goodwill grant at once. That split was computed, used, returned
+   — and thrown away. Every dollar of it was charged against packs.
+
+The consequence is not an abstract accounting nicety. **The margin alert would
+have fired on healthy months.** Three subscribers burning the allowance they
+paid for, plus one $7 pack sold, reads as **29.2% margin** under the old
+formula and **97.3%** under the fixed one. An alert that cries wolf is worse
+than no alert, and this one exists to stop us selling a pack below cost.
+
+**What was added** (`migrations/011_revenue_attribution.sql`):
+
+| Record | Why it has to exist |
+|---|---|
+| `subscription_periods` | What a billing period was worth. Written only from a verified payment webhook (`source_ref` UNIQUE); Step 7 populates it from Paddle |
+| `usage_credit_sources` | Which grant funded which charge, and that grant's share of the provider cost |
+| `fee_microdollars` / `fee_recorded` on both | What the processor kept. A `$0` fee and an unknown fee are different numbers; a report that treats "not told yet" as "free" is fabricated economics |
+| `refunded_microdollars` on both | A refund reduces revenue in place. The period stays on the record because it still cost us the provider dollars its credits bought |
+
+**Four pots, kept apart:** allowance-funded cost against the subscription that
+granted it, pack-funded cost against that pack, goodwill as pure cost, and
+**spend with no funding record on its own line**. That last one matters — usage
+written before this migration, or by any future path that bypasses
+`economicPath.ts`, has no attribution. Folding it into a funded line would be a
+guess; leaving it out would understate cost. It is reported as unexplained.
+
+**The cost split is exact.** `attributeCost` apportions an event's cost across
+its funding grants once, at settlement, giving the rounding remainder to the
+largest share so the parts sum to the whole. A microdollar lost per event is a
+margin report that drifts away from the meter it derives from, slowly and
+invisibly. Stored per row, so the monthly report is a `SUM ... GROUP BY` and
+running it twice gives the same answer.
+
+**Evidence** — `test/reconcile.test.mjs`, 27 checks:
+
+| Check | Proves |
+|---|---|
+| R1.1–R1.4 | The split sums exactly to the whole, including three-way indivisible costs |
+| R2.1–R2.2 | A real `hostedExplain` call funded 3 credits from an allowance and 2 from a pack writes two rows with the right kinds, summing to the event's cost |
+| R2.3 | A failed analysis refunds the credits and writes **no** attribution row — there is nothing for a refund to reverse, because a reservation has exactly one terminal transition |
+| R3.1–R3.3 | Subscription revenue is visible; cost splits four ways; a healthy month stays quiet |
+| **R3.4** | **The guard.** The old formula run over the same seeded month false-alarms at 29.2% where the fixed one reports 97.3% |
+| R3.5–R3.8 | Goodwill on its own line; unrecorded fees flagged; storage reported as unmeasured; the report is deterministic |
+| R4.1–R4.3 | Unfunded spend is reported, the four cost lines sum to the meter's total, contribution subtracts every one of them |
+| R5.1–R5.4 | Recorded fees reduce net revenue; a replayed webhook records no second month; a refund reduces revenue in place and cannot exceed the price |
+| R6.1–R6.4 | The alert still fires when margin is genuinely below 50%, names each pot, subtracts supplied storage cost, and says when fees are missing |
+
+**Both guards were watched failing.** Dropping the rounding remainder turned
+R1.2 and R1.4 red; removing the `recordCostAttribution` call from
+`settleCharged` — the original bug, restored — turned R2.1 and R2.2 red.
+
+**A pre-existing test defect came out with it.** `budgetAlerts.test.mjs` B2, B3,
+B5, B6 and B8 reset `budget_alerts` and `provider_spend_days` between blocks but
+not `provider_reservations`. Outstanding reservations count toward the day
+alongside committed spend — that is the point of reserving — so on one shared
+server the reservations `providerBudget.test.mjs` left behind added $0.08 to
+every reading and four checks failed. Invisible on PGlite, where each suite gets
+its own database. Three later blocks in the same file already cleared the table;
+the earlier ones had simply never been run against a real server. Fixed in its
+own commit.
+
+**Suite:** 316 checks green on PGlite, **331 against a real Postgres server**,
+across ten suites — run 2026-08-13.
+
+**Not covered, deliberately.** Storage and serving cost is an input to
+`reconcileMonth`, not a measurement: nothing in this system meters bytes yet, so
+the report says `storageMeasured: false` rather than assuming zero. Subscription
+revenue is attributed to the month a period **starts** in rather than pro-rated
+across the two months a period usually spans — the allowance is granted and
+expires with the period, so the credits and the money that bought them stay
+together.
+
+---
+
+### 3i. The payment door exists and is reachable — Pathway 1, item 8 ✅ (sandbox `Blocked`)
+
+`src/webhooks.ts` had existed since Phase C with **nothing able to reach it** —
+no route, no HTTP path, no way for a processor to deliver anything. It also
+verified a scheme Paddle does not use.
+
+**What shipped:**
+
+| File | What it does |
+|---|---|
+| `src/paddle.ts` | Paddle Billing's real signature scheme, the normalised `BillingEvent`, and the minor-unit conversion |
+| `src/webhooks.ts` | Verify → parse → claim → apply, with the subscription state machine |
+| `web/app/api/webhooks/paddle/route.ts` | The door. Node runtime, raw body, opaque responses |
+| `migrations/012_billing_events.sql` | `billing_events`, explicit subscription states on `orgs`, `subscription_products` |
+
+**The signature scheme was wrong before.** Paddle signs **`${ts}:${rawBody}`**,
+not the body. Three things follow, and each is a way to be broken while passing
+a happy-path test:
+
+1. **The raw bytes.** `req.json()` then re-serialising gives a different string
+   and the HMAC never matches. The route uses `req.text()` and hands that
+   string through untouched.
+2. **The timestamp is inside the MAC**, which is what makes a captured request
+   expire. Verifying the signature without checking the timestamp leaves a
+   valid request replayable forever — the difference between "we verify
+   signatures" and "we are replay-safe". Tolerance is 5 minutes.
+3. **Signature before timestamp.** The timestamp is attacker-supplied until the
+   MAC says otherwise, so rejecting on it first would be answering a question
+   about an unauthenticated value.
+
+**The state machine is explicit, not a boolean.** `orgs.subscription_status` is
+`none | active | past_due | lapsed | refunded`, per PATHWAYS §"Payment failure
+safe state". Nothing deletes data because a payment failed.
+
+**Out-of-order delivery is the failure that would have been silent.** Webhooks
+are not ordered — a `subscription.updated` stamped 10:00 can arrive after a
+`subscription.canceled` stamped 10:05. Applying by arrival order silently
+revives a cancelled subscription: nothing errors, the customer simply keeps
+paying nothing, and the first anyone knows is a chargeback. Every transition
+compares the **processor's** timestamp against the one that set the current
+status, in the application *and again in the `UPDATE`'s `WHERE`* — a
+check-then-write is exactly the race that lets the older event land last.
+
+**Two design errors the tests found, not review:**
+
+| Found by | What it was |
+|---|---|
+| W3.1 | `billing_events.org_id` had a foreign key to `orgs`, so recording an event that named an org we have never heard of **threw** — rejecting precisely the row worth keeping. Renamed `claimed_org_id` with no FK: the name now says it is what the event asserted, not a verified link |
+| W4.5 | A subscription id already bound to one org, arriving for another, hit the unique index and threw → 500 → Paddle redelivers every few minutes for days. It is a decision, not a transient failure, and is now answered 2xx and recorded |
+
+**Evidence** — `test/webhooks.test.mjs`, 37 checks: signature scheme (11),
+minor-unit conversion and parsing (6), entitlement created exactly once
+including a redelivery and a forged body (6), events we cannot act on (4),
+ordering and binding (5), pack-requires-subscription (3), refunds (2).
+
+**Guards watched failing.** Signing the body alone → W1.2 red; removing the
+replay window → W1.8; removing the idempotency claim → W2.3; removing the
+ordering guard → W4.2; letting a pack be bought without a subscription → W5.1.
+
+> One correction worth recording. The first pass at running those five breaks
+> reported the ordering guard as untested. It was not — the harness ran
+> `npm run build && node test/…`, the broken tree failed to typecheck, and the
+> `&&` swallowed it into an empty output that read as "no failures". The same
+> `&&`-hides-the-signal trap that had just been removed from `npm test`.
+
+**Deliberately not done, and why:**
+
+- **The Paddle sandbox loop is `Blocked`** — it needs an account, which is
+  Harsha's to create (FUTURENORMA §4 Step 7). No real delivery has ever reached
+  this code.
+- **The field paths inside Paddle's `data` object are unverified.** They follow
+  the published shape. They are isolated in `paddle.ts:parseEvent` — one small,
+  pure function — precisely so a sandbox run has one place to correct.
+- `subscription_products.cloud_monthly` is a provisional slug like the pack ids
+  in `005`. Remapping it to the real Paddle price id is the whole of the
+  catalog wiring.
+- **Refunds do not claw back spent credits.** They bought provider calls that
+  really happened; reversing the ledger would drive a balance negative for
+  money already spent. Entitlement changes via the accompanying
+  `subscription.*` event.
+
+**New environment variable:** `PADDLE_WEBHOOK_SECRET`. Unset, the route logs
+and returns 500 rather than accepting anything — without a secret every
+signature check would fail anyway, and saying so plainly stops that being
+diagnosed as "Paddle is sending bad signatures".
+
+**Suite:** 353 checks green on PGlite, **368 against a real Postgres server**,
+across eleven suites — run 2026-08-13.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -766,10 +969,8 @@ currently zero-by-construction, not by evidence, so the traction surface built
 in §4c has nothing to measure yet. That is a sequencing fact, not a blocker to
 raise.
 
-Deployment itself is gated on §7 #11 — `web/package.json:14` declares
-`"argus-cloud": "file:.."`, so a Vercel project rooted at `web/` cannot see its
-own dependency. There is no `vercel.json` in either root. FUTURENORMA §4 Step 1
-(F1) owns this and calls for proving it with one free preview deploy.
+**Update 2026-08-13 — the deployment blockers are closed, and the recorded one
+was the wrong one.** See §4f.
 
 ### 4e. What the site does *not* claim — verified
 
@@ -792,6 +993,82 @@ Checked against the demand gate's honesty requirements:
 The remaining demand-gate boxes (waitlist round-trip in a deployed environment,
 owner notification configured, duplicate handling in production) were **not
 verified this audit** — they cannot be, until the site is deployed.
+
+> **Superseded in part, 2026-08-13.** Round-trip, deduplication and
+> source/referrer/timestamp capture are now verified against the **real
+> production Neon database** over HTTP, though still from localhost rather than
+> from a deployment. Owner notification remains unverified — `RESEND_API_KEY`
+> is unset. See §4f.
+
+### 4f. Deployment substrate — closed 2026-08-13
+
+Three separate things were done. Only one of them was the blocker anybody had
+written down.
+
+**1. The recorded blocker was already stale.** §7 #11 and FUTURENORMA §4 Step 1
+(F1) both said a Vercel project cannot resolve `"argus-cloud": "file:.."`. That
+stopped being true when npm workspaces were added: root `package.json` declares
+`"workspaces": ["web"]` and `node_modules/argus-cloud -> ..` resolves. What was
+actually missing was a build contract — `dist/` is gitignored, so a fresh
+checkout has none of the 17 modules `web/` imports, and `next build` alone
+fails. `vercel.json` now pins root-directory build, `npm run build:web`
+(which runs `tsc` first), and `web/.next` as output.
+
+Proven against a **clean checkout** — no `node_modules`, no `dist/`, no env
+files, exactly what Vercel clones: `npm install && npm run build:web` succeeds.
+
+**2. The real trap, which nothing had recorded.** `migrate()` reads
+`migrations/*.sql` from disk at runtime through a computed path
+(`src/db.ts:25`). Next traces `import` statements, not `readdir`. Inspecting
+the build's trace manifests found **0 of 34 function bundles carried a single
+`.sql` file** — every local build passes, every localhost test passes, and the
+first request touching the database on Vercel dies with `ENOENT`. This surfaces
+only on a real deployment, i.e. after DNS is pointed.
+
+Fixed with `outputFileTracingRoot` + `outputFileTracingIncludes` in
+`web/next.config.mjs`. Now **34 of 34** bundles carry all ten migrations, in the
+clean-checkout build as well.
+
+**3. A missing-database deploy no longer fails silently.** `createDb()` fell
+back to in-process PGlite whenever `DATABASE_URL` was unset — on Vercel that
+means each serverless instance gets its own empty database, accepts signups,
+returns success, and discards them, with nothing in any log. `src/db.ts:61` now
+refuses to start when `process.env.VERCEL` is set and the variable is absent.
+Tested both directions: refuses on Vercel, PGlite fallback intact for local dev,
+tests and CI.
+
+**Database provisioned.** Neon, `us-east-1`, **Postgres 17.10**, pooled
+endpoint (`-pooler` host). Pooling is safe here because the migration lock is
+`pg_advisory_xact_lock`, transaction-scoped by deliberate choice
+(`src/db.ts:98`) — a session lock from a pooled connection would wedge every
+future boot. All ten migrations applied cold through the pooler; 23 tables.
+
+Verified end to end against that database, not against a stand-in:
+
+| Check | Result |
+|---|---|
+| `migrate()` cold through the pooler | 10 migrations, 23 tables |
+| New signup via HTTP `POST /api/waitlist` | Row read back from a **separate process** |
+| Same address, different case | No second row — `UNIQUE` dedupe holds |
+| Honeypot submission | `200` returned, nothing stored |
+| Malformed / empty / whitespace / non-string address | `400`, rejected |
+| Referrer carrying `?id=99` | Query string stripped before storage |
+| `/admin/waitlist` | Renders "Total 1", address visible |
+
+The test row was deleted afterwards; the table is empty.
+
+**Still not proven, and only a deployment can prove it:** how Vercel's own
+Next.js builder behaves with `outputDirectory` pointing into a subdirectory.
+That is exactly the risk F1's "one free preview deploy" exists to retire.
+
+**Also landed:** `web/lib/waitlistEmail.ts` — one definition of a usable
+address, imported by `api/waitlist/route.ts` and both `WaitlistForm`
+components. Both forms carry `noValidate` (so errors render in site markup
+rather than browser bubbles), which made `required` and `type="email"` inert —
+an empty box posted to the server. Client-side checks now share the server's
+rules *and its wording*, so the message cannot differ depending on whether
+JavaScript ran. Twelve cases pass; there is **no automated regression test**,
+because `web/lib/` is not compiled into `dist/` where `test/*.mjs` imports from.
 
 ---
 
@@ -874,7 +1151,7 @@ Every row re-verified against code on 2026-08-10. Status column added.
 | 8 | Hosted explain is a paid upgrade | It is **weaker than the free CLI** — grounded in `summary.json` metadata, not image crops | **Still true.** Honestly hedged in the prompt; BuildV5 G3 fixes it |
 | 9 | A customer with credits can use them | ❌ **Not from the CLI.** Org-credits mode exists only in the MCP server (`server.ts:275–276`); the CLI explain path has no `NORMASCOPE_ORG_KEY`/`NORMASCOPE_CLOUD_URL` reference at all | **Still true.** A paying customer would pay twice |
 | 10 | `migrate()` runs safely | It runs on **cold start** in `web/lib/db.ts`. N concurrent cold starts race N migration runs | **Still true.** Pathway 1A |
-| 11 | `web/` deploys | `web/package.json:14` declares `"argus-cloud": "file:.."` | **Still true.** No `vercel.json` anywhere |
+| 11 | `web/` deploys | `web/package.json:14` declares `"argus-cloud": "file:.."` | **Fixed 2026-08-13** (§4f) — and the stated cause was already stale. npm workspaces resolved the linking; the real blocker was that no `vercel.json` existed and `migrations/*.sql` reached **0 of 34** function bundles |
 | 12 | *(new)* The Bose example scores 79.7% | It scores **36.4%**; the old figure was a misconfiguration (§2a) | **New this audit** |
 
 `normascope.com` being unregistered is **not** listed here. FUTURENORMA §1 and

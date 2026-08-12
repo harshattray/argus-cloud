@@ -254,7 +254,9 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Circuit breaker + admin spend view | ✅ | C6 |
 | Agent keys with per-key monthly budgets | ✅ | C7 |
 | MoR webhook handling (HMAC, idempotent) | ✅ | C5 (fixture-level) |
-| Monthly reconciliation + <50% margin alert | ✅ | C8 |
+| **Paddle webhook route + signature adapter** (Pathway 1 item 8) | ✅ built, ❌ **no sandbox** | Real `ts:body` scheme, 5-min replay window, idempotent claim, out-of-order-safe state machine — 37 checks, §3i. No real Paddle delivery has reached it |
+| Monthly reconciliation + <50% margin alert | ✅ | R-suite (was C8) |
+| Reconciliation attributes cost to the pot that funded it (Pathway 1 item 7) | ✅ | Subscription revenue recorded at last; allowance / pack / goodwill / unattributed kept apart; the old formula false-alarms on the same month — §3h |
 | **History enrichment** (trend, `firstDriftCommit`, `recurrence`, 2K cap) | ✅ | 15 checks (D6) |
 | **CI batch service** (Batches API, 50% rate, reserve→refund, escaped PR line) | ✅ | 18 checks (D2, fixture-level) |
 | **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
@@ -265,14 +267,26 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Provider-dollar reservation before every call (Pathway 1, §10.3 1B.1) | ✅ | 20 separate processes share one budget; settlement idempotent — §3d |
 | Credits derived from each operation's hard maximum (Pathway 1 item 5, §10.3 1B.2) | ✅ | Suite fails if any operation earns below the margin floor — §3e |
 | Budget alerts at 50/75/90/100% + audited manual reset (Pathway 1 item 6) | ✅ | 20 separate processes page a human once; unattributed reset impossible — §3f |
+| **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
+| **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
+| **Missing `DATABASE_URL` on Vercel fails loudly** | ✅ | Refuses to boot rather than silently losing writes to in-process PGlite — §4f |
+| **Production database provisioned** — Neon, us-east-1, Postgres 17.10, pooled | ✅ | 10 migrations cold through the pooler, 23 tables — §4f |
+| **Waitlist verified against the real production database** | ✅ | Signup row read back from a separate process; dedupe, honeypot, referrer stripping — §4f |
+| Waitlist client-side validation, sharing the server's rules and wording | ✅ | `web/lib/waitlistEmail.ts`; both forms + the API import it — §4f |
 
 Branch `pathway-1-spend-safety` @ **`4c82a8d`** (cut from `main` @ `e42810d`,
 the merge of `normascope-site` that landed the public marketing site, the gated
-`/pitch` tree and the waitlist route), plus uncommitted item-6 work. Full suite:
-**291 checks green** on PGlite, **306** against real Postgres, across nine
+`/pitch` tree and the waitlist route), plus uncommitted item-7 and item-8 work. Full suite:
+**353 checks green** on PGlite, **368** against real Postgres, across eleven
 suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
-`metering`, `enrichment`, `cibatch`, `waitlist` — run 2026-08-12. Migrations are
-now `001`–`010`.
+`metering`, `reconcile`, `enrichment`, `cibatch`, `waitlist`, `webhooks` — run
+2026-08-13. Migrations are now `001`–`012`.
+
+> The real-Postgres number moved by more than the new suite adds. Running the
+> existing suites against one shared server exposed four `budgetAlerts` checks
+> that had been passing only because PGlite gives every suite its own database
+> — see `FinishedSPEC.md` §3h. Doctrine 3 again: a suite proven only against a
+> local stand-in is weak evidence.
 
 *Previously:* branch `stage-5-metering` @ `ab40521`, pushed and
 fast-forward-merged to `main` 2026-07-30, with **63 checks green**.
@@ -777,11 +791,18 @@ new adapter is exactly when someone reaches for `sourceType()` and trusts it.
 
 **No accounts, no domain, no cost.** Three things:
 
-- **F1** — make the monorepo build. `web/package.json` declares
-  `"argus-cloud": "file:.."`, so a Vercel project rooted at `web/` cannot see
-  its own dependency. Root at the repo root; build both. Prove it with **one
-  free Vercel preview deploy** — no domain, no DNS — because discovering this
-  after Steps 2–4 would be miserable.
+- **F1** — make the monorepo build. ✅ **Done 2026-08-13**, and the diagnosis
+  above was stale: npm workspaces already resolved `"argus-cloud": "file:.."`.
+  The real gaps were a missing build contract (`dist/` is gitignored, so a
+  fresh checkout has nothing for `web/` to import) and — found only by reading
+  the build's trace manifests — `migrations/*.sql` reaching **0 of 34** function
+  bundles, which would have made the first database request on Vercel fail with
+  `ENOENT` while every local build stayed green. `vercel.json` and
+  `outputFileTracingIncludes` fix both; proven against a clean checkout.
+  Evidence: `FinishedSPEC.md` §4f.
+  **The preview deploy is still owed** — no domain, no DNS — because Vercel's
+  own builder behaviour with a subdirectory output is the one thing that cannot
+  be proven locally.
 - **F2** — stop `migrate()` running on cold start. N concurrent cold starts
   currently race N migration runs. Advisory lock.
 - **F3** — one `Storage` port, two drivers: filesystem now, S3/R2 at Step 5.
@@ -1175,7 +1196,8 @@ Figma plugins, auto-fix PRs, CI blocking by default.
 | Needed at | Item |
 |---|---|
 | Step 2 | `ANTHROPIC_API_KEY` + small balance (~$0.20 for G4) |
-| Step 5 | Vercel project · Postgres (Neon/Supabase) · R2 bucket + credentials · `NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET` · confirmation to delete the portfolio preview |
+| Step 5 | Vercel project · ~~Postgres (Neon/Supabase)~~ **provided 2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · R2 bucket + credentials · `NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET` · confirmation to delete the portfolio preview |
+| Step 5 (now) | `DATABASE_URL` set in the Vercel project itself — the local `web/.env.local` copy does not travel, and the guard in `src/db.ts:61` makes a deploy without it fail rather than lose signups |
 | Step 5 (optional) | `normascope.com` early — a free `*.vercel.app` works until Step 7 |
 | Step 7 | Paddle sandbox account; then `normascope.com` + business verification for production |
 | Step 8 | Trademark filing; ToS/Privacy content decisions; a phone number for alerts |
