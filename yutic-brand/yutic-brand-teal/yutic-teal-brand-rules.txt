@@ -1,4 +1,4 @@
-YUTIC — BRAND RULES v1.0
+YUTIC — BRAND RULES v1.0 — TEAL SCHEME
 
 MARK  A fan of five peacock feathers, each with an eye. Never rotated, reordered,
       stretched, recoloured or given effects. Clearspace = one eye diameter.
@@ -6,9 +6,10 @@ MARK  A fan of five peacock feathers, each with an eye. Never rotated, reordered
 
 LOCKUP  Fan left, wordmark 'Yutic' beside it, capital Y. Stacked only where width is constrained.
 
-COLOUR  Feather #E8641C is the only chromatic colour. Shaft #16130F, Pupil #F9CFAF, Paper #EFEDE9.
+COLOUR  Peacock teal #0E6B66 is the only chromatic colour. Ink teal #0B1F1E, Mint #C7E3DE, Teal paper #F1F6F4.
         Greys: #FCFBF9 #E4DFD7 #BDB5AA #8A8177 #554E45 #2C2620.
-        Orange stays under ~10% of a surface. Never body copy on light grounds.
+        The accent stays under ~10% of a surface. Never body copy on light grounds.
+        Orange and plum are both official. One scheme per surface, never mixed.
 
 TYPE  DM Mono for wordmark, headlines, labels, numbers. DM Sans for body text.
       Display tracking -0.04em; body 15-17px at line-height 1.7.

@@ -1,0 +1,14 @@
+:root {
+  --yutic-feather: #0E6B66;
+  --yutic-shaft:   #0B1F1E;
+  --yutic-pupil:   #C7E3DE;
+  --yutic-paper:   #F1F6F4;
+  --yutic-50:  #FCFBF9;
+  --yutic-200: #E4DFD7;
+  --yutic-400: #BDB5AA;
+  --yutic-500: #8A8177;
+  --yutic-700: #554E45;
+  --yutic-800: #2C2620;
+  --yutic-font-display: 'DM Mono', monospace;
+  --yutic-font-text: 'DM Sans', sans-serif;
+}
