@@ -45,14 +45,15 @@ concept directories. The suite results above are for the working trees, not for
 the commits.
 
 **Re-run 2026-08-13** on branch `pathway-1-spend-safety`, after the deployment
-substrate work in §4f, the reconciliation work in §3h and the webhook work in §3i: `npm run verify` —
+substrate work in §4f, the reconciliation work in §3h, the webhook work in §3i
+and the retention work in §3j: `npm run verify` —
 which typechecks the server package, typechecks `web/`, runs the full suite,
 builds the web app and audits production dependencies — **exits 0**.
 
 | Command | Result |
 |---|---|
-| `npm test` (PGlite) | **353 checks, 0 failures**, 11 suites |
-| `DATABASE_URL=… npm test` (real Postgres 17) | **368 checks, 0 failures**, 11 suites |
+| `npm test` (PGlite) | **401 checks, 0 failures**, 12 suites |
+| `DATABASE_URL=… npm test` (real Postgres 17) | **425 checks, 0 failures**, 12 suites |
 | `npm run verify` | exits 0 |
 
 The three `npm audit` highs are the already-signed-off
@@ -181,6 +182,7 @@ maintainer machine. Both manifests now declare `>=0.112.3`.
 | Request rate limiting — per key **and** per org, counted in the database | ✅ | 34 checks incl. 20 separate processes sharing one ceiling on real Postgres — §3c |
 | Provider-dollar reservation before every call, idempotent settlement | ✅ | 54 checks incl. 20 separate processes sharing one budget on real Postgres — §3d |
 | Credit prices derived from worst-case cost, 50% margin floor enforced | ✅ | Asserted every run: no operation can be sold below cost — §3e |
+| Retention sweep + run/repo/org deletion of rows **and** objects | ✅ | 55 checks incl. 20 separate processes contending for one deletion job — §3j |
 | CI batch service — Batches API, 50% rate, reserve→refund, escaped PR line | 🟡 | 18 checks (D2), **fixture-level only** |
 | MoR webhook handling — HMAC, idempotent | 🟡 ⚠️ | C5 fixture-level, **and unreachable** — §7 #4 |
 | Monthly reconciliation + <50% margin alert | 🟡 ⚠️ | C8 — **unreachable, and carries a bug** — §7 #7 |
@@ -889,6 +891,85 @@ across eleven suites — run 2026-08-13.
 
 ---
 
+### 3j. Deletion actually deletes — Pathway 1, item 9 ✅
+
+Deleting a run used to mean deleting rows. The bytes stayed in storage forever,
+because **nothing recorded which objects belonged to which run**. Keys were
+derivable (`org/{orgId}/blob/{sha256}.{ext}`) but not enumerable: given a run
+there was no way to ask what it had stored. A 90-day sweep built on that would
+have freed rows and leaked every object, while telling the customer their data
+was gone.
+
+**What shipped:**
+
+| File | What it does |
+|---|---|
+| `migrations/013_retention.sql` | `run_artifacts` (run → object) and `deletion_jobs` (resumable work, then the receipt) |
+| `src/retention.ts` | `deleteRun`, `deleteRepo`, `deleteOrg`, `sweepRetention`, and the claim/batch/cursor machinery under them |
+| `scripts/retention.mjs` | The operator entry point. **Dry run is the default; `--apply` is the only way past it** |
+
+**Four rules the code is shaped by:**
+
+1. **Objects before rows.** A `run_artifacts` row is the only pointer to an
+   object. Delete the row first and a crash one line later leaves bytes nobody
+   can find and nobody is billed for. Object first is the recoverable order —
+   the row survives, and the retry deletes something already absent, which the
+   port guarantees succeeds.
+2. **A run does not own its bytes.** Blobs are content-addressed per org and
+   deduplicated within it, so an unchanged frame is *one object with two rows*.
+   Deleting a run deletes an object only when it is the last row in that org
+   referencing the key. `T2b` runs the obvious per-row version and watches it
+   destroy a live report while expiring an old run.
+3. **Resumable.** Work is claimed, done in bounded batches, and the cursor
+   advances only past artifacts that actually went. `T6` fails storage halfway:
+   the job records what did go, keeps the rows for what did not, leaves the run
+   row in place, and a retry finishes it — 4 objects total, not 6.
+4. **A dry run walks the same path.** Same rows, same shared-blob question, same
+   counters, minus the two mutating calls. `T3` asserts the real run removes
+   exactly what the dry run predicted.
+
+**Tests** — `test/retention.test.mjs`. 48 checks on PGlite, **55 against real
+Postgres**.
+
+| Check | What it proves |
+|---|---|
+| T1 | A run's objects, rows, share links and frame stats all go. |
+| T2 | A blob two runs share survives the first deletion and goes with the second. |
+| **T2b** | The naive per-row delete removes it while the live run still points at it. |
+| T3 | A dry run changes nothing and predicts the real run's counts exactly. |
+| T4 | 200 and 91 days old are swept; 89 days is kept; an org-scoped sweep leaves the neighbour alone. |
+| T5 | Five artifacts, batch size one: six claims, counts accumulate, re-running a finished job changes nothing. |
+| T6 | Storage fails on the third object — partial progress kept, nothing orphaned, retry completes without double-counting. |
+| T7 | Org erasure takes the whole prefix (including an abandoned upload no row recorded), leaves the neighbour untouched, and the receipt outlives the org. |
+| T8 | Two concurrent workers, one claim. A claim past its TTL can be taken over; a fresh one cannot. |
+| **T9** | *(real Postgres)* 20 separate processes, one job, **exactly one claim**. |
+| **T9b** | *(real Postgres)* Unclaimed, all 20 delete the same run and report 60 objects for 3. |
+
+**The open question this raised: deleting an org deletes its books.**
+`usage_events`, `credit_grants` and `subscription_periods` all cascade from
+`orgs`, so erasing a customer silently rewrites the reconciliation history for
+every month they traded in — a margin report run afterwards would quote
+different numbers than the same report run the day before, with nothing saying
+why. That is squarely against Doctrine 2, and it is a policy decision (erasure
+versus financial records), not an implementation one.
+
+What the code does today: `deleteOrg` snapshots the org's lifetime totals —
+provider cost, credits charged and granted, pack and subscription revenue,
+refunds, fees — into the job receipt **before** the cascade, so the aggregate
+survives even though the per-event detail does not. `T7.5` asserts it. **The
+decision still owed** is whether that is enough, or whether org deletion must
+retain anonymised usage events for the accounting period. Raised for Harsha,
+recorded in §9.
+
+**Also deliberately not built:** `org_storage` byte accounting. It is Pathway 2's
+quota concern (§10.4 2C), and the release belongs in the same statement path
+that removes the artifact row — a comment in `retention.ts` marks the spot.
+
+**Suite:** 401 checks green on PGlite, **425 against a real Postgres server**,
+across twelve suites — run 2026-08-13.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -969,10 +1050,16 @@ are deduplicated by address, **not** by person.
 
 ### 4d. The site is built but not deployed — which is on plan
 
-Recorded as fact, **not** as a discovered problem: `normascope.com` is not
-registered (`whois` returns `No match`, no A record, no NS delegation, checked
-2026-08-10), and `web/lib/site.ts:4` defaults `SITE_URL` to it, so `sitemap.ts`,
-`robots.ts` and the OG image all build absolute URLs from a hostname nobody owns.
+**Registered 2026-08-13.** `normascope.com` is Harsha's — Spaceship, Inc.,
+created `2026-08-13T06:29:56Z`, nameservers still the registrar's parking pair
+(`LAUNCH1/LAUNCH2.SPACESHIP.NET`), so **DNS is not yet delegated to Vercel and
+nothing resolves to the app**. `web/lib/site.ts:4` already defaults `SITE_URL`
+to it, so `sitemap.ts`, `robots.ts`, the canonical tags and the OG image now
+build absolute URLs from a hostname we own. No code change was needed for the
+purchase; `NEXT_PUBLIC_SITE_URL` still overrides it for a preview deployment.
+
+*Previously (checked 2026-08-10): unregistered, `whois` returning `No match` —
+recorded then as fact, not as a problem, for the reason below.*
 
 > **This is expected at this stage.** FUTURENORMA §1 and §4 Step 5 say the
 > domain is required at **Step 7** (Paddle production checkout demands an
@@ -1171,9 +1258,10 @@ Every row re-verified against code on 2026-08-10. Status column added.
 | 11 | `web/` deploys | `web/package.json:14` declares `"argus-cloud": "file:.."` | **Fixed 2026-08-13** (§4f) — and the stated cause was already stale. npm workspaces resolved the linking; the real blocker was that no `vercel.json` existed and `migrations/*.sql` reached **0 of 34** function bundles |
 | 12 | *(new)* The Bose example scores 79.7% | It scores **36.4%**; the old figure was a misconfiguration (§2a) | **New this audit** |
 
-`normascope.com` being unregistered is **not** listed here. FUTURENORMA §1 and
-Open Decisions #1 already say registration comes at Step 7, so the code and the
-plan agree — see §4d.
+`normascope.com` was never listed here as a defect, and is now **registered
+(2026-08-13)** — earlier than the plan required. FUTURENORMA §1 and Open
+Decisions #1 put registration at Step 7; DNS delegation is still outstanding.
+See §4d.
 
 ---
 
@@ -1233,10 +1321,10 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 Carried forward per doctrine — a suite that was not run is an open risk, never
 an assumed pass.
 
-Scheduled work is **not** listed here. `normascope.com` registration (Step 7),
-legal pages (Step 8), and git tags (not a task per FUTURENORMA §2) were briefly
-mis-filed as risks in an earlier draft of this section and are deliberately
-absent.
+Scheduled work is **not** listed here. `normascope.com` registration (done
+2026-08-13, ahead of its Step 7 need), legal pages (Step 8), and git tags (not a
+task per FUTURENORMA §2) were briefly mis-filed as risks in an earlier draft of
+this section and are deliberately absent.
 
 | Risk | Status |
 |---|---|
@@ -1248,7 +1336,8 @@ absent.
 | `reconcile.ts` margin bug (§7 #7) | **Open**, and the module is unreachable. Fix before the first paying org |
 | `webhooks.ts` unreachable, Paddle adapter unwritten | **Open — launch blocker.** No revenue can be provisioned |
 | No rate limiting on any request path | **Closed for authenticated API paths** (§3c): per-key and per-org ceilings counted in the database, proven across 20 separate processes. **Still open in front of auth** — no IP or endpoint limit, so the unauthenticated surface is unprotected |
-| Retention sweep unbuilt | **Open.** Storage growth is bounded by nothing but goodwill |
+| Retention sweep unbuilt | **Closed** (§3j). Run, repo and org deletion remove objects as well as rows; the 90-day sweep runs dry by default; deletion is claimed, batched and resumable, proven across 20 separate processes |
+| Deleting an org deletes its books | **Open — needs a decision, not code.** `usage_events`, `credit_grants` and `subscription_periods` cascade from `orgs`, so an erasure rewrites the reconciliation history for every month that customer traded in. The receipt now keeps the aggregate totals (§3j); whether anonymised per-event records must also be retained for the accounting period is Harsha's call |
 | No provider-dollar reservation before calls | **Closed** (§3d). Reserved before every call, settled idempotently, proven across 20 separate processes |
 | ~~Worst-case cost exceeds credit revenue~~ | **Closed** (§3e). Credits are derived from the hard maximum with a 50% margin floor, enforced by the suite. **Consequence needs a decision:** the 500 included credits now buy 100 analyses, not 500; analysis on Haiku 4.5 would make it 250, gated on a calibration run |
 | Budget alerts at 50/75/90% | **Closed** (§3f). All four thresholds deliver, once per period, proven across 20 separate processes. The breaker reset is audited |

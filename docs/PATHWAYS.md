@@ -1146,9 +1146,14 @@ each item, and nothing lives only there:
    `FinishedSPEC.md` §3i. The route, signature scheme, replay window,
    idempotency and state ordering are verified; the **Paddle sandbox loop is
    `Blocked`** on an account, which is Phase 7's gate, not this item's.
-9. ⬅️ **next.** Add retention sweeps and deletion of database rows and storage
-   blobs.
-10. Add backups, restore rehearsal, and operational alerts.
+9. ✅ Add retention sweeps and deletion of database rows and storage blobs. —
+   `FinishedSPEC.md` §3j. Run/repo/org deletion and the 90-day sweep, claimed,
+   batched and resumable; dry run is the default. **One decision is owed:**
+   erasing an org cascades its `usage_events`, `credit_grants` and
+   `subscription_periods`, which rewrites past reconciliation months. The
+   receipt keeps the aggregate; whether anonymised per-event records must be
+   retained is a policy call, not an implementation gap.
+10. ⬅️ **next.** Add backups, restore rehearsal, and operational alerts.
 
 > Items 4–6 were previously described **only** in §10.3 and were missing from
 > this list. That is not a formatting detail: an agent working from the list
