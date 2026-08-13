@@ -91,7 +91,7 @@ export function SiteFooter() {
 
         <div className="mt-14 pt-6 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <p className="text-xs text-white/25">
-            © {new Date().getFullYear()} Normascope. Screenshots never leave your machines.
+            © {new Date().getFullYear()} Normascope.
           </p>
           <p className="text-xs text-white/25">
             Normascope is operated by Yutic, a sole proprietorship of Harsha Attray.

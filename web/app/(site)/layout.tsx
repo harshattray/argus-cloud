@@ -6,6 +6,7 @@ import { Wordmark, CloudMark, WaitlistBadge } from "./_components/ui";
 import { WaitlistForm } from "./_components/WaitlistForm";
 import { HeaderNav, CloudLink } from "./_components/HeaderNav";
 import { YuticEndorsement } from "../_components/YuticEndorsement";
+import { LEGAL_DOCUMENTS } from "../../lib/legal.generated";
 
 /** The public site. Four routes, one conversion. Everything long-form lives
  *  behind the password gate at /pitch. */
@@ -127,6 +128,35 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
               when Cloud opens.
             </p>
             <WaitlistForm source="footer" layout="stacked" />
+          </div>
+        </div>
+
+        {/* The operator line. PATHWAYS' public-site demand gate requires
+            legal-facing copy naming who runs Normascope, and this is the
+            surface the public actually sees — the /pitch footer carried it
+            while the public site did not. Same wording, deliberately: two
+            phrasings of who trades here is one too many. */}
+        <div className="mx-auto mt-12 max-w-5xl border-t border-black/8 pt-6">
+          <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2">
+            {LEGAL_DOCUMENTS.map((doc) => (
+              <Link
+                key={doc.slug}
+                href={`/legal/${doc.slug}`}
+                className="text-xs text-text/40 hover:text-text/70"
+              >
+                {doc.title}
+              </Link>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            {/* Copyright only. This carried "Screenshots never leave your
+                machines" — true of the local CLI, false of Cloud, on a page
+                selling Cloud. No product claim belongs in a footer where it
+                cannot be qualified. */}
+            <p className="text-xs text-text/35">© {new Date().getFullYear()} Normascope.</p>
+            <p className="text-xs text-text/35">
+              Normascope is operated by Yutic, a sole proprietorship of Harsha Attray.
+            </p>
           </div>
         </div>
       </footer>

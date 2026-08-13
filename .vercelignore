@@ -1,0 +1,25 @@
+# What a CLI deploy must not upload.
+#
+# `.gitignore` already covers build output and secrets. This file removes the
+# things that are committed but have no part in the build: 53MB of captured
+# test runs, the brand source art, the planning docs, and the suites. Without
+# it every `vercel deploy` ships them.
+#
+# Not a security control — the repo is private and Git-connected deployments
+# clone the whole thing regardless. It is about upload size and build time.
+
+test-run/
+test/
+assets/
+yutic-brand/
+# Only the top-level planning docs. `docs/legal/` must reach the build —
+# `scripts/embed-legal.mjs` reads it to generate the published legal pages, and
+# a gitignore-style `docs/` exclusion cannot be undone for a child directory.
+docs/*.md
+norma-bridge-usecase/
+security/
+.github/
+.claude/
+
+# Needed at runtime and deliberately NOT listed: migrations/ (the function
+# bundles carry the .sql files — see FinishedSPEC §4f), src/, web/, scripts/.

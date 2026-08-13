@@ -899,7 +899,9 @@ rules: no email addresses in URLs, query strings, or logs.
 
 Before publishing `normascope.com`, verify:
 
-- [ ] every Join early access action lands on `/cloud#waitlist`;
+- [x] every Join early access action lands on `/cloud#waitlist` — verified on
+  the **live site** 2026-08-13, including the `#waitlist` anchor existing on
+  `/cloud`;
 - [x] a new address round-trips into Postgres and produces the visitor
   confirmation — verified 2026-08-13 against the **real production Neon
   database** over HTTP, with the row read back from a separate process;
@@ -908,28 +910,37 @@ Before publishing `normascope.com`, verify:
   added no row, verified 2026-08-13;
 - [x] source, referrer origin, and timestamp are recorded — verified
   2026-08-13, including the referrer query string being stripped;
-- [ ] owner notification is configured and best-effort — **still open.**
-  `RESEND_API_KEY` is unset, so `notify()` is a no-op. The best-effort
-  behaviour (a mail failure never costs a stored signup) is written and
-  reviewed but has not been exercised against the live provider;
+- [x] owner notification is configured and best-effort — `RESEND_API_KEY` is
+  set in production and a live signup ran through `notify()` without error
+  (2026-08-13). A failure is now logged rather than swallowed silently, so
+  "best-effort" is observable instead of merely intended. **Confirm the mail
+  actually arrived** at the forwarded `waitlist@normascope.com` before treating
+  this as fully closed;
 - [x] an admin-only count, list, and CSV export are available — `/admin/waitlist`,
   gated by `ADMIN_PASSWORD` (separate from the pitch phrase), verified
   2026-08-10; see FinishedSPEC.md §4a;
-- [ ] the Cloud page describes private preview / future capabilities honestly;
-- [ ] the site does not claim that visitors can log in, upload, subscribe, or
-  use Cloud yet.
-- [ ] the footer identifies Normascope as a product by Yutic;
-- [ ] legal-facing copy states that Normascope is operated by Yutic, a sole
-  proprietorship of Harsha Attray;
+- [x] the Cloud page describes private preview / future capabilities honestly —
+  "Get first access when hosted reports open"; no availability claim, no price;
+- [x] the site does not claim that visitors can log in, upload, subscribe, or
+  use Cloud yet — checked across the public tree 2026-08-13; the only "sign in"
+  strings are in the user guide, describing the *visitor's own* application;
+- [x] the footer identifies Normascope as a product by Yutic;
+- [x] legal-facing copy states that Normascope is operated by Yutic, a sole
+  proprietorship of Harsha Attray — **added 2026-08-13.** The line existed on
+  `/pitch` only; the public footer, which is the surface the public actually
+  sees, did not carry it. Verified live;
 - [ ] the future Paddle seller/payment identity is documented and consistent
   with the proprietor information before billing is enabled.
 
-> **What the three ticks above do and do not mean (2026-08-13).** They were
-> proven against the real production database, which is what makes them worth
-> ticking — but the requests came from localhost, not from a deployment. The
-> storage path is proven; the deployed path is not. The preview deploy that
-> FUTURENORMA §4 Step 1 (F1) still owes is what closes that gap, and it is also
-> the only way to exercise owner notification end to end.
+> **Closed 2026-08-13 — the deployed path is now the one that was tested.** The
+> earlier ticks were proven against the real production database but from
+> localhost, so the deployed path was unproven. `normascope.com` is live on
+> Vercel and a signup was round-tripped through it. That deployment immediately
+> found what localhost could not: `migrate()` read `migrations/*.sql` from a
+> path computed at runtime, which resolves differently inside a function
+> bundle, so the **first database request on the live site failed with
+> `ENOENT`** while every local build and all 400+ checks stayed green. See
+> `FinishedSPEC.md` §4g.
 
 Once live, measure interest using unique signups and signup rate by source,
 not raw form submissions. Review the signal weekly before changing Cloud
@@ -1146,9 +1157,14 @@ each item, and nothing lives only there:
    `FinishedSPEC.md` §3i. The route, signature scheme, replay window,
    idempotency and state ordering are verified; the **Paddle sandbox loop is
    `Blocked`** on an account, which is Phase 7's gate, not this item's.
-9. ⬅️ **next.** Add retention sweeps and deletion of database rows and storage
-   blobs.
-10. Add backups, restore rehearsal, and operational alerts.
+9. ✅ Add retention sweeps and deletion of database rows and storage blobs. —
+   `FinishedSPEC.md` §3j. Run/repo/org deletion and the 90-day sweep, claimed,
+   batched and resumable; dry run is the default. **One decision is owed:**
+   erasing an org cascades its `usage_events`, `credit_grants` and
+   `subscription_periods`, which rewrites past reconciliation months. The
+   receipt keeps the aggregate; whether anonymised per-event records must be
+   retained is a policy call, not an implementation gap.
+10. ⬅️ **next.** Add backups, restore rehearsal, and operational alerts.
 
 > Items 4–6 were previously described **only** in §10.3 and were missing from
 > this list. That is not a formatting detail: an agent working from the list

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Poppins, JetBrains_Mono, DM_Mono } from "next/font/google";
 import "./globals.css";
+import { SITE_URL } from "../lib/site";
 
 /**
  * Root layout — deliberately unstyled beyond fonts.
@@ -39,8 +40,12 @@ const yuticWordmark = DM_Mono({
   display: "swap",
 });
 
+// Imported, not re-derived. This line used to repeat the env read and the
+// default literal from `lib/site.ts`; two copies of one fact is how a domain
+// change lands in the sitemap and the canonical tags but not in the Open Graph
+// URLs, with nothing failing.
 export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://normascope.com"),
+  metadataBase: new URL(SITE_URL),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

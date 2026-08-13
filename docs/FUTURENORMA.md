@@ -259,7 +259,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Reconciliation attributes cost to the pot that funded it (Pathway 1 item 7) | ✅ | Subscription revenue recorded at last; allowance / pack / goodwill / unattributed kept apart; the old formula false-alarms on the same month — §3h |
 | **History enrichment** (trend, `firstDriftCommit`, `recurrence`, 2K cap) | ✅ | 15 checks (D6) |
 | **CI batch service** (Batches API, 50% rate, reserve→refund, escaped PR line) | ✅ | 18 checks (D2, fixture-level) |
-| **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
+| **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ✅ **deployed** | `normascope.com` live on Vercel 2026-08-13; waitlist round-trips from the deployed path — §4g |
 | Credit packs seeded from measured COGS | ✅ | `migrations/005` |
 | Race-safe migrations (Pathway 1 item 1) | ✅ | 20 real cold starts on real Postgres — `FinishedSPEC.md` §3a |
 | Storage port, filesystem + S3/R2 drivers (Pathway 1 item 2) | ✅ | Contract run against both; S3 leg on real R2 — §3b |
@@ -267,6 +267,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Provider-dollar reservation before every call (Pathway 1, §10.3 1B.1) | ✅ | 20 separate processes share one budget; settlement idempotent — §3d |
 | Credits derived from each operation's hard maximum (Pathway 1 item 5, §10.3 1B.2) | ✅ | Suite fails if any operation earns below the margin floor — §3e |
 | Budget alerts at 50/75/90/100% + audited manual reset (Pathway 1 item 6) | ✅ | 20 separate processes page a human once; unattributed reset impossible — §3f |
+| Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
 | **Missing `DATABASE_URL` on Vercel fails loudly** | ✅ | Refuses to boot rather than silently losing writes to in-process PGlite — §4f |
@@ -274,13 +275,15 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Waitlist verified against the real production database** | ✅ | Signup row read back from a separate process; dedupe, honeypot, referrer stripping — §4f |
 | Waitlist client-side validation, sharing the server's rules and wording | ✅ | `web/lib/waitlistEmail.ts`; both forms + the API import it — §4f |
 
-Branch `pathway-1-spend-safety` @ **`4c82a8d`** (cut from `main` @ `e42810d`,
-the merge of `normascope-site` that landed the public marketing site, the gated
-`/pitch` tree and the waitlist route), plus uncommitted item-7 and item-8 work. Full suite:
-**353 checks green** on PGlite, **370** against real Postgres, across eleven
+Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
+`normascope-site` that landed the public marketing site, the gated `/pitch` tree
+and the waitlist route). Pathway 1 items 1–9 are implemented, and the public
+site is **live on `normascope.com`** (§4g) with its legal pages published
+(§4h). Full suite:
+**410 checks green** on PGlite, **434** against real Postgres, across thirteen
 suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
-`metering`, `reconcile`, `enrichment`, `cibatch`, `waitlist`, `webhooks` — run
-2026-08-13. Migrations are now `001`–`012`.
+`metering`, `reconcile`, `retention`, `enrichment`, `cibatch`, `legal`,
+`waitlist`, `webhooks` — run 2026-08-13. Migrations are now `001`–`013`.
 
 > The real-Postgres number moved by more than the new suite adds. Running the
 > existing suites against one shared server exposed four `budgetAlerts` checks
@@ -945,9 +948,10 @@ preview.
 pinning, and TTL behave differently against a real service than a local stub,
 and abuse controls proven only against a stub are not proven.
 
-**normascope.com** is the destination. A free `*.vercel.app` is enough for this
-step if the domain isn't wired yet; it becomes mandatory at Step 7, because
-Paddle production checkout requires an approved domain.
+**normascope.com** is the destination, and it is **registered as of
+2026-08-13** — earlier than this step required. DNS is not delegated yet, so a
+free `*.vercel.app` still covers this step; the domain becomes mandatory at
+Step 7, because Paddle production checkout requires an approved domain.
 
 **Needs from Harsha:** items 1–5 and 7 of `BuildV5.md`'s handover table.
 
@@ -1104,7 +1108,8 @@ Sandbox first; production keys last.
    → re-buy → works.
 
 **Needs from Harsha:** Paddle sandbox account (free, no business verification),
-then `normascope.com` registered plus business verification for production.
+then business verification for production. `normascope.com` is registered
+(2026-08-13); DNS delegation is still owed.
 
 ---
 
@@ -1198,8 +1203,8 @@ Figma plugins, auto-fix PRs, CI blocking by default.
 | Step 2 | `ANTHROPIC_API_KEY` + small balance (~$0.20 for G4) |
 | Step 5 | Vercel project · ~~Postgres (Neon/Supabase)~~ **provided 2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · R2 bucket + credentials · `NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET` · confirmation to delete the portfolio preview |
 | Step 5 (now) | `DATABASE_URL` set in the Vercel project itself — the local `web/.env.local` copy does not travel, and the guard in `src/db.ts:61` makes a deploy without it fail rather than lose signups |
-| Step 5 (optional) | `normascope.com` early — a free `*.vercel.app` works until Step 7 |
-| Step 7 | Paddle sandbox account; then `normascope.com` + business verification for production |
+| ~~Step 5 (optional)~~ | ~~`normascope.com` early~~ **provided 2026-08-13** — registered at Spaceship; **DNS still on the registrar's parking nameservers**, so delegation to Vercel is the remaining step |
+| Step 7 | Paddle sandbox account; then business verification for production (the domain is in hand) |
 | Step 8 | Trademark filing; ToS/Privacy content decisions; a phone number for alerts |
 
 ### Open decisions
@@ -1347,8 +1352,12 @@ that has not been probed is an open risk, not an assumed pass.
 - **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
   nothing deleted; 14-day grace. (No trial — BuildV5 §G2c. Risk reversal is a
   30-day money-back guarantee.)
-- **Deletion + retention** — run/repo/org delete removes objects from storage
-  as well as rows; a 90-day sweep with a dry-run mode.
+- **Deletion + retention** — ✅ **built 2026-08-13** (`src/retention.ts`,
+  `migrations/013`, §3j). Run/repo/org delete removes objects from storage as
+  well as rows, and the 90-day sweep runs dry unless `--apply` is passed. What
+  is left here is the **customer-facing flow** — re-authentication, typing the
+  org name, key revocation, the receipt shown to the user — which is Step 6 UI
+  on top of this engine.
 - **Admin view** — spend, margin, breaker state, enterprise-lead flags.
 - **Customer deletion UI** — personal account deletion must not delete an org
   unless the user is its owner; organization deletion requires re-authentication,
@@ -1386,7 +1395,8 @@ deployment.
 | Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
 | ~~Worst-case provider cost exceeds credit revenue~~ | **Closed 2026-08-10.** Credits are now derived from the hard maximum cost with a 50% margin floor, enforced by the suite — analysis 5 credits, deep 8. See §3 "Credits are derived from cost". **The consequence needs a decision:** 500 included credits now buy 100 analyses, not 500. Moving analysis to Haiku 4.5 would make it 2 credits (250 analyses), gated on a calibration run per §8. |
 | Screenshot-visible secrets and private data | Open. Text secret scanning does not detect credentials or personal data rendered inside pixels; redaction and a pre-upload manifest are required. |
-| Customer deletion path | Open. User-initiated account, run, repository, and organization deletion must remove storage objects as well as database rows and produce a receipt. |
+| Customer deletion path | **Engine closed 2026-08-13** (§3j): run, repo and org deletion remove storage objects as well as rows and leave a receipt that outlives the org. **The user-facing half is open** — re-authentication, typing the org name, and showing the receipt are Step 6 UI. |
+| Deleting an org deletes its books | **Open — a decision, not code.** The cascade from `orgs` takes `usage_events`, `credit_grants` and `subscription_periods` with it, so an erasure changes what past months report. The receipt keeps the aggregate totals; whether anonymised per-event records must be retained for the accounting period is undecided (§3j). |
 | Cloud upload surprise | Open until repository-level upload mode, first-run disclosure, and the explicit `upload` trigger are implemented. |
 | Lab shares the portfolio's database and R2 | Accepted for a testing deployment. Prefixes make removal clean. Do not let real customer data land there. |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on. |
