@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_URL, TAGLINE, NAV_LINKS, NPM_URL } from "../../lib/site";
-import { Wordmark, CloudMark, WaitlistBadge } from "./_components/ui";
+import { Wordmark, CloudMark } from "./_components/ui";
 import { WaitlistForm } from "./_components/WaitlistForm";
-import { HeaderNav, CloudLink } from "./_components/HeaderNav";
+import { HeaderNav } from "./_components/HeaderNav";
+import { CloudCorner } from "./_components/CloudCorner";
 import { YuticEndorsement } from "../_components/YuticEndorsement";
 import { LEGAL_DOCUMENTS } from "../../lib/legal.generated";
 
@@ -34,22 +35,22 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
 
       {/*
         The bar is split: brand and navigation on the left, the Cloud corner on
-        the right behind a hairline.
+        the right.
 
-        Two rules hold it together. The wordmark is always the larger of the two
-        marks, because the site's logo cannot be outranked by the paid tier's
-        lockup in its own header. And the divider exists so the lockup reads as
-        a destination rather than as one more nav word — without it, four grey
-        links running straight into a two-line brand drawing had no hierarchy at
-        all.
+        One rule still holds it together — the wordmark is always the larger of
+        the two marks, because the site's logo cannot be outranked by the paid
+        tier's lockup in its own header. `CLOUD_WIDTH.nav` in `ui.tsx` carries
+        the arithmetic that keeps it true.
 
-        The waitlist action is the shared `WaitlistBadge`, not a bespoke button:
-        it is the same action as the other three placements (§11), so it is the
-        same object. It is also visible at every width — the old black button
-        was hidden below `md`, which left phones with no call to action.
+        **The hairline divider is gone.** It existed so the lockup would read as
+        a destination rather than as one more nav word, and it did that job
+        weakly. The corner now carries its own hierarchy: the lockup has an
+        eyebrow above it, which nothing else in the bar has, so it reads as a
+        titled block instead of a mark in a row. See `CloudCorner.tsx`, which
+        also records what the corner deliberately breaks.
 
         Below `md` the navigation drops to a second row. Sharing the top row
-        with the brand and the badge left it roughly 120px wide and clipped
+        with the brand and the action left it roughly 120px wide and clipped
         mid-word; a full-width strip is the whole structure, one swipe away.
       */}
       <header className="sticky top-0 z-50 border-b border-black/8 bg-paper/85 backdrop-blur-md">
@@ -61,17 +62,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
 
             <HeaderNav links={NAV_LINKS} className="hidden md:flex" />
 
-            <div className="ml-auto flex shrink-0 items-center gap-3">
-              <span aria-hidden className="hidden h-6 w-px bg-black/10 md:block" />
-
-              {/* The lockup badges itself, so it needs no pill around it — a
-                  border here would be a box inside a box. */}
-              <CloudLink className="hidden md:inline-flex">
-                <CloudMark size="nav" title="Normascope Cloud" />
-              </CloudLink>
-
-              <WaitlistBadge className="shrink-0">Early access</WaitlistBadge>
-            </div>
+            <CloudCorner />
           </div>
 
           <HeaderNav

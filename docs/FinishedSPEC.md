@@ -1097,6 +1097,11 @@ owner notification configured, duplicate handling in production) were **not
 verified this audit** — they cannot be, until the site is deployed. *Closed
 later the same day: see §4g.*
 
+> **Superseded, same day.** The owner-notification box no longer exists as
+> written: the route now sends a branded confirmation to the person who signed
+> up instead of a notification to the operator. See PATHWAYS' public-site
+> demand gate, where that item is unchecked with the reasoning.
+
 ---
 
 ### 4g. The site is live — normascope.com, 2026-08-13 ✅

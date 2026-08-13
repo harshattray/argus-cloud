@@ -357,6 +357,36 @@ strip with waitlist → what it deliberately will not do → footer.
 
 The fold must show the breadth of the tool, not one line about it.
 
+**Amended 2026-08-13.** The lean public site was selling less of the free CLI
+than the CLI does. Three visuals that already existed sat behind the `/pitch`
+gate while the public pages explained the same ideas in prose:
+
+| Now public | Where | Was |
+|---|---|---|
+| `PrComment` — sticky comment, delta column, the Action snippet | `/` | pitch only |
+| `AlignmentExplainer` (§8.1) | `/how-it-works` | pitch only |
+| `ThresholdSlider` (§8.2) | `/how-it-works` | pitch only |
+| `AgentLoop` (§8.6) + the five MCP tools | **new public `/agents`** | pitch only |
+
+The sharpest of these was the PR comment. The Cloud page carried a *drawn* PR
+comment and the public site carried none, so the only pull-request picture a
+visitor met belonged to the paid tier — while the Action, the sticky comment
+and the delta-against-`main` column are all free. Same import-don't-copy rule as
+the 2026-08-06 amendment below: the components come from the pitch tree, and
+`lib/run-data.ts` stays the single source of every number.
+
+### `/agents` — the MCP server and the agent loop
+**Public as of 2026-08-13**, promoted from `/pitch/agents`. The five tools, the
+loop, the two ways in (zero-config `compare --target` and the MCP server), and
+the three guards — default-deny origins, path containment, page content as data.
+Everything on it is free and local; the closing Cloud band teases budgeted agent
+keys and claims nothing else.
+
+This takes the public nav to **six items**. The four-item ceiling in
+`lib/site.ts` existed to stop the lean site drifting back into the long-form
+one, and that rule stands — but a whole free capability with no public address
+was the worse failure. Six is the new ceiling; past it, a page comes out first.
+
 ### `/engine` — how the diff works
 The trust page. AA-aware pixelmatch, band alignment with its ±120px search and
 ≥0.85 confidence threshold, SSIM as second opinion, region clustering. Carries
@@ -522,7 +552,19 @@ prevalent without being obnoxious.
 
 **Placement:** a persistent header button on every public page; an inline form
 in the home Cloud strip; the primary action on `/cloud`; a footer form. All four
-post to one endpoint and share one component.
+land on the same `/cloud#waitlist` anchor and post to one endpoint.
+
+**The header's is bespoke — changed 2026-08-13.** The other three still share
+`WaitlistBadge`. The header's is `StormWaitlist` in
+`_components/CloudCorner.tsx`: an ink button reading **join waitlist**, set in
+the mono face and lowercase, exactly as `cloud` is set in the lockup. It went
+its own way when the Cloud corner was rebuilt — the shared clay pill was a
+second outlined object beside a corner that had just acquired a strong one, and
+it read as part of that corner rather than as the thing to press.
+
+What §11 actually gates is unchanged: one anchor, one endpoint, visible at every
+width. Only the header's shape and label diverge. If a fourth shape appears,
+that is the signal this went too far and the placements should be reunified.
 
 **Storage:** Postgres, `migrations/006_waitlist.sql`. New migrations are picked
 up automatically — `migrate()` reads `migrations/*.sql` in filename order and
@@ -548,17 +590,24 @@ CREATE TABLE waitlist (
 - No email address in any URL, query string, or log line.
 - Return the same response shape on success and on duplicate.
 
-**Notification — added 2026-08-06.** A signup that inserts a *new* row also
-sends one plain-text message to `WAITLIST_NOTIFY_TO` (default
-`waitlist@normascope.com`) via Resend over HTTPS, no SDK. Three properties make
-this safe to leave on:
+**Confirmation — added 2026-08-13.** A signup that inserts a *new* row sends
+one branded HTML/text confirmation to the person who joined via Resend over
+HTTPS, no SDK. It uses the Normascope wordmark at the top, the teal Yutic email
+signature, and the footer line “Normascope is a product from Yutic.” It says
+only that we heard them and will get back to them. The database and
+`/admin/waitlist` remain the source of truth for signups, so no internal
+notification email is needed.
 
-- It fires on `RETURNING id` coming back non-empty, so a repeat signup mails
+- It fires on `RETURNING id` coming back non-empty, so a repeat signup sends
   nothing and the endpoint cannot be used to flood the inbox.
 - It is best-effort and its failure is swallowed. The row is already committed,
   so a provider outage must never read to a visitor as "try again".
 - With `RESEND_API_KEY` unset — local dev, previews — it is a no-op, which is
   why it can never decide whether the caller sees success.
+
+The confirmation sender defaults to `Normascope <waitlist@normascope.com>` and
+can be overridden with `WAITLIST_CONFIRM_FROM`. Its reply-to defaults to
+`waitlist@normascope.com` and can be overridden with `WAITLIST_REPLY_TO`.
 
 **Reading it — added 2026-08-10.** The mail is awareness; the database is the
 measurement. `/admin/waitlist` is the operator view: unique total, today,

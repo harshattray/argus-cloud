@@ -849,9 +849,12 @@ This is a demand test, not a Cloud product launch. Do not wait for the full
 Cloud launch checklist in §7 before publishing the public site; that checklist
 governs charging customers for Cloud.
 
-#### What “Join early access” does
+#### What the waitlist action does
 
-Every persistent **Join early access** action points to `/cloud#waitlist`:
+Every persistent waitlist action points to `/cloud#waitlist`. The label is
+**Join early access** in the home strip, on `/cloud` and in the footer, and
+**join waitlist** in the site header as of 2026-08-13 — same anchor, same
+endpoint, same row. What this gate turns on is the destination, not the wording.
 
 1. The visitor lands on the public Cloud page and is taken to the waitlist
    form.
@@ -861,8 +864,8 @@ Every persistent **Join early access** action points to `/cloud#waitlist`:
    referrer origin, and timestamp.
 5. A repeat submission is deduplicated and does not inflate the count.
 6. The visitor sees a confirmation: “You’re on the list.”
-7. A genuinely new signup sends one notification to the configured owner
-   inbox; notification failure must not lose the stored signup.
+7. A genuinely new signup sends one branded confirmation **to the person who
+   joined**; mail failure must not lose the stored signup.
 
 Clicking the action does not create an account, start a subscription, grant
 Cloud access, or imply that Cloud is available today.
@@ -899,9 +902,10 @@ rules: no email addresses in URLs, query strings, or logs.
 
 Before publishing `normascope.com`, verify:
 
-- [x] every Join early access action lands on `/cloud#waitlist` — verified on
-  the **live site** 2026-08-13, including the `#waitlist` anchor existing on
-  `/cloud`;
+- [x] every waitlist action lands on `/cloud#waitlist` — verified on the **live
+  site** 2026-08-13, including the `#waitlist` anchor existing on `/cloud`. The
+  header's action was relabelled to "join waitlist" later the same day; the
+  anchor did not change;
 - [x] a new address round-trips into Postgres and produces the visitor
   confirmation — verified 2026-08-13 against the **real production Neon
   database** over HTTP, with the row read back from a separate process;
@@ -910,12 +914,27 @@ Before publishing `normascope.com`, verify:
   added no row, verified 2026-08-13;
 - [x] source, referrer origin, and timestamp are recorded — verified
   2026-08-13, including the referrer query string being stripped;
-- [x] owner notification is configured and best-effort — `RESEND_API_KEY` is
-  set in production and a live signup ran through `notify()` without error
-  (2026-08-13). A failure is now logged rather than swallowed silently, so
-  "best-effort" is observable instead of merely intended. **Confirm the mail
-  actually arrived** at the forwarded `waitlist@normascope.com` before treating
-  this as fully closed;
+- [ ] ~~owner notification is configured and best-effort~~ — **removed
+  2026-08-13.** `notify()` is gone; the route now mails the person who signed
+  up instead. Nothing pushes a signup to the operator any more.
+
+  This was a checked item and it is no longer true, so it is unchecked rather
+  than deleted. The signup itself is not at risk — the row is committed before
+  any mail is attempted, and `/admin/waitlist` still shows the count, the rows
+  and the CSV. What is lost is *push*: nobody finds out a signup happened
+  unless they go and look. During a demand test, where the whole point is
+  noticing traction early, that is worth a deliberate decision rather than a
+  silent one. Either accept it and check `/admin/waitlist` on a cadence, or
+  restore a second best-effort send to the owner alongside the confirmation;
+
+- [x] the visitor confirmation renders and points at real assets — 14 checks in
+  `test/waitlistConfirmationEmail.test.mjs`, covering both linked images
+  existing in `web/public`, no third-party hosts, `NEXT_PUBLIC_SITE_URL` being
+  honoured so a preview cannot mail production links, balanced table markup,
+  HTML/text parity, and the Yutic endorsement appearing exactly once. Three of
+  those were watched failing before being trusted (Doctrine, "a guard you have
+  not watched fail is not a guard"). **Deliverability is not covered** — that a
+  real inbox accepts it, and does not file it as spam, is still unverified;
 - [x] an admin-only count, list, and CSV export are available — `/admin/waitlist`,
   gated by `ADMIN_PASSWORD` (separate from the pitch phrase), verified
   2026-08-10; see FinishedSPEC.md §4a;

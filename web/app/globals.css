@@ -147,3 +147,221 @@
     display: none;
   }
 }
+
+/*
+ * ── The header's Cloud corner ──────────────────────────────────────────────
+ *
+ * Four loops, all decorative: steam off the pan, the recording dot, and the
+ * storm on the waitlist button — rain for the first half of a 6.4s cycle, one
+ * double-strike in the second. See `_components/CloudCorner.tsx` for why the
+ * corner is shaped this way.
+ *
+ * `transform-box: fill-box` is on every animated SVG child deliberately. The
+ * default is `view-box`, which resolves transform-origin against the whole
+ * drawing — the raindrops would fall from the wrong pivot and the steam would
+ * scale from the corner of the pan rather than its own base.
+ */
+
+.hc-eyebrow {
+  font-size: 6.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-clay);
+}
+
+/* The recording dot. This red is not in the palette, and it is worth knowing
+   why: the semantic set reserves rose for *build / failing*, so a red pip in a
+   header can be read as an alert. Kept at Harsha's call, as its own value, so
+   nothing infers a status meaning from a shared token. */
+.hc-rec {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #d3402f;
+  animation: hc-rec 1.4s steps(1, end) infinite;
+}
+
+@keyframes hc-rec {
+  0%,
+  42% {
+    opacity: 1;
+  }
+  58%,
+  100% {
+    opacity: 0.16;
+  }
+}
+
+@keyframes hc-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(3px) scaleX(0.9);
+  }
+  22% {
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px) scaleX(1.15);
+  }
+}
+
+.hc-steam-a,
+.hc-steam-b,
+.hc-steam-c {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: hc-steam 2.6s ease-out infinite;
+}
+.hc-steam-b {
+  animation-delay: 0.38s;
+}
+.hc-steam-c {
+  animation-delay: 0.76s;
+}
+
+/* The rain group is switched off for the second half of the cycle; the drops
+   inside keep falling on their own shorter loop and are simply hidden. */
+@keyframes hc-rain-on {
+  0%,
+  44% {
+    opacity: 1;
+  }
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hc-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-3.5px);
+  }
+  22% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(5.5px);
+  }
+}
+
+@keyframes hc-bolt {
+  0%,
+  53% {
+    opacity: 0;
+  }
+  55% {
+    opacity: 1;
+  }
+  57.5% {
+    opacity: 0.05;
+  }
+  59.5% {
+    opacity: 1;
+  }
+  66% {
+    opacity: 0.85;
+  }
+  72%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hc-flash {
+  0%,
+  53% {
+    opacity: 0;
+  }
+  55% {
+    opacity: 0.7;
+  }
+  57.5% {
+    opacity: 0;
+  }
+  59.5% {
+    opacity: 0.7;
+  }
+  68%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hc-drift {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(0.9px);
+  }
+}
+
+.hc-rain {
+  animation: hc-rain-on 6.4s linear infinite;
+}
+.hc-drop-a,
+.hc-drop-b,
+.hc-drop-c {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: hc-drop 0.95s linear infinite;
+}
+.hc-drop-b {
+  animation-delay: 0.3s;
+}
+.hc-drop-c {
+  animation-delay: 0.62s;
+}
+.hc-bolt {
+  animation: hc-bolt 6.4s linear infinite;
+}
+.hc-flash {
+  animation: hc-flash 6.4s linear infinite;
+}
+.hc-cloud {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: hc-drift 5.1s ease-in-out infinite;
+}
+
+/*
+ * The global reduced-motion block above only shortens animations; it does not
+ * say where they should stop. Without fill-mode these elements revert to their
+ * base style, which is opacity 1 — so rain *and* lightning would both show at
+ * once, permanently. Pin each one to the frame that still reads.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .hc-steam-a,
+  .hc-steam-b,
+  .hc-steam-c {
+    opacity: 0.5;
+  }
+
+  .hc-rain,
+  .hc-drop-a,
+  .hc-drop-b,
+  .hc-drop-c,
+  .hc-rec {
+    opacity: 1;
+  }
+
+  /* Weather without the strike. A lightning flash is exactly the kind of
+     motion the reduced-motion request is about. */
+  .hc-bolt,
+  .hc-flash {
+    opacity: 0;
+  }
+}
