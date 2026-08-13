@@ -183,8 +183,14 @@ export async function POST(req: Request) {
       [normalised, cleanSource, cleanReferrer]
     );
     isNew = result.rows.length > 0;
-  } catch {
-    // Never surface the database error or the address.
+  } catch (err) {
+    // Never surface the database error or the address *to the visitor* — but
+    // do log the error itself. This used to be a bare `catch {}`, which meant
+    // the first production failure (a database the deployment could not reach)
+    // produced a 500 with no trace anywhere: the signup path was down and the
+    // only evidence was the visitor's error message. The address is not
+    // logged; the driver's message is not personal data.
+    console.error("waitlist insert failed:", err instanceof Error ? err.message : String(err));
     return NextResponse.json(
       { ok: false, error: "Couldn't save that right now. Please try again." },
       { status: 500 }
@@ -194,10 +200,16 @@ export async function POST(req: Request) {
   if (isNew) {
     try {
       await notify(normalised, cleanSource, cleanReferrer);
-    } catch {
+    } catch (err) {
       // The row is already committed, so the signup is not lost and the visitor
       // has no action to take. Swallowing this is deliberate: a mail provider
       // having a bad afternoon must not read to a stranger as "try again".
+      //
+      // Logged all the same. Silent-and-deliberate and silent-and-broken look
+      // identical from outside, and "notification is best-effort" was the last
+      // open item on the public-site demand gate — it cannot be verified if a
+      // failure leaves no trace. The address is not logged.
+      console.error("waitlist notify failed:", err instanceof Error ? err.message : String(err));
     }
   }
 

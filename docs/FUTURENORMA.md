@@ -259,7 +259,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Reconciliation attributes cost to the pot that funded it (Pathway 1 item 7) | ✅ | Subscription revenue recorded at last; allowance / pack / goodwill / unattributed kept apart; the old formula false-alarms on the same month — §3h |
 | **History enrichment** (trend, `firstDriftCommit`, `recurrence`, 2K cap) | ✅ | 15 checks (D6) |
 | **CI batch service** (Batches API, 50% rate, reserve→refund, escaped PR line) | ✅ | 18 checks (D2, fixture-level) |
-| **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ❌ **not deployed** | Verified on localhost |
+| **Next.js web surface** (`web/`): upload, explain, ci-explain, share, report page | ✅ built, ✅ **deployed** | `normascope.com` live on Vercel 2026-08-13; waitlist round-trips from the deployed path — §4g |
 | Credit packs seeded from measured COGS | ✅ | `migrations/005` |
 | Race-safe migrations (Pathway 1 item 1) | ✅ | 20 real cold starts on real Postgres — `FinishedSPEC.md` §3a |
 | Storage port, filesystem + S3/R2 drivers (Pathway 1 item 2) | ✅ | Contract run against both; S3 leg on real R2 — §3b |
@@ -279,7 +279,7 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 `normascope-site` that landed the public marketing site, the gated `/pitch` tree
 and the waitlist route). Pathway 1 items 1–9 are implemented; `048ab60` is the
 last commit before the item-9 retention work. Full suite:
-**401 checks green** on PGlite, **425** against real Postgres, across twelve
+**403 checks green** on PGlite, **427** against real Postgres, across twelve
 suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
 `metering`, `reconcile`, `retention`, `enrichment`, `cibatch`, `waitlist`,
 `webhooks` — run 2026-08-13. Migrations are now `001`–`013`.
@@ -947,9 +947,10 @@ preview.
 pinning, and TTL behave differently against a real service than a local stub,
 and abuse controls proven only against a stub are not proven.
 
-**normascope.com** is the destination. A free `*.vercel.app` is enough for this
-step if the domain isn't wired yet; it becomes mandatory at Step 7, because
-Paddle production checkout requires an approved domain.
+**normascope.com** is the destination, and it is **registered as of
+2026-08-13** — earlier than this step required. DNS is not delegated yet, so a
+free `*.vercel.app` still covers this step; the domain becomes mandatory at
+Step 7, because Paddle production checkout requires an approved domain.
 
 **Needs from Harsha:** items 1–5 and 7 of `BuildV5.md`'s handover table.
 
@@ -1106,7 +1107,8 @@ Sandbox first; production keys last.
    → re-buy → works.
 
 **Needs from Harsha:** Paddle sandbox account (free, no business verification),
-then `normascope.com` registered plus business verification for production.
+then business verification for production. `normascope.com` is registered
+(2026-08-13); DNS delegation is still owed.
 
 ---
 

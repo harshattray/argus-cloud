@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EMBEDDED_MIGRATIONS } from "./migrations.generated.js";
 
 /**
  * Database seam. Production and CI set DATABASE_URL and get node-postgres;
@@ -22,6 +23,10 @@ export interface Db {
   close(): Promise<void>;
 }
 
+/**
+ * Only used when a caller passes an explicit `dir` — see `migrate()`. Production
+ * reads no files at all.
+ */
 const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 
 export async function createDb(): Promise<Db> {
@@ -149,9 +154,30 @@ const MIGRATION_LOCK_KEY = 8_314_207;
  * is the wrong place for work that needs progress and retry state; write a
  * resumable job instead.
  *
- * `dir` is injectable for tests only; production always uses `migrations/`.
+ * **The SQL is embedded, not read from disk.** `migrations.generated.ts` is
+ * built from `migrations/*.sql` by `npm run build`. This used to `readdir` a
+ * path computed from `import.meta.url`, which is a different directory in a
+ * local build and inside a Vercel function bundle — the deployed site failed
+ * its first database request with `ENOENT: scandir '/vercel/path0/migrations'`
+ * while every local build and every test stayed green. `FinishedSPEC.md` §4f
+ * had already fixed one version of this by naming the files in
+ * `outputFileTracingIncludes`; embedding them ends the argument, because there
+ * is no longer a path for a bundler to get wrong.
+ *
+ * `dir` is injectable for tests only — passing it reads that directory from
+ * disk, which is what `M5` needs to feed in deliberately broken SQL. Production
+ * passes nothing and touches no files.
  */
-export async function migrate(db: Db, dir: string = MIGRATIONS_DIR): Promise<void> {
+export async function migrate(db: Db, dir?: string): Promise<void> {
+  const pending = dir
+    ? await Promise.all(
+        (await readdir(dir))
+          .filter((f) => f.endsWith(".sql"))
+          .sort()
+          .map(async (name) => ({ name, sql: await readFile(path.join(dir, name), "utf-8") }))
+      )
+    : EMBEDDED_MIGRATIONS;
+
   await db.transaction(async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK_KEY]);
 
@@ -161,14 +187,12 @@ export async function migrate(db: Db, dir: string = MIGRATIONS_DIR): Promise<voi
     const applied = new Set(
       (await tx.query<{ name: string }>("SELECT name FROM schema_migrations")).rows.map((r) => r.name)
     );
-    const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
-    for (const file of files) {
-      if (applied.has(file)) {
+    for (const migration of pending) {
+      if (applied.has(migration.name)) {
         continue;
       }
-      const sql = await readFile(path.join(dir, file), "utf-8");
-      await tx.exec(sql);
-      await tx.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
+      await tx.exec(migration.sql);
+      await tx.query("INSERT INTO schema_migrations (name) VALUES ($1)", [migration.name]);
     }
   });
 }

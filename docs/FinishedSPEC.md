@@ -52,8 +52,8 @@ builds the web app and audits production dependencies — **exits 0**.
 
 | Command | Result |
 |---|---|
-| `npm test` (PGlite) | **401 checks, 0 failures**, 12 suites |
-| `DATABASE_URL=… npm test` (real Postgres 17) | **425 checks, 0 failures**, 12 suites |
+| `npm test` (PGlite) | **403 checks, 0 failures**, 12 suites |
+| `DATABASE_URL=… npm test` (real Postgres 17) | **427 checks, 0 failures**, 12 suites |
 | `npm run verify` | exits 0 |
 
 The three `npm audit` highs are the already-signed-off
@@ -1048,7 +1048,7 @@ Not covered: this is a shared-password door, not authentication. No accounts, no
 per-operator identity, no audit trail of who read the list — Pathway 5. Signups
 are deduplicated by address, **not** by person.
 
-### 4d. The site is built but not deployed — which is on plan
+### 4d. The site was built but not deployed — resolved, see §4g
 
 **Registered 2026-08-13.** `normascope.com` is Harsha's — Spaceship, Inc.,
 created `2026-08-13T06:29:56Z`, nameservers still the registrar's parking pair
@@ -1096,7 +1096,64 @@ Checked against the demand gate's honesty requirements:
 
 The remaining demand-gate boxes (waitlist round-trip in a deployed environment,
 owner notification configured, duplicate handling in production) were **not
-verified this audit** — they cannot be, until the site is deployed.
+verified this audit** — they cannot be, until the site is deployed. *Closed
+later the same day: see §4g.*
+
+---
+
+### 4g. The site is live — normascope.com, 2026-08-13 ✅
+
+`normascope.com` serves the public marketing site and waitlist from Vercel.
+Domain registered at Spaceship the same morning, DNS `A` records pointing at
+Vercel, TLS issued for the apex and `www`.
+
+| Thing | State |
+|---|---|
+| Vercel project | `normascope`, root directory `.`, `npm run build:web` → `web/.next` |
+| Domains | `normascope.com` **308 →** `www.normascope.com`, both certificated |
+| DNS | `A` records at Spaceship; nameservers stay Spaceship's so the free email forwarding keeps its MX and SPF |
+| Env | `DATABASE_URL`, `ADMIN_PASSWORD`, `PITCH_PASSWORD`, `RESEND_API_KEY` — production and preview |
+| `/pitch`, `/admin` | 307 to their unlock screens; before the passwords were set they 404'd, which is the default-deny behaviour working in production |
+| Waitlist | Signup round-trips to Neon from the deployed path, and a duplicate in different case returns the identical response |
+
+**The deploy immediately found a defect that 400+ green checks could not.**
+The first database request on the live site failed:
+
+```
+waitlist insert failed: ENOENT: no such file or directory, scandir '/vercel/path0/migrations'
+```
+
+`migrate()` read `migrations/*.sql` from a path computed off `import.meta.url`
+at runtime. Across the workspace symlink (`web/node_modules/argus-cloud` → repo
+root) that resolves to a different directory inside a Vercel function bundle
+than it does anywhere else. **§4f had already fixed one version of this** by
+naming the files in `outputFileTracingIncludes` — the trace manifests do list
+all 13 — so the files were shipped; the *lookup* was wrong.
+
+**The fix removes the filesystem from the production path entirely.**
+`scripts/embed-migrations.mjs` generates `src/migrations.generated.ts` from the
+`.sql` files, `npm run build` runs it, and `migrate()` uses the embedded SQL.
+Passing an explicit `dir` still reads disk, which is what `M5` needs to feed in
+deliberately broken SQL. There is no longer a path for a bundler, a symlink or a
+host's working directory to get wrong.
+
+The new risk that creates — a stale generated copy — is guarded by **M8**: it
+asserts the embedded list is the directory, in order, and byte-identical. Watched
+it fail: editing one comment in the generated copy turns M8.2 red.
+
+**Two silent failures fixed alongside.** `web/app/api/waitlist/route.ts` caught
+both the database error and the notification error with bare `catch {}`. The
+first meant the signup path was down in production with no trace anywhere — the
+only evidence was the visitor's error message. Both now log the error (never the
+address). That is how the `ENOENT` above was found at all.
+
+**Suite:** 403 checks green on PGlite, **427 against a real Postgres server**,
+across twelve suites — run 2026-08-13.
+
+**Still open:** confirm the owner-notification mail actually arrives at the
+forwarded `waitlist@normascope.com`, and decide whether `www` or the apex is
+primary — the code's `SITE_URL`, canonical tags, sitemap and OG URLs all say
+`normascope.com`, while the deployment currently redirects the apex to `www`.
 
 > **Superseded in part, 2026-08-13.** Round-trip, deduplication and
 > source/referrer/timestamp capture are now verified against the **real

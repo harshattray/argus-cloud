@@ -129,6 +129,20 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
             <WaitlistForm source="footer" layout="stacked" />
           </div>
         </div>
+
+        {/* The operator line. PATHWAYS' public-site demand gate requires
+            legal-facing copy naming who runs Normascope, and this is the
+            surface the public actually sees — the /pitch footer carried it
+            while the public site did not. Same wording, deliberately: two
+            phrasings of who trades here is one too many. */}
+        <div className="mx-auto mt-12 flex max-w-5xl flex-col gap-2 border-t border-black/8 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-text/35">
+            © {new Date().getFullYear()} Normascope. Screenshots never leave your machines.
+          </p>
+          <p className="text-xs text-text/35">
+            Normascope is operated by Yutic, a sole proprietorship of Harsha Attray.
+          </p>
+        </div>
       </footer>
     </div>
   );

@@ -339,6 +339,34 @@ if (REAL_PG) {
   }
 }
 
+// --- M8: the embedded SQL matches the directory --------------------------
+// `migrate()` no longer reads migrations/ at runtime; `npm run build`
+// generates `src/migrations.generated.ts` from it. That removed a whole class
+// of deploy-only failure (see db.ts) and introduced exactly one new risk: a
+// generated copy that has gone stale. This is the guard for it, and it is why
+// the generator runs from `npm run build` rather than by hand.
+{
+  const { EMBEDDED_MIGRATIONS } = await import(path.join(DIST, "migrations.generated.js"));
+  const onDisk = (await readdir(MIGRATIONS)).filter((f) => f.endsWith(".sql")).sort();
+
+  check(
+    "M8.1",
+    EMBEDDED_MIGRATIONS.length === onDisk.length &&
+      EMBEDDED_MIGRATIONS.every((m, i) => m.name === onDisk[i]),
+    `the embedded list is the directory, in order (${EMBEDDED_MIGRATIONS.length} of ${onDisk.length})`
+  );
+
+  let mismatched = null;
+  for (const migration of EMBEDDED_MIGRATIONS) {
+    const sql = await readFile(path.join(MIGRATIONS, migration.name), "utf-8");
+    if (sql !== migration.sql) {
+      mismatched = migration.name;
+      break;
+    }
+  }
+  check("M8.2", mismatched === null, `every embedded migration is byte-identical to its file${mismatched ? ` — ${mismatched} differs` : ""}`);
+}
+
 if (!REAL_PG) {
   console.log(
     "\n⚠️  M3 ran on PGlite: 20 concurrent CALLS on one in-process connection.\n" +
