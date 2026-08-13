@@ -277,7 +277,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 Branch `pathway-1-spend-safety` @ **`4c82a8d`** (cut from `main` @ `e42810d`,
 the merge of `normascope-site` that landed the public marketing site, the gated
 `/pitch` tree and the waitlist route), plus uncommitted item-7 and item-8 work. Full suite:
-**353 checks green** on PGlite, **368** against real Postgres, across eleven
+**353 checks green** on PGlite, **370** against real Postgres, across eleven
 suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
 `metering`, `reconcile`, `enrichment`, `cibatch`, `waitlist`, `webhooks` — run
 2026-08-13. Migrations are now `001`–`012`.

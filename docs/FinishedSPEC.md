@@ -176,7 +176,7 @@ maintainer machine. Both manifests now declare `>=0.112.3`.
 | Agent keys with per-key monthly budgets | ✅ | C7 |
 | History enrichment — trend, `firstDriftCommit`, `recurrence`, 2K cap | ✅ | 15 checks (D6) |
 | Waitlist traction queries + CSV | ✅ | 28 checks, live-verified — §4c |
-| Race-safe migrations (advisory lock, one transaction) | ✅ | 16 checks incl. 20 real cold starts on real Postgres — §3a |
+| Race-safe migrations (advisory lock, one transaction) | ✅ | 18 checks incl. 20 real cold starts on real Postgres — §3a |
 | Storage port + filesystem and S3/R2 drivers | ✅ | 45 checks, one contract run against both drivers, S3 leg verified on **real Cloudflare R2** — §3b |
 | Request rate limiting — per key **and** per org, counted in the database | ✅ | 34 checks incl. 20 separate processes sharing one ceiling on real Postgres — §3c |
 | Provider-dollar reservation before every call, idempotent settlement | ✅ | 54 checks incl. 20 separate processes sharing one budget on real Postgres — §3d |
@@ -231,7 +231,7 @@ migration SQL inside a transaction actually ran *outside* it. The tables would
 have survived a rollback, quietly defeating the fix above. Check M5.2 guards
 against it coming back.
 
-**Tests** — `test/migrations.test.mjs`. 12 checks on PGlite, 16 against real
+**Tests** — `test/migrations.test.mjs`. 12 checks on PGlite, 18 against real
 Postgres. Included in `npm test`.
 
 | Check | What it proves |
@@ -243,7 +243,8 @@ Postgres. Included in `npm test`.
 | M5 | A migration with bad SQL rolls everything back. No half-created tables, no leftover bookkeeping row. |
 | M6 | The lock is released afterwards, so a later `migrate` can take it. |
 | **M7** | *(real Postgres)* 20 separate processes start against one database: none fail, **20 different Postgres backends**, exactly 7 rows. |
-| **M7b** | *(real Postgres)* The old code **fails** that too — 12 of 20 processes die with `duplicate key value violates unique constraint "pg_type_typname_nsp_index"`. That is two processes creating tables at the same instant, colliding inside Postgres's own catalog. |
+| **M7b** | *(real Postgres)* The old code **fails** that too — 19 of 20 processes die with `duplicate key value violates unique constraint "pg_type_typname_nsp_index"`. That is processes creating tables at the same instant, colliding inside Postgres's own catalog. |
+| **M7.0 / M7b.0** | *(real Postgres)* All 20 processes were connected and waiting when the barrier opened. Without this the counts above measure boot order, not concurrency. |
 
 **Why M7 exists when M3 already passed.** M3 runs 20 migrations at once, but they
 share one connection pool. Real serverless starts are separate processes with
@@ -255,6 +256,22 @@ and the result would mean nothing.
 **Why M3b and M7b exist.** A test that passes both before and after a fix proves
 nothing. These two re-run the old code and check it still fails. If either ever
 starts passing, the test it guards has stopped testing anything.
+
+**Why M7 and M7b wait at a barrier** (added 2026-08-13). Spawning 20 node
+processes together does not make them *run* together — each takes well over
+100ms to boot. When the spawns stagger far enough, the first process applies all
+12 migrations before the second one reads, every later process finds the work
+done, nothing collides, and M7b — which asserts the old code still collides —
+goes green on the broken implementation. It did exactly that in CI: the same
+commit passed on one runner and failed on another. Locally, 75ms of stagger
+between spawns reproduces the failure in 14 runs out of 15.
+
+So each worker now connects first, then waits for one shared wall-clock instant
+before touching the schema — the same device `budgetAlerts` B4 already used. The
+count went from a coin toss (8 to 19 of 20 colliding, run to run) to 19 every
+time, which is the number the primary key forces: only one process can insert a
+given migration name. M7.0 and M7b.0 fail loudly if any worker missed the
+instant, because then the other counts mean nothing.
 
 **Repeatable.** The real-Postgres run was done twice against the same database,
 with identical results. To run it yourself:

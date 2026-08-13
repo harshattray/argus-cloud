@@ -197,12 +197,64 @@ if (REAL_PG) {
   const { spawn } = await import("node:child_process");
   const tmp = await mkdtemp(path.join(HERE, ".tmp-coldstart-"));
   try {
+    // A wall-clock barrier — the same device `budgetAlerts` B4 uses, for the
+    // same reason. Twenty node processes take well over 100ms each to boot, so
+    // spawning them together does not make them *run* together. Each worker
+    // connects first, then waits for one shared instant before it touches the
+    // schema.
+    //
+    // Without it M7b was a coin toss, and on 2026-08-13 the toss came up wrong:
+    // the same commit passed on one runner and failed on another. M7b asserts
+    // that the pre-1A implementation still collides. If the spawns stagger far
+    // enough that the first process applies all 12 migrations before the second
+    // one reads, every later process finds the work done, nothing collides —
+    // and the counter-test reports the broken implementation as safe. 75ms of
+    // stagger reproduces that locally in 14 runs out of 15.
+    //
+    // BARRIER_AT is an absolute epoch millisecond, so a worker that boots late
+    // waits less rather than starting late. Each announces how early it got
+    // there; M7.0 and M7b.0 fail loudly if any of them missed the instant,
+    // because then the counts below measure nothing.
+    const BARRIER_MS = 4000;
+    const BARRIER =
+      `const late = Date.now() - Number(process.env.BARRIER_AT);\n` +
+      `console.error("barrier " + late);\n` +
+      `await new Promise((r) => setTimeout(r, Math.max(0, -late)));\n`;
+
+    /** Spawns 20 copies of `file`, all released at one wall-clock instant. */
+    const race = (file) => {
+      const barrierAt = Date.now() + BARRIER_MS;
+      return Promise.all(
+        Array.from(
+          { length: 20 },
+          () =>
+            new Promise((resolve) => {
+              const child = spawn(process.execPath, [file], {
+                env: { ...process.env, BARRIER_AT: String(barrierAt) },
+              });
+              let out = "";
+              let err = "";
+              child.stdout.on("data", (d) => (out += d));
+              child.stderr.on("data", (d) => (err += d));
+              child.on("close", (code) => resolve({ code, out: out.trim(), err: err.trim() }));
+            })
+        )
+      );
+    };
+
+    /** How many were connected and waiting when the barrier opened. */
+    const atBarrier = (results) =>
+      results.filter((r) => Number(/barrier (-?\d+)/.exec(r.err)?.[1] ?? 0) < 0).length;
+
     const worker = path.join(tmp, "worker.mjs");
     await writeFile(
       worker,
       `const { createDb, migrate } = await import(${JSON.stringify(path.join(DIST, "db.js"))});\n` +
         `const db = await createDb();\n` +
+        // The pid query is also what opens the connection: connect before the
+        // barrier, not after it.
         `const pid = (await db.query("SELECT pg_backend_pid() AS p")).rows[0].p;\n` +
+        BARRIER +
         `await migrate(db);\n` +
         `console.log(pid);\n` +
         `await db.close();\n`
@@ -211,20 +263,10 @@ if (REAL_PG) {
     const seed = await freshDb();
     await seed.close();
 
-    const results = await Promise.all(
-      Array.from(
-        { length: 20 },
-        () =>
-          new Promise((resolve) => {
-            const child = spawn(process.execPath, [worker], { env: process.env });
-            let out = "";
-            let err = "";
-            child.stdout.on("data", (d) => (out += d));
-            child.stderr.on("data", (d) => (err += d));
-            child.on("close", (code) => resolve({ code, out: out.trim(), err: err.trim() }));
-          })
-      )
-    );
+    const results = await race(worker);
+
+    const ready = atBarrier(results);
+    check("M7.0", ready === 20, `all 20 processes were connected and waiting when the barrier opened (${ready}/20)`);
 
     const failed = results.filter((r) => r.code !== 0);
     check(
@@ -235,7 +277,11 @@ if (REAL_PG) {
     );
 
     const pids = new Set(results.map((r) => r.out).filter(Boolean));
-    check("M7.2", pids.size > 1, `they occupied ${pids.size} distinct Postgres backends — genuinely separate connections`);
+    check(
+      "M7.2",
+      pids.size === 20,
+      `they occupied ${pids.size} distinct Postgres backends — 20 separate connections, all open at once`
+    );
 
     const verify = await createDb();
     const rows = await verify.query("SELECT count(*) AS n FROM schema_migrations");
@@ -253,6 +299,8 @@ if (REAL_PG) {
         `const { createDb } = await import(${JSON.stringify(path.join(DIST, "db.js"))});\n` +
         `const DIR = ${JSON.stringify(MIGRATIONS)};\n` +
         `const db = await createDb();\n` +
+        `await db.query("SELECT 1");\n` + // connect before the barrier, not after it
+        BARRIER +
         `await db.query("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())");\n` +
         `const applied = new Set((await db.query("SELECT name FROM schema_migrations")).rows.map(r => r.name));\n` +
         `for (const f of (await readdir(DIR)).filter(x => x.endsWith(".sql")).sort()) {\n` +
@@ -266,23 +314,20 @@ if (REAL_PG) {
     const reset = await freshDb();
     await reset.close();
 
-    const oldResults = await Promise.all(
-      Array.from(
-        { length: 20 },
-        () =>
-          new Promise((resolve) => {
-            const child = spawn(process.execPath, [oldWorker], { env: process.env });
-            let err = "";
-            child.stderr.on("data", (d) => (err += d));
-            child.on("close", (code) => resolve({ code, err: err.trim() }));
-          })
-      )
-    );
+    const oldResults = await race(oldWorker);
+
+    const oldReady = atBarrier(oldResults);
+    check("M7b.0", oldReady === 20, `the 20 control processes all reached the barrier (${oldReady}/20)`);
+
     const oldFailed = oldResults.filter((r) => r.code !== 0);
+    // At most one of them can finish: only one process can insert a given
+    // migration name into the primary key. So with a real overlap this is 19,
+    // or 20 if they collide creating `schema_migrations` itself. It is not "at
+    // least one", which is what made it a coin toss.
     check(
       "M7b.1",
-      oldFailed.length > 0,
-      `pre-1A implementation still fails 20 real cold starts (${oldFailed.length}/20) — M7 has teeth`
+      oldFailed.length >= 19,
+      `pre-1A implementation fails 19 of 20 real cold starts that genuinely overlap (${oldFailed.length}/20) — M7 has teeth`
     );
 
     // Leave the database migrated for anything that runs after this file.
