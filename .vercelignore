@@ -12,7 +12,10 @@ test-run/
 test/
 assets/
 yutic-brand/
-docs/
+# Only the top-level planning docs. `docs/legal/` must reach the build —
+# `scripts/embed-legal.mjs` reads it to generate the published legal pages, and
+# a gitignore-style `docs/` exclusion cannot be undone for a child directory.
+docs/*.md
 norma-bridge-usecase/
 security/
 .github/

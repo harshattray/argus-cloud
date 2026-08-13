@@ -277,12 +277,13 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 
 Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 `normascope-site` that landed the public marketing site, the gated `/pitch` tree
-and the waitlist route). Pathway 1 items 1–9 are implemented; `048ab60` is the
-last commit before the item-9 retention work. Full suite:
-**403 checks green** on PGlite, **427** against real Postgres, across twelve
+and the waitlist route). Pathway 1 items 1–9 are implemented, and the public
+site is **live on `normascope.com`** (§4g) with its legal pages published
+(§4h). Full suite:
+**410 checks green** on PGlite, **434** against real Postgres, across thirteen
 suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
-`metering`, `reconcile`, `retention`, `enrichment`, `cibatch`, `waitlist`,
-`webhooks` — run 2026-08-13. Migrations are now `001`–`013`.
+`metering`, `reconcile`, `retention`, `enrichment`, `cibatch`, `legal`,
+`waitlist`, `webhooks` — run 2026-08-13. Migrations are now `001`–`013`.
 
 > The real-Postgres number moved by more than the new suite adds. Running the
 > existing suites against one shared server exposed four `budgetAlerts` checks

@@ -52,8 +52,8 @@ builds the web app and audits production dependencies — **exits 0**.
 
 | Command | Result |
 |---|---|
-| `npm test` (PGlite) | **403 checks, 0 failures**, 12 suites |
-| `DATABASE_URL=… npm test` (real Postgres 17) | **427 checks, 0 failures**, 12 suites |
+| `npm test` (PGlite) | **410 checks, 0 failures**, 13 suites |
+| `DATABASE_URL=… npm test` (real Postgres 17) | **434 checks, 0 failures**, 13 suites |
 | `npm run verify` | exits 0 |
 
 The three `npm audit` highs are the already-signed-off
@@ -1086,13 +1086,11 @@ Checked against the demand gate's honesty requirements:
 - ✅ No `$59`, price, "sign up", "log in" or "subscribe" string on `/cloud`.
 - ✅ Three `/cloud#waitlist` anchors wire the early-access actions.
 - ✅ Footer carries the Yutic endorsement lockup ("A product from Yutic").
-- ⬜ **No terms, privacy or legal page exists** — no file matching `*terms*`,
-  `*privacy*` or `*legal*` under `web/app`. FUTURENORMA §4 **Step 8** owns this
-  (ToS, Privacy, subprocessors, security contact, data-flow disclosure), so it
-  is scheduled, not missing. The narrower item that lands earlier: PATHWAYS'
-  demand gate wants "Normascope is operated by Yutic, a sole proprietorship of
-  Harsha Attray" in legal-facing copy **before the site is published**, which is
-  ahead of Step 8.
+- ✅ **Terms, Privacy, Cookie Notice and AI Disclosure are published** as of
+  2026-08-13 — `/legal` plus four pages, linked from the public footer. See
+  §4h. This closes the demand gate's legal-copy item early; the *paid* Cloud
+  set (subscription terms, refund policy, subprocessors, data-flow disclosure)
+  remains FUTURENORMA §4 **Step 8**.
 
 The remaining demand-gate boxes (waitlist round-trip in a deployed environment,
 owner notification configured, duplicate handling in production) were **not
@@ -1154,6 +1152,69 @@ across twelve suites — run 2026-08-13.
 forwarded `waitlist@normascope.com`, and decide whether `www` or the apex is
 primary — the code's `SITE_URL`, canonical tags, sitemap and OG URLs all say
 `normascope.com`, while the deployment currently redirects the apex to `www`.
+
+---
+
+### 4h. The legal pages are published — 2026-08-13 ✅
+
+`/legal` plus four documents, linked from the public footer and live:
+**Terms of Use**, **Privacy Policy**, **Cookie Notice**, **AI and Cloud
+Disclosure**.
+
+**`docs/legal/*.md` stays the source of truth.** `scripts/embed-legal.mjs`
+generates `web/lib/legal.generated.ts` at build time and the pages render that,
+so the committed document *is* the published document. A hand-converted TSX copy
+would have been a second version of a legal text, and the two would diverge the
+first time a clause changed — with the published one, the one people rely on,
+being the copy nobody remembered to update. Embedding rather than reading at
+request time is the §4g lesson applied before it could bite twice.
+
+| File | What it does |
+|---|---|
+| `scripts/legal-manifest.mjs` | The allowlist: which documents publish, their slugs, titles and summaries |
+| `scripts/embed-legal.mjs` | Generates the embedded copy; throws if a listed document is missing |
+| `web/lib/markdown.tsx` | ~140-line renderer for the subset those documents use. Builds React elements — no `dangerouslySetInnerHTML`, no parser dependency |
+| `web/app/(site)/legal/` | The index and the `[slug]` pages, all four statically prerendered |
+
+**The refund policy is deliberately not published.** Its own first line says not
+to publish it or link it from a checkout until the final terms are reviewed and
+Paddle is configured — and there is nothing to buy. Publication is an allowlist,
+never the directory listing, so adding a file to `docs/legal/` does not put it
+on the site. The `/legal` index says plainly that the paid-Cloud documents come
+before checkout is enabled, rather than quietly omitting them.
+
+**Tests** — `test/legal.test.mjs`, 7 checks:
+
+| Check | What it proves |
+|---|---|
+| L1 | Every published page is byte-identical to its document, and every listed document exists |
+| L2 | The draft refund policy is held back, and none of its text reached the bundle |
+| L3 | Every published document names Yutic as operator and carries a "Last updated" date |
+| L4 | No published document links to an unpublished one — a dead link inside a privacy policy |
+
+L1 was watched failing: change one word in the generated copy and L1.1 goes red.
+The first version of the suite could **not** have caught it — it imported the
+allowlist from the generator, which *ran* the generator and silently rewrote the
+artifact it was about to inspect. Splitting the manifest out is what made the
+guard real.
+
+**Suite:** 410 checks green on PGlite, **434 against a real Postgres server**, across thirteen suites — run 2026-08-13.
+
+**A false claim removed from the footer, same day.** Both footers read
+"Screenshots never leave your machines." That is true of the local CLI and
+false of Cloud, whose purpose is uploading them — under a page selling Cloud.
+`docs/pitch.md` had always carried the qualifier ("unless you opt into Cloud…
+on the free tier — that's architecture, not policy"); the footer had dropped it,
+and the public footer inherited the shortened version when the operator line was
+added.
+
+**Both footers now carry the copyright only.** The first fix re-added the
+qualifier; Harsha's call was to drop the claim entirely, and it is the better
+one — a footer is where a product claim cannot be qualified, cannot be kept in
+step with what the product does, and gets copied to the next surface with its
+conditions stripped, which is exactly what happened here. Caught by reading the
+live page, not by any check: §4e verifies what the site *doesn't* claim and has
+no equivalent for a claim that holds on one tier and not the other.
 
 > **Superseded in part, 2026-08-13.** Round-trip, deduplication and
 > source/referrer/timestamp capture are now verified against the **real
