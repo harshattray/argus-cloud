@@ -14,7 +14,7 @@ const { grantCredits, balance, consumeCredits, InsufficientCreditsError } = awai
 const { recordUsage } = await import(path.join(DIST, "usage.js"));
 const { createApiKey, findApiKey } = await import(path.join(DIST, "apiKeys.js"));
 const { handleMorWebhook, signBody } = await import(path.join(DIST, "webhooks.js"));
-const { hostedExplain, CREDITS_PER_DEEP, AUTO_EXPLAIN_PER_RUN_CAP } = await import(path.join(DIST, "explainService.js"));
+const { hostedExplain, CREDITS_PER_ANALYSIS, CREDITS_PER_DEEP, AUTO_EXPLAIN_PER_RUN_CAP } = await import(path.join(DIST, "explainService.js"));
 const { isTripped, resetBreaker, EXPLAIN_PAUSED_MESSAGE } = await import(path.join(DIST, "breaker.js"));
 const { reconcileMonth } = await import(path.join(DIST, "reconcile.js"));
 
@@ -137,8 +137,9 @@ const baseReq = (orgId, over = {}) => ({
   const balAfterSecond = await balance(db, orgA);
   check("C3.1", first.ok && !first.cached && second.ok && second.cached && calls === 1,
     `identical re-request served from cache (provider calls: ${calls})`);
-  check("C3.2", balAfterFirst === 9 && balAfterSecond === 9 && second.creditsCharged === 0,
-    "cache hit is free — no decrement");
+  const afterOne = 10 - CREDITS_PER_ANALYSIS;
+  check("C3.2", balAfterFirst === afterOne && balAfterSecond === afterOne && second.creditsCharged === 0,
+    `cache hit is free — no decrement (balance held at ${balAfterSecond} after one ${CREDITS_PER_ANALYSIS}-credit analysis)`);
   const events = await db.query(
     "SELECT status FROM usage_events WHERE org_id = $1 ORDER BY id", [orgA]);
   check("C3.3", events.rows.map((r) => r.status).join(",") === "charged,cache_hit",
@@ -202,21 +203,47 @@ const baseReq = (orgId, over = {}) => ({
 }
 
 // ═══ C6 — circuit breaker: paused explain, unaffected product ═════════════
+//
+// Rewritten 2026-08-10 for provider-dollar reservations (PATHWAYS §10.3 1B.1).
+// The old C6.1 asserted the *weaker* pre-reservation guarantee: the call went
+// through, the spend was recorded, and only then did the breaker trip — i.e.
+// the budget was discovered after it had been exceeded. The reservation now
+// refuses the call up front, so the assertion moves with it: no provider call,
+// no spend, no credits, and the breaker still trips stickily.
 
 {
   const org = await makeOrg("c6");
   await grantCredits(db, { orgId: org, kind: "pack_purchase", credits: 50, expiresAt: farFuture });
   const alerts = [];
-  // Budget below one analysis cost (~15K in × $3 + 1.2K out × $15 ≈ $0.063).
+  // Budget below one analysis cost (~15K in × $3 + 1.2K out × $15 ≈ $0.063),
+  // and therefore far below its hard maximum.
   const tinyDeps = deps(okProvider, { budget: 10_000, alerts });
+  let providerCalls = 0;
+  const countingDeps = {
+    ...tinyDeps,
+    provider: async (...args) => {
+      providerCalls++;
+      return okProvider(...args);
+    },
+  };
 
-  const tripping = await hostedExplain(db, tinyDeps, baseReq(org, { buildHash: "c6-1" }));
-  check("C6.1", tripping.ok && (await isTripped(db)) && alerts.length === 1,
-    "budget breach trips the breaker and alerts a human once");
+  const spendBefore = Number(
+    (await db.query("SELECT COALESCE(SUM(spend_microdollars), 0) AS t FROM provider_spend_days")).rows[0].t
+  );
+  const tripping = await hostedExplain(db, countingDeps, baseReq(org, { buildHash: "c6-1" }));
+  const spendAfter = Number(
+    (await db.query("SELECT COALESCE(SUM(spend_microdollars), 0) AS t FROM provider_spend_days")).rows[0].t
+  );
+  check("C6.1", !tripping.ok && tripping.code === "explain_paused" && (await isTripped(db)) && alerts.length === 1,
+    "a call that cannot fit the daily budget is refused, and the breaker trips stickily with one alert");
+  check("C6.1b", providerCalls === 0 && spendAfter === spendBefore,
+    `the provider was never called and nothing was spent (${providerCalls} calls, ${spendAfter - spendBefore} microdollars)`);
+  check("C6.1c", (await balance(db, org)) === 50 && tripping.ciStaysGreen,
+    "no credits were touched and CI stays green");
 
   const paused = await hostedExplain(db, tinyDeps, baseReq(org, { buildHash: "c6-2" }));
   const balAfter = await balance(db, org);
-  check("C6.2", !paused.ok && paused.code === "explain_paused" && paused.message === EXPLAIN_PAUSED_MESSAGE && balAfter === 49,
+  check("C6.2", !paused.ok && paused.code === "explain_paused" && paused.message === EXPLAIN_PAUSED_MESSAGE && balAfter === 50,
     "explain paused everywhere with the honest message; no credits touched");
 
   // The product is unaffected: uploads/runs tables keep working.
@@ -227,7 +254,7 @@ const baseReq = (orgId, over = {}) => ({
   check("C6.3", run.rows.length === 1 && alerts.length === 1,
     "uploads/reports/diffs unaffected; alert fired exactly once");
 
-  await resetBreaker(db);
+  await resetBreaker(db, { actor: "test-operator", reason: "suite continues after a deliberate trip" });
   const resumed = await hostedExplain(db, deps(okProvider), baseReq(org, { buildHash: "c6-3" }));
   check("C6.4", resumed.ok === true && !(await isTripped(db)), "manual reset resumes explain");
 }
@@ -237,19 +264,21 @@ const baseReq = (orgId, over = {}) => ({
 {
   const org = await makeOrg("c7");
   await grantCredits(db, { orgId: org, kind: "pack_purchase", credits: 100, expiresAt: farFuture });
-  const { plaintext } = await createApiKey(db, org, { kind: "agent", monthlyBudgetCredits: 3, label: "ci-agent" });
+  const threeAnalyses = 3 * CREDITS_PER_ANALYSIS;
+  const { plaintext } = await createApiKey(db, org, { kind: "agent", monthlyBudgetCredits: threeAnalyses, label: "ci-agent" });
   const key = await findApiKey(db, plaintext);
-  check("C7.1", key && key.kind === "agent" && key.monthly_budget_credits === 3, "agent key resolves with its budget");
+  check("C7.1", key && key.kind === "agent" && key.monthly_budget_credits === threeAnalyses,
+    `agent key resolves with a budget of three analyses (${threeAnalyses} credits)`);
 
   const first = await hostedExplain(db, deps(okProvider), baseReq(org, { apiKey: key, buildHash: "c7-1" }));
   const second = await hostedExplain(db, deps(okProvider), baseReq(org, { apiKey: key, buildHash: "c7-2" }));
   const third = await hostedExplain(db, deps(okProvider), baseReq(org, { apiKey: key, buildHash: "c7-3" }));
-  check("C7.2", first.ok && second.ok && third.ok, "agent key works within budget (3 × 1 credit)");
+  check("C7.2", first.ok && second.ok && third.ok, `agent key works within budget (3 × ${CREDITS_PER_ANALYSIS} credits)`);
 
   const exhausted = await hostedExplain(db, deps(okProvider), baseReq(org, { apiKey: key, buildHash: "c7-4" }));
   check("C7.3",
     !exhausted.ok && exhausted.code === "agent_budget_exhausted" && exhausted.ciStaysGreen &&
-      exhausted.message.includes("used 3 of its 3") && exhausted.message.includes("monthly credits"),
+      exhausted.message.includes(`used ${threeAnalyses} of its ${threeAnalyses}`) && exhausted.message.includes("monthly credits"),
     `exhaustion → clear error, CI green (${exhausted.ok ? "?" : exhausted.message.slice(0, 60)}…)`);
 
   const deep = await hostedExplain(db, deps(okProvider), baseReq(org, { apiKey: key, pass: "deep", buildHash: "c7-5" }));
@@ -257,33 +286,20 @@ const baseReq = (orgId, over = {}) => ({
     `deep pass (${CREDITS_PER_DEEP} credits) also refused once over budget`);
 }
 
-// ═══ C8 — reconciliation dry-run on a seeded month ════════════════════════
-
+// ═══ C8 — reconciliation ══════════════════════════════════════════════════
+//
+// Moved to `test/reconcile.test.mjs` (2026-08-13, Pathway 1 item 7). The
+// checks that lived here seeded into the *current* month, which every other
+// suite in this file also writes into, so they could only assert `>=` and a
+// margin ranging over whatever else had run. The reconciliation the product
+// now needs — subscription revenue, cost split by funding grant, goodwill and
+// unattributed spend kept apart — is not assertable that way. The new suite
+// seeds an isolated past month and asserts exact figures, including a guard
+// (R3.4) that runs the old formula over the same data to prove it false-alarms.
 {
-  const month = new Date().toISOString().slice(0, 7);
-
-  // Healthy org: one $79 pack sold, modest spend.
-  const orgH = await makeOrg("c8-healthy");
-  await grantCredits(db, { orgId: orgH, kind: "pack_purchase", credits: 200, expiresAt: farFuture, sourceRef: "evt-c8-h", priceMicrodollars: 79_000_000 });
-  await recordUsage(db, { orgId: orgH, model: "claude-sonnet-5", pass: "analysis", status: "charged", costMicrodollars: 5_000_000, creditsCharged: 1 });
-  const healthyAlerts = [];
-  const healthy = await reconcileMonth(db, month, (m) => healthyAlerts.push(m));
-  check("C8.1",
-    healthy.packRevenueMicrodollars >= 79_000_000 && healthy.grossMargin !== null && !healthy.alerted && healthyAlerts.length === 0,
-    `healthy month: revenue $${(healthy.packRevenueMicrodollars / 1e6).toFixed(0)}, margin ${(healthy.grossMargin * 100).toFixed(1)}%, no alert`);
-
-  // Unhealthy: provider spend overwhelms revenue → margin < 50% → alert.
-  const orgU = await makeOrg("c8-unhealthy");
-  await grantCredits(db, { orgId: orgU, kind: "pack_purchase", credits: 200, expiresAt: farFuture, sourceRef: "evt-c8-u", priceMicrodollars: 10_000_000 });
-  // Reconciliation is global (provider spend vs all credit revenue in the
-  // month), so the seeded spend must dominate the month's total revenue.
-  await recordUsage(db, { orgId: orgU, model: "claude-opus-4-8", pass: "deep", status: "charged", costMicrodollars: 150_000_000, creditsCharged: 3 });
-  const alerts = [];
-  const bad = await reconcileMonth(db, month, (m) => alerts.push(m));
-  check("C8.2", bad.alerted && alerts.length === 1 && alerts[0].includes("reprice"),
-    `margin ${(bad.grossMargin * 100).toFixed(1)}% < 50% fires the reprice alert`);
-  check("C8.3", bad.chargedAnalyses >= 2 && bad.providerSpendMicrodollars >= 65_000_000,
-    "report totals derive from the append-only usage meter");
+  const report = await reconcileMonth(db, new Date().toISOString().slice(0, 7), () => {});
+  check("C8.1", typeof report.cogs.totalMicrodollars === "number" && report.month.length === 7,
+    "reconcileMonth still reads this suite's own month without throwing");
 }
 
 await db.close();

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Provider, ProviderRequest, ProviderResult } from "argus-cloud/explainService.js";
 import type { BatchSubmit, BatchFetch, BatchResult, BatchSubmission } from "argus-cloud/ciBatch.js";
 import type { TokenUsage } from "argus-cloud/usage.js";
+import { HARD_CAPS, OPERATIONS } from "argus-cloud/providerBudget.js";
 
 /**
  * The hosted provider seam (Build 4.0 Phase D). The provider key lives in
@@ -15,12 +16,28 @@ import type { TokenUsage } from "argus-cloud/usage.js";
  * never shown; crop parity arrives with artifact upload.
  */
 
+/**
+ * Which model runs which pass — **read from `providerBudget.ts`, never declared
+ * here**.
+ *
+ * This file used to carry its own copy, and `providerBudget.ts` claimed in a
+ * comment that it did not. That is the drift the derived-credit rule exists to
+ * stop: credits are computed from `OPERATIONS`, so a model changed here and not
+ * there would have been priced as the old model — the request path calling one
+ * model while the ledger charged for another. Nothing would have failed; the
+ * margin would just have been wrong.
+ */
 export const HOSTED_MODELS = {
-  analysis: "claude-sonnet-5",
-  deep: "claude-opus-4-8",
+  analysis: OPERATIONS.analysis.model,
+  deep: OPERATIONS.deep.model,
 } as const;
 
-const MAX_TOKENS = 4096;
+/**
+ * Both caps come from `providerBudget.ts` rather than being declared here.
+ * The reservation taken before a call is computed from exactly these numbers;
+ * a local copy that drifted would make every reservation a guess.
+ */
+const MAX_TOKENS = HARD_CAPS.maxOutputTokens;
 
 // Mirrors the CLI's strict findings schema (norma-scope src/explain/schema.ts,
 // PROMPT_VERSION 1). Keep in lockstep — the result cache keys on promptVersion.
@@ -91,27 +108,11 @@ function toTokenUsage(usage: Anthropic.Usage): TokenUsage {
   };
 }
 
-export interface FrameEvidence {
-  frame: string;
-  label: string;
-  threshold: number;
-  stats: Record<string, unknown>;
-}
-
-export function buildUserContent(evidence: FrameEvidence, enrichmentText: string | null): string {
-  const parts = [
-    "<frame-diff-data>",
-    `Frame: ${evidence.frame} (label: ${evidence.label})`,
-    `Flag threshold: ${evidence.threshold}% aligned mismatch`,
-    `Diff metadata (summary.json v2): ${JSON.stringify(evidence.stats)}`,
-    "</frame-diff-data>",
-  ];
-  if (enrichmentText) {
-    parts.push(enrichmentText);
-  }
-  parts.push("Explain the most likely causes of this frame's drift as structured findings.");
-  return parts.join("\n");
-}
+// Prompt assembly and its size cap live in the package (`src/promptAssembly.ts`)
+// so the node suite can prove the cap holds. Re-exported here because the routes
+// import `FrameEvidence` from this module.
+export { buildUserContent, type FrameEvidence } from "argus-cloud/promptAssembly.js";
+import { buildUserContent, type FrameEvidence } from "argus-cloud/promptAssembly.js";
 
 function messageParams(model: string, content: string): Anthropic.MessageCreateParamsNonStreaming {
   return {

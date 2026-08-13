@@ -1,0 +1,21 @@
+YUTIC — BRAND RULES v1.0 — ORANGE SCHEME
+
+MARK  A fan of five peacock feathers, each with an eye. Never rotated, reordered,
+      stretched, recoloured or given effects. Clearspace = one eye diameter.
+      Minimum 28px wide; below that drop the quill and base.
+
+LOCKUP  Fan left, wordmark 'Yutic' beside it, capital Y. Stacked only where width is constrained.
+
+COLOUR  Feather orange #E8641C is the only chromatic colour. Shaft black #16130F, Pupil peach #F9CFAF, Paper #EFEDE9.
+        Greys: #FCFBF9 #E4DFD7 #BDB5AA #8A8177 #554E45 #2C2620.
+        The accent stays under ~10% of a surface. Never body copy on light grounds.
+        Orange and plum are both official. One scheme per surface, never mixed.
+
+TYPE  DM Mono for wordmark, headlines, labels, numbers. DM Sans for body text.
+      Display tracking -0.04em; body 15-17px at line-height 1.7.
+
+VOICE  Plain and factual. Say what it does and who it is for. No mission language.
+
+PRODUCTS  Yutic is the quiet parent. Products keep their own identity.
+          Endorsement 'A lab from Yutic' appears once per surface, never in product headers or app UI.
+          Products are numbered in ship order: 01 Normascope.

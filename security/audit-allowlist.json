@@ -1,0 +1,45 @@
+{
+  "$comment": [
+    "Dependency advisories we have SEEN and DECIDED about. Not a mute button.",
+    "",
+    "scripts/audit-check.mjs fails the build on any high or critical advisory",
+    "that is not listed here, on any entry listed here that no longer appears",
+    "(so the file cannot rot), and on any entry past its reviewBy date (so an",
+    "accepted risk cannot quietly become permanent).",
+    "",
+    "Adding an entry is a decision with a name and a date on it, the same rule",
+    "the breaker reset follows. If you cannot write an honest reason, the answer",
+    "is to fix the dependency, not to add the entry.",
+    "",
+    "acceptedBy null means PROPOSED, not decided. The reasoning below was",
+    "written during the 2026-08-12 audit sweep; nobody has signed it off. The",
+    "check prints these as UNCONFIRMED on every run rather than passing them off",
+    "as settled. Set acceptedBy when the call is actually made."
+  ],
+  "accepted": [
+    {
+      "package": "next",
+      "severity": "high",
+      "reason": "Transitively vulnerable through postcss and sharp. The only fix npm offers is next 16, a breaking major, on an app that is built but not yet deployed. Upgrading the framework is a decision for Harsha and belongs in its own change, not smuggled into an unrelated commit.",
+      "reviewBy": "2026-09-30",
+      "proposedOn": "2026-08-12",
+      "acceptedBy": null
+    },
+    {
+      "package": "postcss",
+      "severity": "high",
+      "reason": "Reached only through next's bundled copy. The advisories are XSS via unescaped </style> and arbitrary .map file disclosure via attacker-controlled sourceMappingURL — both need attacker-controlled CSS reaching the build. Our CSS is authored in this repo; no customer input is compiled. Real, but not reachable on our paths today.",
+      "reviewBy": "2026-09-30",
+      "proposedOn": "2026-08-12",
+      "acceptedBy": null
+    },
+    {
+      "package": "sharp",
+      "severity": "high",
+      "reason": "libvips CVEs, reached through next's image optimiser. We do not serve user-uploaded images through next/image today. This changes the moment Pathway 2 ships artifact upload — uploaded screenshots are exactly the hostile input these CVEs are about. Re-decide before that lands, not on the reviewBy date.",
+      "reviewBy": "2026-09-30",
+      "proposedOn": "2026-08-12",
+      "acceptedBy": null
+    }
+  ]
+}

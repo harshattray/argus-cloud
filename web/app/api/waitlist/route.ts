@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "../../../lib/db";
+import { emailProblem, normaliseEmail, EMAIL_MESSAGE } from "../../../lib/waitlistEmail";
 
 /**
  * Waitlist signup (docs/normascopeWeb.md §11).
@@ -31,13 +32,8 @@ import { getDb } from "../../../lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_EMAIL_LENGTH = 254; // RFC 5321
 const MIN_FILL_MS = 1_500;
 const RATE_LIMIT = { windowMs: 60_000, max: 5 };
-
-// Deliberately conservative: one @, a dot in the domain, no whitespace. Email
-// validation beyond this is a fool's errand — the only real check is delivery.
-const EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 const VALID_SOURCES = new Set([
   "home",
@@ -153,18 +149,14 @@ export async function POST(req: Request) {
     if (Date.now() - startedAt < MIN_FILL_MS) return accepted();
   }
 
-  if (typeof email !== "string") {
-    return NextResponse.json({ ok: false, error: "Enter your email address." }, { status: 400 });
+  // A non-string is the same mistake as an empty box from the server's point of
+  // view — a caller that sent no usable address — so it gets the same sentence.
+  const problem = typeof email === "string" ? emailProblem(email) : "empty";
+  if (problem) {
+    return NextResponse.json({ ok: false, error: EMAIL_MESSAGE[problem] }, { status: 400 });
   }
 
-  const normalised = email.trim().toLowerCase();
-
-  if (normalised.length === 0) {
-    return NextResponse.json({ ok: false, error: "Enter your email address." }, { status: 400 });
-  }
-  if (normalised.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(normalised)) {
-    return NextResponse.json({ ok: false, error: "That doesn't look like an email address." }, { status: 400 });
-  }
+  const normalised = normaliseEmail(email as string);
 
   const cleanSource = typeof source === "string" && VALID_SOURCES.has(source) ? source : null;
   // Origin only — a full referrer can carry a query string, and query strings

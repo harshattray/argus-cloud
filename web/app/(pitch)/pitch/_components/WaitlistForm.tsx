@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { Spark } from "./primitives";
+import { emailProblem, EMAIL_MESSAGE } from "../../../../lib/waitlistEmail";
 
 /**
  * Waitlist signup. One component behind every placement on the site
@@ -30,12 +31,24 @@ export function WaitlistForm({
   const [error, setError] = useState<string | null>(null);
   const mountedAt = useRef(Date.now());
   const honeypot = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLInputElement>(null);
 
   const dark = tone === "dark";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (state === "busy") return;
+
+    /* `noValidate` on the form below means `required` and type="email" never
+       fire, so without this an empty box posts to the server. Rules and wording
+       come from the same module the API uses — see lib/waitlistEmail.ts. */
+    const problem = emailProblem(email);
+    if (problem) {
+      setState("error");
+      setError(EMAIL_MESSAGE[problem]);
+      field.current?.focus();
+      return;
+    }
 
     setState("busy");
     setError(null);
@@ -119,6 +132,7 @@ export function WaitlistForm({
         Email address
       </label>
       <input
+        ref={field}
         id={`waitlist-${source}`}
         type="email"
         inputMode="email"

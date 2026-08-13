@@ -14,8 +14,11 @@
     "web"
   ],
   "scripts": {
-    "test": "npm run build && node test/metering.test.mjs && node test/enrichment.test.mjs && node test/cibatch.test.mjs",
+    "test": "npm run build && node scripts/run-tests.mjs",
     "build": "tsc",
+    "typecheck:web": "npm run build && npm run typecheck --workspace web",
+    "audit": "node scripts/audit-check.mjs",
+    "verify": "npm run build && npm run typecheck:web && npm test && npm run build --workspace web && npm run audit",
     "build:web": "npm run build && npm run build --workspace web",
     "dev:web": "npm run build && npm run dev --workspace web"
   },
@@ -38,6 +41,8 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
+    "@aws-sdk/s3-request-presigner": "^3.1106.0",
     "@electric-sql/pglite": "^0.5.4",
     "pg": "^8.22.0"
   }

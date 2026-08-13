@@ -1,5 +1,28 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const webDir = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The app lives in `web/` but its dependency `argus-cloud` is the repo root,
+  // so tracing must start above this directory or nothing outside `web/` can
+  // be collected into a function bundle.
+  outputFileTracingRoot: path.join(webDir, ".."),
+
+  // `migrate()` reads `migrations/*.sql` from disk at runtime via a computed
+  // path (src/db.ts:25). Next traces `import` statements, not `readdir`, so it
+  // cannot see those files — they were absent from all 34 function bundles,
+  // and the first request to touch the database would have failed with ENOENT
+  // on a deployed build while working perfectly on localhost. Naming them here
+  // is what puts them in the bundle.
+  //
+  // Keep this in step with `MIGRATIONS_DIR`: if the .sql files ever move, this
+  // glob moves with them or deploys break in a way no local build reproduces.
+  outputFileTracingIncludes: {
+    "/**": ["../migrations/**/*.sql"],
+  },
+
   // Lets a verification build run without fighting a live `next dev` over
   // `.next` — the two clobber each other's chunks and the build fails with a
   // missing vendor-chunk. Unset in normal use, so deploys are unaffected.

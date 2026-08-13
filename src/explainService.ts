@@ -1,5 +1,5 @@
 import type { Db } from "./db.js";
-import { consumeCredits, refundCredits, InsufficientCreditsError } from "./ledger.js";
+import { creditsForPass, creditsRequired, type BudgetLimits } from "./providerBudget.js";
 import {
   recordUsage,
   computeCostMicrodollars,
@@ -7,25 +7,40 @@ import {
   creditsUsedByKeyInMonth,
   type TokenUsage,
 } from "./usage.js";
-import { makeCacheKey, cacheGet, cachePut } from "./resultCache.js";
-import { isTripped, addSpend, checkAndTrip, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
+import { makeCacheKey, cacheGet } from "./resultCache.js";
+import { isTripped, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
+import { reserveBoth, settleCharged, releaseBoth } from "./economicPath.js";
 import type { ApiKeyRecord } from "./apiKeys.js";
-import { buildEnrichment, applyEnrichment, saveRunFindings, type Enrichment } from "./enrichment.js";
+import { buildEnrichment, applyEnrichment, type Enrichment } from "./enrichment.js";
 
 /**
  * Hosted explain pipeline (Build 4.0 Phase C) — the enforcement point every
- * hosted/org-key analysis flows through. Order is doctrine:
+ * hosted/org-key analysis flows through. Order is doctrine (PATHWAYS §3, "the
+ * economic request path"):
  *
- *   breaker → result cache (free) → per-run cap → agent-key budget →
- *   reserve credits → provider → validate → meter + cache, or refund.
+ *   breaker → result cache (free) → priced-model check → per-run cap →
+ *   agent-key budget → reserve provider dollars → reserve credits →
+ *   provider → validate → settle + meter + cache, or release and refund.
  *
  * Failed analyses cost the user nothing (rule 6): credits are reserved
  * before the provider call and refunded in full on provider error, refusal,
  * or schema failure — every outcome leaves an append-only usage event.
+ *
+ * **Provider dollars are reserved before the call, not measured after it**
+ * (Doctrine 11). Both reservations are taken before the provider is touched and
+ * both are given back on failure. They are separate money: credits are what the
+ * customer bought, dollars are what we owe the provider.
  */
 
-export const CREDITS_PER_ANALYSIS = 1;
-export const CREDITS_PER_DEEP = 3;
+/**
+ * Credit prices are **derived from cost, not chosen** (decided 2026-08-10;
+ * FUTURENORMA §3). Each pass charges whatever it must for its worst possible
+ * call to clear the margin floor, so no scenario can sell below cost. Change a
+ * model and the price follows it in the same breath — see
+ * `providerBudget.ts`, `creditsRequired`.
+ */
+export const CREDITS_PER_ANALYSIS = creditsForPass("analysis");
+export const CREDITS_PER_DEEP = creditsForPass("deep");
 export const AUTO_EXPLAIN_PER_RUN_CAP = 5;
 export const DEFAULT_AGENT_MONTHLY_BUDGET = 200;
 
@@ -51,6 +66,13 @@ export interface ExplainDeps {
   dailyBudgetMicrodollars: number;
   alert: Alert;
   now?: () => Date;
+  /**
+   * Optional dollar ceilings for one organization or one key. The global daily
+   * budget above is always enforced; these narrow it further when an operator
+   * needs to contain a single tenant or a runaway agent key.
+   */
+  orgMonthlyBudgetMicrodollars?: number | null;
+  keyMonthlyBudgetMicrodollars?: number | null;
 }
 
 export interface ExplainRequest {
@@ -77,6 +99,7 @@ export type ExplainOutcome =
         | "explain_paused"
         | "run_cap"
         | "agent_budget_exhausted"
+        | "provider_budget_exhausted"
         | "insufficient_credits"
         | "analysis_failed"
         | "model_not_priced";
@@ -109,7 +132,10 @@ export function findingsShapeValid(json: unknown): boolean {
 
 export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainRequest): Promise<ExplainOutcome> {
   const now = deps.now?.() ?? new Date();
-  const credits = req.pass === "deep" ? CREDITS_PER_DEEP : CREDITS_PER_ANALYSIS;
+  // Priced from the model this call will actually use, not from the pass's
+  // default. A route that asks for a more expensive model pays for it; there is
+  // no path where the price and the model disagree.
+  const credits = creditsRequired(req.model) ?? 0;
   const base = {
     orgId: req.orgId,
     apiKeyId: req.apiKey?.id ?? null,
@@ -179,26 +205,67 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     }
   }
 
-  // 5 — reserve credits before the provider call.
-  let reservation;
-  try {
-    reservation = await consumeCredits(db, req.orgId, credits, now);
-  } catch (err) {
-    if (err instanceof InsufficientCreditsError) {
-      return {
-        ok: false,
-        code: "insufficient_credits",
-        message: "not enough credits — buy a pack to keep explaining. Diffs, reports, and uploads are unaffected.",
-        ciStaysGreen: true,
-      };
+  // 5 — reserve OUR dollars before anything else is committed. Sized to the
+  // worst this call could cost, so concurrent requests cannot each look at the
+  // same pre-call total and all decide there is room (Doctrine 11).
+  const limits: BudgetLimits = {
+    globalDailyMicrodollars: deps.dailyBudgetMicrodollars,
+    orgMonthlyMicrodollars: deps.orgMonthlyBudgetMicrodollars ?? null,
+    keyMonthlyMicrodollars: deps.keyMonthlyBudgetMicrodollars ?? null,
+  };
+  // 5 and 6 — both reservations, or neither. The ordering, the unwind, the
+  // breaker trip and the budget alerts all live in `economicPath.ts` so the CI
+  // batch path cannot drift from this one (see that file's header).
+  const admission = await reserveBoth(db, {
+    orgId: req.orgId,
+    apiKeyId: req.apiKey?.id ?? null,
+    runId: req.runId ?? null,
+    frame: req.frame,
+    model: req.model,
+    pass: req.pass,
+    batch: req.batch ?? false,
+    auto: req.auto ?? false,
+    credits,
+    limits,
+    alert: deps.alert,
+    now,
+    context: "for an interactive explain",
+  });
+  if (!admission.ok) {
+    switch (admission.code) {
+      case "model_not_priced":
+        return { ok: false, code: "model_not_priced", message: admission.message, ciStaysGreen: true };
+      case "provider_budget_exhausted":
+        // A tripped breaker is the paused-everywhere condition and says so; a
+        // tenant ceiling is this org's problem alone and must read differently.
+        return admission.breakerTripped
+          ? { ok: false, code: "explain_paused", message: EXPLAIN_PAUSED_MESSAGE, ciStaysGreen: true }
+          : { ok: false, code: "provider_budget_exhausted", message: admission.message, ciStaysGreen: true };
+      case "insufficient_credits":
+        return {
+          ok: false,
+          code: "insufficient_credits",
+          message: "not enough credits — buy a pack to keep explaining. Diffs, reports, and uploads are unaffected.",
+          ciStaysGreen: true,
+        };
     }
-    throw err;
   }
 
-  // 6/7 — provider call; any failure refunds in full.
+  // 7 — provider call; any failure returns both reservations in full.
   const fail = async (detail: string): Promise<ExplainOutcome> => {
-    await refundCredits(db, reservation);
-    await recordUsage(db, { ...base, status: "failed_no_charge", detail });
+    await releaseBoth(db, {
+      orgId: req.orgId,
+      apiKeyId: req.apiKey?.id ?? null,
+      runId: req.runId ?? null,
+      frame: req.frame,
+      model: req.model,
+      pass: req.pass,
+      batch: req.batch ?? false,
+      auto: req.auto ?? false,
+      providerReservationId: admission.providerReservationId,
+      creditReservation: admission.creditReservation,
+      detail,
+    });
     return {
       ok: false,
       code: "analysis_failed",
@@ -235,30 +302,31 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     return fail("response failed schema validation");
   }
 
-  // 8 — inject history fields (our data, not the model's), meter, feed the
-  // breaker, cache, persist for future recurrence, return.
+  // 8 — inject history fields (our data, not the model's), then settle: record
+  // the real spend, meter, cache, and persist for future recurrence.
   const findings = enrichment ? applyEnrichment(result.json, enrichment) : result.json;
   const cost = computeCostMicrodollars(req.model, result.usage, { batch: req.batch }) ?? 0;
-  await addSpend(db, cost, now);
-  await checkAndTrip(db, deps.dailyBudgetMicrodollars, deps.alert, now);
-  await recordUsage(db, {
-    ...base,
-    status: "charged",
+  await settleCharged(db, {
+    orgId: req.orgId,
+    apiKeyId: req.apiKey?.id ?? null,
+    repoId: req.repoId ?? null,
+    runId: req.runId ?? null,
+    frame: req.frame,
+    model: req.model,
+    pass: req.pass,
+    batch: req.batch ?? false,
+    auto: req.auto ?? false,
+    providerReservationId: admission.providerReservationId,
+    credits,
+    creditReservation: admission.creditReservation,
     usage: result.usage,
     costMicrodollars: cost,
-    creditsCharged: credits,
+    cacheKey,
+    findings,
+    dailyBudgetMicrodollars: deps.dailyBudgetMicrodollars,
+    alert: deps.alert,
+    now,
     detail: enrichment ? `enrichment_tokens=${enrichment.tokenEstimate}` : "",
   });
-  await cachePut(db, req.orgId, cacheKey, req.model, findings);
-  if (req.repoId && req.runId) {
-    await saveRunFindings(db, {
-      orgId: req.orgId,
-      repoId: req.repoId,
-      runId: req.runId,
-      frame: req.frame,
-      model: req.model,
-      findings,
-    });
-  }
   return { ok: true, findings, cached: false, creditsCharged: credits };
 }

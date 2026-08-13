@@ -1,0 +1,29 @@
+{
+  "scheme": "plum",
+  "color": {
+    "feather": "#8B2E6E",
+    "shaft": "#26101F",
+    "pupil": "#EDCBE2",
+    "paper": "#F7F2F5",
+    "grey": {
+      "50": "#FCFBF9",
+      "200": "#E4DFD7",
+      "400": "#BDB5AA",
+      "500": "#8A8177",
+      "700": "#554E45",
+      "800": "#2C2620"
+    }
+  },
+  "font": {
+    "display": "DM Mono",
+    "text": "DM Sans"
+  },
+  "type": {
+    "display": 56,
+    "h1": 32,
+    "h2": 21,
+    "label": 11,
+    "body": 16,
+    "caption": 13
+  }
+}
