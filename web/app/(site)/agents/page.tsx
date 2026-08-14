@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { CloudBand, Eyebrow, Section, Spark } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
 import { AgentLoop } from "../../(pitch)/pitch/_components/AgentLoop";
+import { TwinAside } from "../_components/twins";
 import { MCP_PACKAGE } from "../../../lib/site";
 
 /**
@@ -125,8 +126,12 @@ export default function AgentsPage() {
 
       {/* ── Two ways in ── */}
       <Section tone="sand">
-        <Eyebrow>Two ways in</Eyebrow>
-        <h2 className="display-md mb-9 max-w-2xl">Give it one command, or give it five tools</h2>
+        {/* Shrugging between the two options, which is the section's point —
+            neither one is the recommended one. */}
+        <TwinAside pose="shrug" flip className="mb-9">
+          <Eyebrow>Two ways in</Eyebrow>
+          <h2 className="display-md max-w-2xl">Give it one command, or give it five tools</h2>
+        </TwinAside>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-black/8 bg-white/60 p-6">

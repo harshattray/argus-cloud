@@ -6,6 +6,7 @@ import { Note } from "../../(pitch)/pitch/_components/editorial";
 import { ReportVariants } from "../../(pitch)/pitch/_components/ReportVariants";
 import { GLOSSARY } from "../../../lib/glossary";
 import { CASE_02 } from "../../../lib/cases";
+import { TwinAside } from "../_components/twins";
 
 /**
  * Reading the report.
@@ -299,12 +300,17 @@ export default function ReportPage() {
 
       {/* ── Reading an overlay ── */}
       <Section tone="sand" id="overlay">
-        <Eyebrow>The picture on the right</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl">How to read a difference overlay in three seconds</h2>
-        <p className="mb-10 max-w-xl text-base leading-relaxed text-text/60">
-          Two real overlays from the same project. Both are one-line commits. They look nothing
-          alike, and once you&rsquo;ve seen the pair you can tell them apart instantly.
-        </p>
+        {/* Holding a magnifier, next to the section about looking closely. */}
+        <TwinAside pose="magnify" className="mb-10">
+          <Eyebrow>The picture on the right</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl">
+            How to read a difference overlay in three seconds
+          </h2>
+          <p className="max-w-xl text-base leading-relaxed text-text/60">
+            Two real overlays from the same project. Both are one-line commits. They look nothing
+            alike, and once you&rsquo;ve seen the pair you can tell them apart instantly.
+          </p>
+        </TwinAside>
 
         <div className="grid gap-8 md:grid-cols-2">
           <Shot

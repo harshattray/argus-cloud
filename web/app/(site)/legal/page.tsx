@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { LEGAL_DOCUMENTS } from "../../../lib/legal.generated";
+import { Twin } from "../_components/twins";
 
 /**
  * The legal index.
@@ -27,11 +28,15 @@ export default function LegalIndex() {
         <h1 className="mt-3 mb-4 text-[32px] leading-tight font-semibold md:text-[40px]">
           The documents behind this site
         </h1>
-        <p className="mb-12 text-[15px] leading-relaxed text-text/60">
-          Normascope is operated by Yutic, a sole proprietorship of Harsha Attray. These cover the
-          public website and the Cloud waitlist — nothing on this site is for sale, and joining the
-          waitlist creates no account, subscription or payment obligation.
-        </p>
+        <div className="mb-12 flex items-end justify-between gap-8">
+          <p className="text-[15px] leading-relaxed text-text/60">
+            Normascope is operated by Yutic, a sole proprietorship of Harsha Attray. These cover the
+            public website and the Cloud waitlist — nothing on this site is for sale, and joining
+            the waitlist creates no account, subscription or payment obligation.
+          </p>
+          {/* Carrying the four documents this page indexes. */}
+          <Twin pose="stack" className="hidden w-20 shrink-0 sm:block" />
+        </div>
 
         <ul className="space-y-3">
           {LEGAL_DOCUMENTS.map((doc) => (

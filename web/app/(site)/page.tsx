@@ -6,6 +6,7 @@ import { CopyLine } from "./_components/CopyLine";
 import { Hero } from "./_components/Hero";
 import { PrComment } from "../(pitch)/pitch/_components/PrComment";
 import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
+import { TwinAside } from "./_components/twins";
 
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
@@ -249,17 +250,25 @@ export default function HomePage() {
           words and the loop are the ones already public on `/agents`; this is
           the trailer, not a second version of it. */}
       <Section id="agents" tone="ink">
-        <Eyebrow dark>For coding agents</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
-        <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
-          Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a UI
-          task, declares it done, and has no way to know whether the thing it built looks anything
-          like the thing it was asked for.
-        </p>
-        <p className="mb-9 max-w-2xl text-[15px] leading-relaxed text-white/45">
-          Normascope gives it a camera and a measuring tape — a number it can move, so it can tell
-          whether its last edit helped. Free and local, the same engine the CLI runs.
-        </p>
+        {/* Reading intently, in dark glasses. The heading is the caption. */}
+        <TwinAside
+          pose="reading"
+          tone="cream"
+          twinClassName="hidden w-28 shrink-0 lg:block"
+          className="mb-9"
+        >
+          <Eyebrow dark>For coding agents</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
+          <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
+            Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a UI
+            task, declares it done, and has no way to know whether the thing it built looks anything
+            like the thing it was asked for.
+          </p>
+          <p className="max-w-2xl text-[15px] leading-relaxed text-white/45">
+            Normascope gives it a camera and a measuring tape — a number it can move, so it can tell
+            whether its last edit helped. Free and local, the same engine the CLI runs.
+          </p>
+        </TwinAside>
 
         <AgentLoop />
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Eyebrow, Section, Spark, CloudMark } from "../_components/ui";
 import { WaitlistForm } from "../_components/WaitlistForm";
 import { CompareRow, HistoryStrip, TrendChart } from "../_components/CloudVisuals";
+import { TwinAside } from "../_components/twins";
 
 export const metadata: Metadata = {
   title: { absolute: "Normascope Cloud — shared visual memory for your team" },
@@ -222,12 +223,16 @@ export default function CloudPage() {
       <Section tone="ink" id="waitlist">
         <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-6">
-            <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
-            <h2 className="display-md mb-4 text-white">Join the first Cloud teams</h2>
-            <p className="text-[15px] leading-relaxed text-white/55">
-              Get first access when hosted reports open, and help shape the workflows that matter to
-              your team. One email when it&rsquo;s ready — nothing else, ever.
-            </p>
+            {/* Waving at the signup. The only place on the site asking a
+                visitor for something, so it gets the friendly one. */}
+            <TwinAside pose="wave" tone="cream" twinClassName="hidden w-20 shrink-0 sm:block">
+              <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
+              <h2 className="display-md mb-4 text-white">Join the first Cloud teams</h2>
+              <p className="text-[15px] leading-relaxed text-white/55">
+                Get first access when hosted reports open, and help shape the workflows that matter
+                to your team. One email when it&rsquo;s ready — nothing else, ever.
+              </p>
+            </TwinAside>
           </div>
           <div className="lg:col-span-6">
             <WaitlistForm source="cloud" tone="dark" layout="stacked" cta="Join early access" />

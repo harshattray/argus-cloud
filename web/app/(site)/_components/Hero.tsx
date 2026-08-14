@@ -2,6 +2,7 @@ import { NPM_URL } from "../../../lib/site";
 import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
+import { Twin } from "./twins";
 
 /**
  * The home page's fold.
@@ -20,6 +21,18 @@ export function Hero() {
         <div className="h-full w-full bg-gradient-to-br from-[#e8c9bf]/70 via-[#f3e3d8]/50 to-[#d8c3e0]/40" />
         <div className="absolute right-[-80px] top-[-110px] h-[28rem] w-[28rem] rounded-full bg-clay opacity-35 blur-3xl" />
         <div className="absolute bottom-[-90px] left-[-70px] h-96 w-96 rounded-full bg-[#fbc3bd] opacity-40 blur-3xl" />
+
+        {/* One of them in the top-right corner, above the preview card, holding
+            a camera — the paragraph two inches to the left says Normascope
+            photographs your running app, and this is that sentence with no
+            words in it. It is in the backdrop rather than in the layout so it
+            costs the fold no height, and it tracks the same `max-w-5xl`
+            container as the content, which is what lands it over the card's
+            column instead of out in the bleed. Hidden below `lg`, where the
+            hero stacks and that corner belongs to the wordmark. */}
+        <div className="absolute inset-0 mx-auto hidden max-w-5xl items-start justify-end px-4 md:px-8 lg:flex">
+          <Twin pose="camera" className="mt-7 w-[5.5rem] opacity-80" />
+        </div>
       </div>
 
       <div className="mx-auto max-w-5xl pt-14 pb-12 md:pt-16 md:pb-16">

@@ -11,6 +11,7 @@ import {
 import { CopyLine } from "../_components/CopyLine";
 import { AlignmentExplainer } from "../../(pitch)/pitch/_components/AlignmentExplainer";
 import { ThresholdSlider } from "../../(pitch)/pitch/_components/ThresholdSlider";
+import { TwinAside } from "../_components/twins";
 
 export const metadata: Metadata = {
   title: "How Normascope works",
@@ -132,10 +133,12 @@ export default function HowItWorksPage() {
 
       <Section tone="ink">
         <Eyebrow dark>Start with the question</Eyebrow>
-        <h2 className="display-md mb-5 max-w-2xl text-white">What should this page be compared with?</h2>
+        <h2 className="display-md mb-5 max-w-2xl text-white">
+          What should this page be compared with?
+        </h2>
         <p className="mb-10 max-w-2xl text-base leading-relaxed text-white/55">
-          Normascope is not tied to one kind of reference. Choose the source that matches the way your
-          team works today.
+          Normascope is not tied to one kind of reference. Choose the source that matches the way
+          your team works today.
         </p>
         <div className="grid gap-5 md:grid-cols-3">
           {SOURCES.map((source) => (
@@ -266,12 +269,18 @@ export default function HowItWorksPage() {
           is learned by dragging it in about three seconds. Same three real
           frames as the explainer above. */}
       <Section tone="paper">
-        <Eyebrow>Your call, not ours</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl">One setting decides what counts as flagged</h2>
-        <p className="mb-9 max-w-2xl text-base leading-relaxed text-text/60">
-          A frame is flagged when its aligned difference is above your threshold. Drag it and watch
-          the same three real frames change their minds — at 0.1% one is flagged, at 1% none are.
-        </p>
+        {/* Holding a tape measure, beside the section about where you set the
+            line. The page's own sentence is a camera and a measuring tape; the
+            hero has the camera, this has the other half. */}
+        <TwinAside pose="measure" twinClassName="hidden w-28 shrink-0 lg:block" className="mb-9">
+          <Eyebrow>Your call, not ours</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl">One setting decides what counts as flagged</h2>
+          <p className="max-w-2xl text-base leading-relaxed text-text/60">
+            A frame is flagged when its aligned difference is above your threshold. Drag it and
+            watch the same three real frames change their minds — at 0.1% one is flagged, at 1% none
+            are.
+          </p>
+        </TwinAside>
         <ThresholdSlider />
         <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-text/50">
           Flagged means &ldquo;look at this&rdquo;, not &ldquo;fail&rdquo;. Nothing breaks a build

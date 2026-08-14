@@ -5,6 +5,7 @@ import { CopyLine } from "../_components/CopyLine";
 import { CommandExplorer } from "../../(pitch)/pitch/_components/CommandExplorer";
 import { ConfigBuilder } from "../../(pitch)/pitch/_components/ConfigBuilder";
 import { COMMANDS, FLAGS, DECISIONS, GROUPS } from "../../../lib/commands";
+import { TwinAside } from "../_components/twins";
 
 /**
  * The CLI reference.
@@ -118,8 +119,11 @@ export default function CommandsPage() {
 
       {/* ── Every command ── */}
       <Section tone="paper">
-        <Eyebrow>Every command</Eyebrow>
-        <h2 className="display-md mb-9">Pick one to see what it does</h2>
+        {/* Pointing at the explorer — the one thing on the page to click. */}
+        <TwinAside pose="point" className="mb-9">
+          <Eyebrow>Every command</Eyebrow>
+          <h2 className="display-md">Pick one to see what it does</h2>
+        </TwinAside>
         <CommandExplorer />
       </Section>
 
