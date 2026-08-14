@@ -72,8 +72,17 @@ export const HeaderNav = ({
  *
  * It is the only header destination not represented by a text link at `md` and
  * up, so without this it would have been the one page in the site that gave no
- * indication you were on it. Active state here is opacity rather than colour —
- * the lockup carries its own colours and must not be recoloured.
+ * indication you were on it.
+ *
+ * **It used to signal that state by dimming everything else to 70% opacity,
+ * which was a mistake worth naming.** The public site's job is to drive
+ * visitors here, and the effect was that the paid tier's mark rendered fainter
+ * than the grey nav labels beside it on every page but its own — the quietest
+ * object in the bar was the one we most wanted read. Nothing is dimmed now.
+ *
+ * `aria-current` still carries the state, and the mobile strip still shows an
+ * active `Cloud` chip. Sighted desktop visitors lose a weak cue on one page;
+ * that is the trade, and it is the right way round.
  */
 export const CloudLink = ({
   className = "",
@@ -88,9 +97,7 @@ export const CloudLink = ({
     <Link
       href="/cloud"
       aria-current={active ? "page" : undefined}
-      className={`shrink-0 items-center transition-opacity ${
-        active ? "opacity-100" : "opacity-70 hover:opacity-100"
-      } ${className}`}
+      className={`shrink-0 items-center transition-transform hover:-translate-y-px ${className}`}
     >
       {children}
     </Link>

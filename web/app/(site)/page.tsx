@@ -1,9 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { NPM_URL, SITE_URL, TAGLINE } from "../../lib/site";
-import { Eyebrow, Section, Spark, Wordmark, CloudBand, WaitlistBadge } from "./_components/ui";
-import { HeroPreview } from "./_components/HeroPreview";
+import { Eyebrow, Section, CloudBand } from "./_components/ui";
 import { CopyLine } from "./_components/CopyLine";
+import { Hero } from "./_components/Hero";
+import { PrComment } from "../(pitch)/pitch/_components/PrComment";
+import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
 
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
@@ -75,71 +77,8 @@ export default function HomePage() {
       {/* ── Hero ──
           The wordmark carries the top-left and the live comparison schematic
           anchors the right, so a visitor sees what the product *does* before
-          reading a word about it. `isolate` keeps the colour wash inside this
-          stacking context; without it the wash paints over the page background. */}
-      <div className="relative isolate w-full overflow-hidden px-4 md:px-8">
-        <div className="absolute inset-0 -z-10" aria-hidden>
-          <div className="h-full w-full bg-gradient-to-br from-[#e8c9bf]/70 via-[#f3e3d8]/50 to-[#d8c3e0]/40" />
-          <div className="absolute right-[-80px] top-[-110px] h-[28rem] w-[28rem] rounded-full bg-clay opacity-35 blur-3xl" />
-          <div className="absolute bottom-[-90px] left-[-70px] h-96 w-96 rounded-full bg-[#fbc3bd] opacity-40 blur-3xl" />
-        </div>
-
-        <div className="mx-auto max-w-5xl pt-14 pb-12 md:pt-16 md:pb-16">
-          <div className="flex flex-col gap-12 lg:flex-row lg:items-center lg:gap-12">
-            <div className="min-w-0 flex-1">
-              <div className="mb-5 flex flex-wrap items-center gap-2">
-                <Spark className="h-2.5 w-2.5 text-clay" />
-                <span className="eyebrow text-clay">Free · local · no account</span>
-              </div>
-
-              <h1 className="mb-7">
-                <Wordmark size="xl" />
-                <span className="sr-only">Normascope</span>
-              </h1>
-
-              <p className="max-w-lg text-xl leading-snug text-text/75 md:text-2xl">
-                See what changed in your UI — before your users do.
-              </p>
-              <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-text/55">
-                Normascope photographs your running app and tells you exactly what moved, against
-                your design or against yesterday&rsquo;s build. It runs on your machine and never
-                blocks a commit.
-              </p>
-
-              <div className="mt-8 flex flex-wrap items-center gap-5">
-                <CopyLine command="npx norma-scope init" />
-                <a
-                  href={NPM_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-widest text-text/50 transition-colors hover:text-text"
-                >
-                  View on npm
-                  <span aria-hidden>→</span>
-                </a>
-              </div>
-              <p className="mt-4 text-[13px] text-text/45">Node 18+ · no account · nothing to uninstall</p>
-
-              {/* Cloud gets one mention this high up, and it is an invitation
-                  rather than an advert — the free tool has to carry the hero. */}
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <WaitlistBadge />
-                <span className="text-[13px] text-text/45">
-                  shared visual memory for your team
-                </span>
-              </div>
-              <p className="mt-3 max-w-md text-[13px] leading-relaxed text-text/45">
-                Use Normascope free on your machine today. When your team needs a shared history,
-                stable links and trends, that&rsquo;s Normascope Cloud.
-              </p>
-            </div>
-
-            <div className="w-full shrink-0 lg:w-[400px]">
-              <HeroPreview />
-            </div>
-          </div>
-        </div>
-      </div>
+          reading a word about it. */}
+      <Hero />
 
       {/* ── The one proof ── */}
       <Section tone="paper">
@@ -240,8 +179,100 @@ export default function HomePage() {
         </Link>
       </Section>
 
-      {/* ── The three walls: the conversion engine ── */}
+      {/* ── The pull request ──
+          The free CLI's CI story had no picture anywhere on this site, while
+          the Cloud page carried a drawn PR comment — so the only pull-request
+          visual a visitor met belonged to the paid tier. The Action, the sticky
+          comment and the delta column are all free, and this is where they get
+          shown. `normascopeWeb.md` §9 has always specced the PR comment onto
+          the home page; it just never landed. */}
       <Section tone="paper">
+        <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-5">
+            <Eyebrow>On every pull request</Eyebrow>
+            <h2 className="display-md mb-4">One comment, edited in place</h2>
+            <p className="mb-5 text-base leading-relaxed text-text/60">
+              The GitHub Action runs the same comparison your laptop runs, then posts one sticky
+              comment. It finds its own previous comment by a hidden marker and rewrites it — ten
+              pushes leave one comment, not ten.
+            </p>
+            <p className="mb-7 text-[15px] leading-relaxed text-text/60">
+              When a summary from <code className="font-mono text-[0.95em] text-clay">main</code> is
+              available, the table gains a delta column: not &ldquo;8.4%&rdquo;, but &ldquo;8.4%,
+              +2.1% since main&rdquo;.
+            </p>
+
+            <ul className="mb-7 flex flex-col gap-3">
+              {[
+                [
+                  "Nothing turns red on its own.",
+                  "The job passes unless you ask for --strict. A score is information, not a verdict.",
+                ],
+                [
+                  "The full report rides along.",
+                  "Side-by-side images and diff overlays are attached as a workflow artifact.",
+                ],
+                [
+                  "Not on GitHub?",
+                  "norma-scope comment prints the same markdown to stdout — pipe it into any CI, or into Slack.",
+                ],
+              ].map(([head, body]) => (
+                <li key={head} className="flex gap-3">
+                  <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-clay" />
+                  <p className="text-[14.5px] leading-relaxed text-text/60">
+                    <strong className="font-semibold text-text/85">{head}</strong> {body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+          </div>
+
+          <div className="lg:col-span-7">
+            <PrComment />
+            {/* §7: a mockup is allowed here because a real PR cannot be
+                photographed without carrying somebody's repository — but it
+                says so, in its own caption. */}
+            <p className="mt-4 text-[13px] leading-relaxed text-text/45">
+              Drawn in GitHub&rsquo;s own shape. A screenshot of a real pull request would carry
+              somebody&rsquo;s repository — the columns, the delta and the sticky behaviour are
+              exactly what the Action posts.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Coding agents ──
+          `normascopeWeb.md` §9 puts the agent loop on the home page, straight
+          after the PR comment, and it never landed there — the whole agent
+          story reached this page as one link inside the section above. The
+          words and the loop are the ones already public on `/agents`; this is
+          the trailer, not a second version of it. */}
+      <Section id="agents" tone="ink">
+        <Eyebrow dark>For coding agents</Eyebrow>
+        <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
+        <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
+          Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a UI
+          task, declares it done, and has no way to know whether the thing it built looks anything
+          like the thing it was asked for.
+        </p>
+        <p className="mb-9 max-w-2xl text-[15px] leading-relaxed text-white/45">
+          Normascope gives it a camera and a measuring tape — a number it can move, so it can tell
+          whether its last edit helped. Free and local, the same engine the CLI runs.
+        </p>
+
+        <AgentLoop />
+
+        <Link
+          href="/agents"
+          className="mt-8 inline-block text-[13.5px] font-semibold text-pink-300 underline decoration-1 underline-offset-4 hover:text-white"
+        >
+          The five MCP tools, and what stops an agent fetching anything →
+        </Link>
+      </Section>
+
+      {/* ── The three walls: the conversion engine ── */}
+      <Section tone="sand">
         <Eyebrow>Then your team grows</Eyebrow>
         <h2 className="display-md mb-4 max-w-2xl">
           Three walls every team hits, in roughly this order

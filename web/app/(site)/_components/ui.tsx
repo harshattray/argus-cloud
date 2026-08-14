@@ -38,20 +38,37 @@ export const Eyebrow = ({ children, dark = false }: { children: ReactNode; dark?
 export const Wordmark = ({
   size = "md",
   dark = false,
+  mark,
   className = "",
   title,
 }: {
   size?: "sm" | "nav" | "md" | "lg" | "xl";
   /** Lightens the clay so the mark survives on the ink band. */
   dark?: boolean;
+  /**
+   * Explicit mark colour, for fields the two defaults cannot survive — a solid
+   * clay hero swallows a clay wordmark whole. Wins over `dark` when both are
+   * given. Never set this to introduce a new brand colour; these four are the
+   * only ones the mark is drawn in.
+   */
+  mark?: "clay" | "clay-light" | "paper" | "ink";
   className?: string;
   title?: string;
 }) => (
   <WordmarkSVG
     title={title}
-    className={`h-auto ${dark ? "text-[#e0aca4]" : "text-clay"} ${WORDMARK_WIDTH[size]} ${className}`}
+    className={`h-auto ${
+      mark ? MARK_COLOR[mark] : dark ? MARK_COLOR["clay-light"] : MARK_COLOR.clay
+    } ${WORDMARK_WIDTH[size]} ${className}`}
   />
 );
+
+const MARK_COLOR = {
+  clay: "text-clay",
+  "clay-light": "text-[#e0aca4]",
+  paper: "text-paper",
+  ink: "text-text",
+} as const;
 
 /** Widths, in the proportions the CSS lockup used at each step. */
 const WORDMARK_WIDTH = {
@@ -151,9 +168,21 @@ export const CloudMark = ({
 );
 
 const CLOUD_WIDTH = {
-  /** The header, opposite a 56px wordmark. Deliberately the smaller of the
-   *  two marks in that bar — see WORDMARK_WIDTH.nav. */
-  nav: "w-[76px]",
+  /**
+   * The header. Deliberately the smaller of the two marks in that bar — see
+   * WORDMARK_WIDTH.nav — but now sized right up against that limit rather than
+   * well inside it.
+   *
+   * The limit is arithmetic. `norma` occupies 115.4 of the lockup's 227.4
+   * viewBox units, so it renders at `width × 0.5075`. The header wordmark's
+   * `norma` renders at 56px, so the lockup breaks even at 110.3px. At 104 it
+   * renders 52.8px and the free mark still wins.
+   *
+   * **Do not raise this past 110 without moving the wordmark first.** It was
+   * 76px until the Cloud corner was rebuilt (`CloudCorner.tsx`); growing it
+   * cost no width at all, because the eyebrow above it sets the column.
+   */
+  nav: "w-[104px]",
   sm: "w-[100px]",
   md: "w-[137px]",
   lg: "w-[200px] md:w-[240px]",

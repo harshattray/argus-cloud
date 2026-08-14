@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "../../../lib/db";
 import { emailProblem, normaliseEmail, EMAIL_MESSAGE } from "../../../lib/waitlistEmail";
+import {
+  WAITLIST_CONFIRMATION_SUBJECT,
+  WAITLIST_CONFIRMATION_TEXT,
+  waitlistConfirmationHtml,
+} from "../../../lib/waitlistConfirmationEmail";
 
 /**
  * Waitlist signup (docs/normascopeWeb.md §11).
@@ -22,11 +27,11 @@ import { emailProblem, normaliseEmail, EMAIL_MESSAGE } from "../../../lib/waitli
  * placed in a URL. Success and duplicate return the identical response, so the
  * endpoint cannot be used to probe whether an address is on the list.
  *
- * A successful *new* row also sends one notification to the inbox in
- * `WAITLIST_NOTIFY_TO`. It fires only on a genuinely new row — the `RETURNING`
- * clause below is what makes that true — so a repeat signup can never be used
- * to flood us, and the mail is best-effort: a provider outage must never cost
- * us a signup we have already stored.
+ * A successful *new* row sends one branded confirmation to the person who
+ * joined. It fires only on a genuinely new row — the `RETURNING` clause below
+ * is what makes that true — so a repeat signup can never be used to flood us,
+ * and the mail is best-effort: a provider outage must never cost us a signup
+ * we have already stored.
  */
 
 export const runtime = "nodejs";
@@ -46,47 +51,31 @@ const VALID_SOURCES = new Set([
   "modes",
 ]);
 
-const NOTIFY_TO = process.env.WAITLIST_NOTIFY_TO ?? "waitlist@normascope.com";
-const NOTIFY_FROM = process.env.WAITLIST_NOTIFY_FROM ?? "Normascope <waitlist@normascope.com>";
+const REPLY_TO = process.env.WAITLIST_REPLY_TO ?? "waitlist@normascope.com";
+const CONFIRMATION_FROM = process.env.WAITLIST_CONFIRM_FROM ?? "Normascope <waitlist@normascope.com>";
 
 /**
- * Tell us a signup happened.
- *
- * Resend over plain HTTPS so the route keeps its zero-dependency footprint and
- * stays on the Node runtime without an SDK. With `RESEND_API_KEY` unset — local
- * dev, previews — this is a no-op, which is why it can never be the thing that
- * decides whether the caller sees success.
- *
- * The address appears in the body because notifying us *of the address* is the
- * entire point; it still never reaches a log line, a URL, or the response.
+ * Resend over plain HTTPS so the route keeps its zero-dependency footprint.
+ * With `RESEND_API_KEY` unset, local dev and previews do not send mail.
  */
-async function notify(email: string, source: string | null, referrer: string | null): Promise<void> {
+async function sendConfirmation(email: string): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return;
-
-  const lines = [
-    `Address: ${email}`,
-    `Surface: ${source ?? "unknown"}`,
-    `Referrer: ${referrer ?? "direct"}`,
-    `Received: ${new Date().toISOString()}`,
-  ];
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: NOTIFY_FROM,
-      to: [NOTIFY_TO],
-      reply_to: email,
-      subject: `Normascope Cloud waitlist — ${source ?? "unknown"}`,
-      text: `Someone asked to be told when Normascope Cloud opens.\n\n${lines.join("\n")}\n`,
+      from: CONFIRMATION_FROM,
+      to: [email],
+      reply_to: REPLY_TO,
+      subject: WAITLIST_CONFIRMATION_SUBJECT,
+      html: waitlistConfirmationHtml(),
+      text: WAITLIST_CONFIRMATION_TEXT,
     }),
   });
 
-  if (!res.ok) {
-    // Status only. The body can echo the address back at us.
-    throw new Error(`notify failed with ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`confirmation failed with ${res.status}`);
 }
 
 const buckets = new Map<string, { count: number; resetAt: number }>();
@@ -199,17 +188,11 @@ export async function POST(req: Request) {
 
   if (isNew) {
     try {
-      await notify(normalised, cleanSource, cleanReferrer);
+      await sendConfirmation(normalised);
     } catch (err) {
-      // The row is already committed, so the signup is not lost and the visitor
-      // has no action to take. Swallowing this is deliberate: a mail provider
-      // having a bad afternoon must not read to a stranger as "try again".
-      //
-      // Logged all the same. Silent-and-deliberate and silent-and-broken look
-      // identical from outside, and "notification is best-effort" was the last
-      // open item on the public-site demand gate — it cannot be verified if a
-      // failure leaves no trace. The address is not logged.
-      console.error("waitlist notify failed:", err instanceof Error ? err.message : String(err));
+      // The row is already committed, so a provider outage must not read to a
+      // visitor as "try again". The address is not logged.
+      console.error("waitlist confirmation failed:", err instanceof Error ? err.message : String(err));
     }
   }
 

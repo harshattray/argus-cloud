@@ -9,6 +9,8 @@ import {
   Wordmark,
 } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
+import { AlignmentExplainer } from "../../(pitch)/pitch/_components/AlignmentExplainer";
+import { ThresholdSlider } from "../../(pitch)/pitch/_components/ThresholdSlider";
 
 export const metadata: Metadata = {
   title: "How Normascope works",
@@ -179,7 +181,25 @@ export default function HowItWorksPage() {
         </ol>
       </Section>
 
+      {/* ── The alignment explainer ──
+          `normascopeWeb.md` §8.1 calls this the centrepiece of the whole site,
+          and it spent its life behind the /pitch password gate while the public
+          page explained the same idea in two paragraphs of prose. Real images,
+          real numbers: 5.63% naive against 0.26% honest, from the run recorded
+          in lib/run-data.ts. */}
       <Section tone="sand">
+        <Eyebrow>The honest number</Eyebrow>
+        <h2 className="display-md mb-4 max-w-2xl">
+          A section that moved is not a section that broke
+        </h2>
+        <p className="mb-9 max-w-2xl text-base leading-relaxed text-text/60">
+          This is the difference between a tool you trust and one you mute. Switch between the two
+          readings — same page, same run, same pixels.
+        </p>
+        <AlignmentExplainer />
+      </Section>
+
+      <Section tone="paper">
         <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-5">
             <Eyebrow>What the report does</Eyebrow>
@@ -203,7 +223,7 @@ export default function HowItWorksPage() {
         </div>
       </Section>
 
-      <Section tone="paper">
+      <Section tone="sand">
         <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-7">
             <Shot
@@ -239,6 +259,24 @@ export default function HowItWorksPage() {
             </Link>
           </div>
         </div>
+      </Section>
+
+      {/* ── Threshold ──
+          §8.2. The one setting a new user has to form an opinion about, and it
+          is learned by dragging it in about three seconds. Same three real
+          frames as the explainer above. */}
+      <Section tone="paper">
+        <Eyebrow>Your call, not ours</Eyebrow>
+        <h2 className="display-md mb-4 max-w-2xl">One setting decides what counts as flagged</h2>
+        <p className="mb-9 max-w-2xl text-base leading-relaxed text-text/60">
+          A frame is flagged when its aligned difference is above your threshold. Drag it and watch
+          the same three real frames change their minds — at 0.1% one is flagged, at 1% none are.
+        </p>
+        <ThresholdSlider />
+        <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-text/50">
+          Flagged means &ldquo;look at this&rdquo;, not &ldquo;fail&rdquo;. Nothing breaks a build
+          unless you pass <code className="font-mono text-[0.95em] text-clay">--strict</code>.
+        </p>
       </Section>
 
       <Section tone="ink">
