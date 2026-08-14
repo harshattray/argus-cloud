@@ -7,17 +7,16 @@
  * drawn from it rather than cropping it. Vector because these appear at half a
  * dozen sizes on light backgrounds and on ink, and a raster can do neither.
  *
- * They earn their place because they say what the tool does before any copy
- * is read — two things that look identical, held side by side, and the whole
- * question is what differs. The glasses are the second joke and the one that
- * carries `/agents`: the reader that cannot see.
+ * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *
- * One character, four poses, and a `Twins` pair that mirrors the reading pose
- * the way the reference frame does. Everything is decoration — `aria-hidden`
- * unless a `title` is passed, which nothing currently does.
+ * One character, four poses, `flip` to mirror it. **They appear one at a
+ * time.** A pair of them standing together was tried in the hero and read as
+ * one drawing pasted twice, however different the two poses were — the eye
+ * sees the repeated silhouette before it sees the arms. Everything here is
+ * decoration: `aria-hidden` unless a `title` is passed, which nothing does.
  */
 
-export type TwinPose = "reading" | "shrug" | "point" | "wave" | "reach";
+export type TwinPose = "reading" | "shrug" | "point" | "wave";
 export type TwinTone = "ink" | "cream";
 
 /**
@@ -80,15 +79,6 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
     hands: [
       [34, 218],
       [169, 112],
-    ],
-  },
-  /** Leaning down at whatever it is standing on. The one that perches. */
-  reach: {
-    left: "M46 176 C 28 184 20 200 26 214",
-    right: "M154 184 C 174 200 186 224 182 244",
-    hands: [
-      [25, 218],
-      [181, 248],
     ],
   },
 };
@@ -221,31 +211,5 @@ export function Twin({
         <path d="M84 152 Q100 167 116 152" stroke={c.line} strokeWidth="5.5" />
       </g>
     </svg>
-  );
-}
-
-/**
- * The pair. Same figure twice, turned inward — the right one is the left one
- * mirrored, so anything true of one is true of the other.
- *
- * They do *different* things, though. Two identical figures in identical poses
- * read as one drawing pasted twice; giving them separate business is what makes
- * them a pair rather than a repeat. One reads, one points at whatever is above
- * them, by default.
- */
-export function Twins({
-  poses = ["reading", "point"],
-  tone = "ink",
-  className = "",
-}: {
-  poses?: [TwinPose, TwinPose];
-  tone?: TwinTone;
-  className?: string;
-}) {
-  return (
-    <div className={`flex items-end justify-center gap-[2%] ${className}`} aria-hidden>
-      <Twin pose={poses[0]} tone={tone} className="w-1/2" />
-      <Twin pose={poses[1]} tone={tone} className="w-1/2" flip />
-    </div>
   );
 }

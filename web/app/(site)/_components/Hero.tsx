@@ -2,7 +2,7 @@ import { NPM_URL } from "../../../lib/site";
 import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
-import { Twin, Twins } from "./twins";
+import { Twin } from "./twins";
 
 /**
  * The home page's fold.
@@ -22,13 +22,14 @@ export function Hero() {
         <div className="absolute right-[-80px] top-[-110px] h-[28rem] w-[28rem] rounded-full bg-clay opacity-35 blur-3xl" />
         <div className="absolute bottom-[-90px] left-[-70px] h-96 w-96 rounded-full bg-[#fbc3bd] opacity-40 blur-3xl" />
 
-        {/* The twins, standing in the gap the preview card leaves under itself.
-            They are in the backdrop rather than in the layout so they cost the
-            fold no height, and they track the same `max-w-5xl` container as the
-            content, which is what lands them under the card instead of out in
-            the bleed. Hidden below `lg`, where that gap does not exist. */}
-        <div className="absolute inset-0 mx-auto hidden max-w-5xl items-end justify-end px-4 md:px-8 lg:flex">
-          <Twins className="w-[15rem] opacity-80" />
+        {/* One of them in the top-right corner, above the preview card and
+            waving at whoever just arrived. It is in the backdrop rather than in
+            the layout so it costs the fold no height, and it tracks the same
+            `max-w-5xl` container as the content, which is what lands it over
+            the card's column instead of out in the bleed. Hidden below `lg`,
+            where the hero stacks and that corner belongs to the wordmark. */}
+        <div className="absolute inset-0 mx-auto hidden max-w-5xl items-start justify-end px-4 md:px-8 lg:flex">
+          <Twin pose="wave" className="mt-7 w-[5.5rem] opacity-80" />
         </div>
       </div>
 
@@ -54,23 +55,13 @@ export function Hero() {
               commit.
             </p>
 
-            {/* `items-end`, not `items-center`: the twin makes this row taller
-                than the command pill, and centring would float the npm link up
-                beside the figure's head instead of level with the command. */}
-            <div className="mt-8 flex flex-wrap items-end gap-5">
-              {/* One of them stands on the command and leans down at it. The
-                  figure's feet sit on 280 of a 300 viewBox, so a negative
-                  bottom margin of roughly that remainder puts it on the pill
-                  rather than floating above it. */}
-              <div className="flex flex-col items-start">
-                <Twin pose="reach" className="ml-7 -mb-[0.6rem] w-16" flip />
-                <CopyLine command="npx norma-scope init" />
-              </div>
+            <div className="mt-8 flex flex-wrap items-center gap-5">
+              <CopyLine command="npx norma-scope init" />
               <a
                 href={NPM_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mb-2.5 inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-widest text-text/50 transition-colors hover:text-text"
+                className="inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-widest text-text/50 transition-colors hover:text-text"
               >
                 View on npm
                 <span aria-hidden>→</span>
