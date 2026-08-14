@@ -254,7 +254,7 @@ export default function HomePage() {
         <TwinAside
           pose="reading"
           tone="cream"
-          twinClassName="hidden w-28 shrink-0 lg:block"
+          twinClassName="mt-6 ml-auto block w-16 shrink-0 lg:mt-0 lg:w-28"
           className="mb-9"
         >
           <Eyebrow dark>For coding agents</Eyebrow>

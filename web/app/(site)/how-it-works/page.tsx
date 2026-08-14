@@ -272,7 +272,11 @@ export default function HowItWorksPage() {
         {/* Holding a tape measure, beside the section about where you set the
             line. The page's own sentence is a camera and a measuring tape; the
             hero has the camera, this has the other half. */}
-        <TwinAside pose="measure" twinClassName="hidden w-28 shrink-0 lg:block" className="mb-9">
+        <TwinAside
+          pose="measure"
+          twinClassName="mt-6 ml-auto block w-20 shrink-0 lg:mt-0 lg:w-28"
+          className="mb-9"
+        >
           <Eyebrow>Your call, not ours</Eyebrow>
           <h2 className="display-md mb-4 max-w-2xl">One setting decides what counts as flagged</h2>
           <p className="max-w-2xl text-base leading-relaxed text-text/60">

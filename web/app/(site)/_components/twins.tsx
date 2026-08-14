@@ -328,7 +328,7 @@ export function Twin({
 }
 
 /**
- * A section's heading block with one of them standing to the right of it.
+ * A section's heading block with one of them standing beside it.
  *
  * This is the shape every placement wants — the figure at the far end of the
  * line the heading starts, sharing its baseline — and writing it out at each
@@ -336,27 +336,31 @@ export function Twin({
  * as children; the wrapper owns the spacing below it, so the heading's own
  * elements keep their margins and nothing has to be restyled to fit.
  *
- * It disappears below `lg` by default. These are the width of a paragraph at
- * small sizes, and a figure that squeezes a heading is worse than no figure.
+ * **It moves rather than disappearing below `lg`.** Beside a heading in a
+ * phone-width column the figure takes a third of the line and the heading wraps
+ * around it, so under that breakpoint it drops below the block and sits against
+ * the right margin at about half the size. It was simply hidden at first, which
+ * cost the mobile site the whole character for no reason other than that the
+ * row did not fit.
  */
 export function TwinAside({
   pose,
   tone = "ink",
   flip = false,
-  twinClassName = "hidden w-24 shrink-0 lg:block",
+  twinClassName = "mt-6 ml-auto block w-14 shrink-0 lg:mt-0 lg:w-24",
   className = "",
   children,
 }: {
   pose: TwinPose;
   tone?: TwinTone;
   flip?: boolean;
-  /** Width and the breakpoint it appears at. */
+  /** The two widths: the stacked one, then the `lg` one beside the heading. */
   twinClassName?: string;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className={`flex items-end justify-between gap-10 ${className}`}>
+    <div className={`lg:flex lg:items-end lg:justify-between lg:gap-10 ${className}`}>
       <div className="min-w-0">{children}</div>
       <Twin pose={pose} tone={tone} flip={flip} className={twinClassName} />
     </div>

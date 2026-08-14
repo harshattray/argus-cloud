@@ -225,7 +225,11 @@ export default function CloudPage() {
           <div className="lg:col-span-6">
             {/* Waving at the signup. The only place on the site asking a
                 visitor for something, so it gets the friendly one. */}
-            <TwinAside pose="wave" tone="cream" twinClassName="hidden w-20 shrink-0 sm:block">
+            <TwinAside
+              pose="wave"
+              tone="cream"
+              twinClassName="mt-6 ml-auto block w-14 shrink-0 lg:mt-0 lg:w-20"
+            >
               <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
               <h2 className="display-md mb-4 text-white">Join the first Cloud teams</h2>
               <p className="text-[15px] leading-relaxed text-white/55">

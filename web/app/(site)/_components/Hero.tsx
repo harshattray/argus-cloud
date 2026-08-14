@@ -28,10 +28,14 @@ export function Hero() {
             words in it. It is in the backdrop rather than in the layout so it
             costs the fold no height, and it tracks the same `max-w-5xl`
             container as the content, which is what lands it over the card's
-            column instead of out in the bleed. Hidden below `lg`, where the
-            hero stacks and that corner belongs to the wordmark. */}
-        <div className="absolute inset-0 mx-auto hidden max-w-5xl items-start justify-end px-4 md:px-8 lg:flex">
-          <Twin pose="camera" className="mt-7 w-[5.5rem] opacity-80" />
+            column instead of out in the bleed.
+
+            It shrinks on a phone rather than vanishing. The corner is still
+            free there — the eyebrow above the wordmark is four short words —
+            so the figure only has to come down to a size that does not crowd
+            it. */}
+        <div className="absolute inset-0 mx-auto flex max-w-5xl items-start justify-end px-4 md:px-8">
+          <Twin pose="camera" className="mt-5 w-12 opacity-80 md:w-16 lg:mt-7 lg:w-[5.5rem]" />
         </div>
       </div>
 
