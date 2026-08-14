@@ -274,7 +274,7 @@ export default function HowItWorksPage() {
             hero has the camera, this has the other half. */}
         <TwinAside
           pose="measure"
-          twinClassName="mt-6 ml-auto block w-20 shrink-0 lg:mt-0 lg:w-28"
+          twinClassName="mt-6 ml-auto block w-28 shrink-0 lg:mt-0 lg:w-32"
           className="mb-9"
         >
           <Eyebrow>Your call, not ours</Eyebrow>

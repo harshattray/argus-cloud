@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { WaitlistForm } from "./WaitlistForm";
 import { WordmarkSVG, CloudLockupSVG, IconSVG } from "./marks";
+import { TwinAside } from "./twins";
 
 /**
  * The lean public site's UI kit.
@@ -235,6 +236,22 @@ export const WaitlistBadge = ({
  * destination — but it still leads with the limitation rather than the feature,
  * because "here is what you will run into" converts and "here are our features"
  * does not.
+ *
+ * ── The figure is the mechanism, not the ornament ────────────────────────────
+ *
+ * `offer` is the one pose the site is allowed to repeat, and this band is the
+ * only place it is allowed to appear (`twins.tsx` explains why the other eight
+ * are one-to-a-page). It is deliberately the *last* figure a visitor meets on
+ * every route: the twins photograph on `/`, measure on `/how-it-works`, point on
+ * `/commands`, magnify on `/report`, and then, at the foot of whichever page
+ * they read, one of them holds the cloud out. Six pages, the same gesture, the
+ * same destination — a character can carry a call to action across a site in a
+ * way that a sixth copy of a button cannot.
+ *
+ * It rides in `TwinAside`, so on a wide screen it stands at the inner edge of
+ * the copy column with the cloud raised toward the action beside it, and below
+ * `lg` it drops to the right margin directly above that action. Either way the
+ * raised hand is pointing at the thing we want clicked.
  */
 export const CloudBand = ({
   wall,
@@ -249,11 +266,16 @@ export const CloudBand = ({
 }) => (
   <Section tone="ink" size="sm">
     <div className="grid items-center gap-8 lg:grid-cols-12 lg:gap-14">
-      <div className="lg:col-span-7">
+      <TwinAside
+        pose="offer"
+        tone="cream"
+        className="lg:col-span-7"
+        twinClassName="mt-7 -mb-1 ml-auto block w-28 shrink-0 lg:mt-0 lg:w-32"
+      >
         <CloudMark size="md" dark className="mb-5" title="Normascope Cloud" />
         <p className="display-sm mb-3 text-white">{wall}</p>
         <p className="text-[15px] leading-relaxed text-white/55">{answer}</p>
-      </div>
+      </TwinAside>
       <div className="lg:col-span-5">
         {form ? (
           <>

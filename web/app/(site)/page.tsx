@@ -187,9 +187,17 @@ export default function HomePage() {
           comment and the delta column are all free, and this is where they get
           shown. `normascopeWeb.md` §9 has always specced the PR comment onto
           the home page; it just never landed. */}
+      {/* `min-w-0` on both columns is load-bearing, not tidying. A grid item's
+          automatic minimum size is its *min-content* width, so below `lg` —
+          where this is a single-column grid — each column refused to go under
+          337px and pushed the whole document sideways on any phone narrower
+          than about 353. Measured at 320×700: `documentElement.scrollWidth`
+          was 353 against a 320 viewport, so the header scrolled off and the PR
+          card painted outside the page background. `min-w-0` opts out of that
+          minimum and lets the column take the track's width. */}
       <Section tone="paper">
         <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
-          <div className="lg:col-span-5">
+          <div className="min-w-0 lg:col-span-5">
             <Eyebrow>On every pull request</Eyebrow>
             <h2 className="display-md mb-4">One comment, edited in place</h2>
             <p className="mb-5 text-base leading-relaxed text-text/60">
@@ -229,7 +237,7 @@ export default function HomePage() {
 
           </div>
 
-          <div className="lg:col-span-7">
+          <div className="min-w-0 lg:col-span-7">
             <PrComment />
             {/* §7: a mockup is allowed here because a real PR cannot be
                 photographed without carrying somebody's repository — but it
@@ -254,7 +262,7 @@ export default function HomePage() {
         <TwinAside
           pose="reading"
           tone="cream"
-          twinClassName="mt-6 ml-auto block w-16 shrink-0 lg:mt-0 lg:w-28"
+          twinClassName="mt-6 ml-auto block w-28 shrink-0 lg:mt-0 lg:w-32"
           className="mb-9"
         >
           <Eyebrow dark>For coding agents</Eyebrow>

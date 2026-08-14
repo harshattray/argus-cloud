@@ -2,8 +2,7 @@ import { NPM_URL } from "../../../lib/site";
 import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
-import { Twin } from "./twins";
-import { CookingCluster } from "./CloudCorner";
+import { TwinLink } from "./twins";
 
 /**
  * The home page's fold.
@@ -22,22 +21,6 @@ export function Hero() {
         <div className="h-full w-full bg-gradient-to-br from-[#e8c9bf]/70 via-[#f3e3d8]/50 to-[#d8c3e0]/40" />
         <div className="absolute right-[-80px] top-[-110px] h-[28rem] w-[28rem] rounded-full bg-clay opacity-35 blur-3xl" />
         <div className="absolute bottom-[-90px] left-[-70px] h-96 w-96 rounded-full bg-[#fbc3bd] opacity-40 blur-3xl" />
-
-        {/* One of them in the top-right corner, above the preview card, holding
-            a camera — the paragraph two inches to the left says Normascope
-            photographs your running app, and this is that sentence with no
-            words in it. It is in the backdrop rather than in the layout so it
-            costs the fold no height, and it tracks the same `max-w-5xl`
-            container as the content, which is what lands it over the card's
-            column instead of out in the bleed.
-
-            It shrinks on a phone rather than vanishing. The corner is still
-            free there — the eyebrow above the wordmark is four short words —
-            so the figure only has to come down to a size that does not crowd
-            it. */}
-        <div className="absolute inset-0 mx-auto flex max-w-5xl items-start justify-end px-4 md:px-8">
-          <Twin pose="camera" className="mt-5 w-12 opacity-80 md:w-16 lg:mt-7 lg:w-[5.5rem]" />
-        </div>
       </div>
 
       <div className="mx-auto max-w-5xl pt-14 pb-12 md:pt-16 md:pb-16">
@@ -81,31 +64,59 @@ export function Hero() {
             {/* Cloud gets one mention this high up, and it is an invitation
                 rather than an advert — the free tool has to carry the hero.
 
-                Below `md` it also carries the lockup, because the header's
-                Cloud corner is hidden at that width. A phone was getting a
-                black `join waitlist` pill that never said what it was joining,
-                and the word Cloud only as the sixth grey chip in the nav strip
-                — measured, the first readable mention was this badge and the
-                next was the Cloud band at 80% down the page. The rule is in
-                `CloudCorner.tsx`: the cluster is near the top at every width,
-                in the header from `md` up and here below it, never both.
+                This block used to carry the lockup as well below `md`, because
+                the header's Cloud corner is hidden at that width and a phone
+                was otherwise getting a black `join waitlist` pill that never
+                said what it was joining. The header's navigation row carries
+                the lockup now, on every route rather than only this one, so
+                the copy here went back to being one invitation instead of two.
 
                 The rule above it is a divider, not decoration. Without one the
-                lockup reads as a third line of the free tool's own pitch, which
+                badge reads as a third line of the free tool's own pitch, which
                 is the one thing this mention must not do. */}
             <div className="mt-7 border-t border-clay/25 pt-6 md:border-0 md:pt-0">
-              <CookingCluster className="mb-4 inline-flex md:hidden" />
-
               <div className="flex flex-wrap items-center gap-3">
                 <WaitlistBadge />
                 <span className="text-[13px] text-text/45">
                   shared visual memory for your team
                 </span>
               </div>
-              <p className="mt-3 max-w-md text-[13px] leading-relaxed text-text/45">
-                Use Normascope free on your machine today. When your team needs a shared history,
-                stable links and trends, that&rsquo;s Normascope Cloud.
-              </p>
+
+              {/* The badge row above keeps the column's full width on purpose.
+                  The figure shared that row for one revision and pushed the row
+                  past its wrapping point — "shared visual memory for your team"
+                  dropped under the badge on every desktop width. It takes its
+                  width from the paragraph instead, which has `max-w-md` to
+                  spare. */}
+              <div className="flex flex-col items-end sm:flex-row sm:items-end sm:gap-4">
+                <p className="mt-3 max-w-md text-[13px] leading-relaxed text-text/45">
+                  Use Normascope free on your machine today. When your team needs a shared history,
+                  stable links and trends, that&rsquo;s Normascope Cloud.
+                </p>
+
+              {/* The figure stands at the end of the Cloud sentence, and that
+                  is the whole reason it moved here.
+
+                  It was in the fold's top-right corner while it was decoration.
+                  Two things broke when it became a labelled link. It overlapped
+                  the preview card, which drew straight over the legs and left a
+                  figure sliced off at the knees. And its sticker landed directly
+                  under the header's Cloud lockup, so the top-right corner
+                  carried two Cloud messages within 60px of each other, each
+                  making the other harder to read.
+
+                  Here it has real room, it costs the fold about 60px rather
+                  than overlapping anything, and — the part worth keeping — it
+                  is beside the one paragraph in the hero that is about Cloud.
+                  A "get cloud" sticker next to "that's Normascope Cloud" is the
+                  same sentence twice, which is what a mascot is for. */}
+                {/* Visible on a phone too, stacked under the paragraph rather
+                    than beside it — at 375px a figure sharing the line leaves
+                    the paragraph 231px and it wraps to six lines. Hiding it
+                    below `sm` was the first instinct and it is the wrong one:
+                    the phone is the surface this whole change is for. */}
+                <TwinLink pose="camera" className="-mb-2 mt-1 w-20 shrink-0 opacity-90 sm:mt-0 sm:w-24" />
+              </div>
             </div>
           </div>
 

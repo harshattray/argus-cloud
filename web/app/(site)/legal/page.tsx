@@ -33,7 +33,7 @@ export default function LegalIndex() {
             breakpoint earlier than a full-width section's heading does. */}
         <TwinAside
           pose="stack"
-          twinClassName="mt-6 ml-auto block w-12 shrink-0 sm:mt-0 sm:w-20"
+          twinClassName="mt-6 ml-auto block w-28 shrink-0 sm:mt-0 sm:w-32"
           className="mb-12 sm:flex sm:items-end sm:justify-between sm:gap-8"
         >
           <p className="text-[15px] leading-relaxed text-text/60">

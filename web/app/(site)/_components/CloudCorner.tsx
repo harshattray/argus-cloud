@@ -53,36 +53,40 @@ import { CloudLink } from "./HeaderNav";
  *   -site demand gate names the old wording; the gate's substance ("lands on
  *   `/cloud#waitlist`") still holds, but the doc's wording is now stale.
  *
- * ── The phone (fixed 2026-08-14) ────────────────────────────────────────────
+ * ── The phone ───────────────────────────────────────────────────────────────
  *
- * This corner is still hidden below `md` — there is no room for it beside the
- * brand and the button on a phone, and that has not changed. What changed is
- * where it goes instead.
+ * This corner is hidden below `md` and always will be: there is no room for it
+ * beside the brand and the button on a phone. The question was only ever where
+ * the lockup goes instead.
  *
- * Measured on a 390×844 phone before the fix: the cluster was `display:none`,
- * so the only Cloud a visitor met above the fold was a black `join waitlist`
- * pill that did not say what it was joining, and the word "Cloud" as the sixth
- * grey chip in the nav strip. The next mention was the hero's waitlist badge at
- * y=631, and the next after that the Cloud band at y=6525 of an 8144px page.
+ * *First answer, 2026-08-14 — the hero.* Measured on a 390×844 phone, the
+ * cluster was `display:none`, so the only Cloud a visitor met above the fold
+ * was a black `join waitlist` pill that did not say what it was joining, and
+ * the word "Cloud" as the sixth grey chip in the nav strip. The hero rendered
+ * `CookingCluster` below `md` and put a real lockup at y=668 of the first
+ * screen.
  *
- * So `CookingCluster` is exported and the hero renders it below `md`, at the
- * point where its own copy turns to Cloud — inside the first screen, measured
- * at y=668 of an 844px viewport. Exactly one of the two ever renders, so the
- * lockup is never on screen twice.
+ * That fixed the home page and nothing else, which the note here said at the
+ * time. The hero is the home page's. Measured on a 375×812 phone, `/guide` —
+ * 35,764px, the longest page on the site — met Cloud as the grey chip in a
+ * strip you have to swipe to reach, as one clause of a sentence at y=2,110,
+ * and then not again until the footer mark at y=35,320. **98.8% of the page
+ * with no way to Cloud.**
  *
- * **This fixes the home page only.** The hero is the home page's, so on a phone
- * every other route still meets Cloud first as the grey chip and then not again
- * until its closing band. Fixing that means pinning a cluster to the right of
- * the mobile nav strip, which is a header change and a busier one — four things
- * in a two-row bar — so it is deliberately not bundled in here.
+ * *Second answer, and the one in the code — the navigation row.* The lockup is
+ * pinned to the end of the row the strip already occupies (`layout.tsx`), so
+ * every route carries it at every width, and the grey chip is gone from the
+ * strip because the lockup replaced what it was for. The hero's copy of it went
+ * with the change: the header covers the home page too, and two lockups in one
+ * screen is the thing this file has been avoiding from the start.
  *
  * The button is visible at every width — it is the site's only conversion
  * mechanism and phones must not lose it.
  */
 
 /** Steam off a pan. 34 × 26, drawn to sit on the lockup's baseline. */
-const Pan = () => (
-  <svg viewBox="0 0 34 26" width="34" height="26" fill="none" aria-hidden className="shrink-0">
+const Pan = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 34 26" width="34" height="26" fill="none" aria-hidden className={`shrink-0 ${className}`}>
     <g stroke="var(--color-clay)" strokeWidth="1.5" strokeLinecap="round">
       <path className="hc-steam-a" d="M11 13.5 C9 11 13 9.6 11 7.1 C9.6 5.2 11.4 4.1 11 2.6" />
       <path className="hc-steam-b" d="M17 13.5 C15 10.6 19 9.1 17 6.4 C15.6 4.3 17.4 3.2 17 1.6" />
@@ -167,18 +171,28 @@ const CookingLabel = () => (
 /**
  * The titled lockup: eyebrow, mark, pan, linking to `/cloud`.
  *
- * Exported because the hero renders it below `md`, where this file's own corner
- * is hidden. Caller owns the breakpoint — pass `hidden md:inline-flex` here, and
- * `md:hidden` in the hero, so exactly one of the two is ever on screen.
+ * Exported because the header renders it twice at different breakpoints — in
+ * the top row from `md` up, and at the end of the navigation row below it. The
+ * caller owns the breakpoint, so exactly one of the two is ever on screen.
+ *
+ * `panClassName` exists so the navigation row can hide the pan on the narrowest
+ * screens. A 375px phone has ~230px left in that row once the lockup is in it,
+ * and the pan is 34 of them; the strip needs those more than the joke does.
  */
-export const CookingCluster = ({ className = "" }: { className?: string }) => (
+export const CookingCluster = ({
+  className = "",
+  panClassName = "",
+}: {
+  className?: string;
+  panClassName?: string;
+}) => (
   <CloudLink className={className}>
     <span className="flex items-center gap-2">
       <span className="flex flex-col items-start gap-0.5">
         <CookingLabel />
         <CloudMark size="nav" title="Normascope Cloud" />
       </span>
-      <Pan />
+      <Pan className={panClassName} />
     </span>
   </CloudLink>
 );

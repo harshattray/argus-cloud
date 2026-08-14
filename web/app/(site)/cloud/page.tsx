@@ -224,10 +224,16 @@ export default function CloudPage() {
         <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-6">
             {/* Waving at the signup. The only place on the site asking a
-                visitor for something, so it gets the friendly one. */}
+                visitor for something, so it gets the friendly one.
+
+                `link={false}`: every other twin on the site is a link to this
+                page. This one is already on it, and a "get cloud" sign that
+                reloads the page you are reading is a dead end with a sign on
+                it. It still waves. */}
             <TwinAside
               pose="wave"
               tone="cream"
+              link={false}
               twinClassName="mt-6 ml-auto block w-14 shrink-0 lg:mt-0 lg:w-20"
             >
               <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
