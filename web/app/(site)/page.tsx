@@ -6,7 +6,7 @@ import { CopyLine } from "./_components/CopyLine";
 import { Hero } from "./_components/Hero";
 import { PrComment } from "../(pitch)/pitch/_components/PrComment";
 import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
-import { Twin, TwinAside } from "./_components/twins";
+import { TwinAside } from "./_components/twins";
 
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
@@ -313,15 +313,8 @@ export default function HomePage() {
 
       {/* ── What it won't do ── */}
       <Section tone="paper" size="sm">
-        {/* Shrugging at a list of things it refuses to do. */}
-        <TwinAside
-          pose="shrug"
-          twinClassName="hidden w-20 shrink-0 sm:block"
-          className="mb-7"
-        >
-          <Eyebrow>Before you install it</Eyebrow>
-          <h2 className="display-sm max-w-xl">Four things it will never do</h2>
-        </TwinAside>
+        <Eyebrow>Before you install it</Eyebrow>
+        <h2 className="display-sm mb-7 max-w-xl">Four things it will never do</h2>
         <ul className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
           {[
             ["It won't block your commit.", "Or your build, unless you explicitly ask it to."],
@@ -342,14 +335,11 @@ export default function HomePage() {
       {/* ── Close ── */}
       <Section tone="sand" size="sm">
         <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-6">
-            <Twin pose="wave" className="hidden w-16 shrink-0 md:block" />
-            <div>
-              <h2 className="display-sm mb-2">Try it on your next commit</h2>
-              <p className="text-[14.5px] text-text/55">
-                Sixty seconds, no account, nothing to uninstall.
-              </p>
-            </div>
+          <div>
+            <h2 className="display-sm mb-2">Try it on your next commit</h2>
+            <p className="text-[14.5px] text-text/55">
+              Sixty seconds, no account, nothing to uninstall.
+            </p>
           </div>
           <CopyLine command="npx norma-scope init" />
         </div>

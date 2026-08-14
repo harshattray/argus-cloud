@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Eyebrow, Section, Shot } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
-import { TwinAside } from "../_components/twins";
 import {
   FlowAutoCapture,
   FlowCI,
@@ -577,11 +576,8 @@ export default function GuidePage() {
 
       {/* §2 */}
       <Section tone="paper">
-        {/* Shrugging at the question in the eyebrow. */}
-        <TwinAside pose="shrug" className="mb-8">
-          <Eyebrow>2 · Which workflow should I use?</Eyebrow>
-          <h2 className="display-md max-w-2xl">Find your situation. Start there.</h2>
-        </TwinAside>
+        <Eyebrow>2 · Which workflow should I use?</Eyebrow>
+        <h2 className="display-md mb-8 max-w-2xl">Find your situation. Start there.</h2>
         {/* Three columns need about 42rem to stay readable, so below `md` the
             same ten rows are stacked instead. A 672px table in a 375px viewport
             is a table nobody reads: the situation column — the one you scan to

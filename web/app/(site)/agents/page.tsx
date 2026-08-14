@@ -198,16 +198,12 @@ export default function AgentsPage() {
 
       {/* ── Safety ── */}
       <Section tone="paper">
-        <TwinAside pose="point" className="mb-9">
-          <Eyebrow>Safety</Eyebrow>
-          <h2 className="display-md mb-5 max-w-2xl">
-            An agent will absolutely try to fetch anything
-          </h2>
-          <p className="max-w-2xl text-base leading-relaxed text-text/60">
-            Handing a network-capable tool to something that improvises is exactly where visual
-            testing becomes a security question. These are the three guarantees.
-          </p>
-        </TwinAside>
+        <Eyebrow>Safety</Eyebrow>
+        <h2 className="display-md mb-5 max-w-2xl">An agent will absolutely try to fetch anything</h2>
+        <p className="mb-9 max-w-2xl text-base leading-relaxed text-text/60">
+          Handing a network-capable tool to something that improvises is exactly where visual testing
+          becomes a security question. These are the three guarantees.
+        </p>
 
         <div className="grid gap-4 md:grid-cols-3">
           {GUARDS.map((g) => (

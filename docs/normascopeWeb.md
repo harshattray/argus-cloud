@@ -204,6 +204,40 @@ at `-11`, not `0` — the first cut sheared the ascenders off and rendered as
 **Type:** Poppins for UI (as the portfolio does), a mono for all terminal and
 code surfaces.
 
+### The twins (2026-08-14)
+
+Two identical figures in dark glasses, each reading its own copy of the same
+page. Traced from a frame of Harsha's own generated footage — the still is not
+in the repo. `web/app/(site)/_components/twins.tsx`, one character, eight poses,
+two tones (charcoal line on paper, cream line on ink).
+
+They are not general decoration. **Eight placements, eight poses, no pose twice
+on the site**, and the count is a ceiling: a new placement takes a new pose or
+an existing placement's slot.
+
+| Page | Where | Pose |
+|---|---|---|
+| `/` | hero, top right | camera |
+| `/` | "Your coding agent cannot see" | reading (cream) |
+| `/report` | "How to read a difference overlay" | magnify |
+| `/how-it-works` | the threshold slider | measure |
+| `/commands` | the command explorer | point |
+| `/agents` | "Two ways in" | shrug |
+| `/cloud` | the waitlist | wave (cream) |
+| `/legal` | the document index | stack |
+
+**Why the ceiling exists.** The first pass put fifteen of them across the pages
+drawn from four poses, and it read as wallpaper — a figure beside every other
+heading stops being a character and starts being skipped. Worse, on `/report` it
+sat next to real annotated captures, which is the one page where a visitor's
+attention belongs on the evidence (§7). Two of the four poses carried no prop,
+and poses that only move an elbow are the same drawing at a glance: a silhouette
+is recognised before a limb is. Hence props — camera, tape, magnifier, stack.
+
+The camera and the tape are the copy, not invention: the home page says
+Normascope photographs your running app, and `/agents` says it gives an agent a
+camera and a measuring tape.
+
 **Motion:** every animation respects `prefers-reduced-motion`. The existing page
 does this correctly and the pattern carries over.
 

@@ -9,14 +9,34 @@
  *
  * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *
- * One character, four poses, `flip` to mirror it. **They appear one at a
- * time.** A pair of them standing together was tried in the hero and read as
- * one drawing pasted twice, however different the two poses were — the eye
- * sees the repeated silhouette before it sees the arms. Everything here is
- * decoration: `aria-hidden` unless a `title` is passed, which nothing does.
+ * One character, eight poses, `flip` to mirror it.
+ *
+ * **Two rules, both learned by breaking them.**
+ *
+ * *They appear one at a time.* A pair standing together was tried in the hero
+ * and read as one drawing pasted twice however different the two poses were —
+ * the eye takes the repeated silhouette before it takes the arms.
+ *
+ * *No pose appears twice on the site.* There were fifteen of these across the
+ * pages at one point, drawn from four poses, and the effect was wallpaper: a
+ * figure next to every other heading stops being a character and starts being
+ * skipped. Eight placements, eight poses, and the count is the ceiling — a new
+ * placement needs a new pose or it takes an existing placement's slot. The
+ * inventory is in `docs/normascopeWeb.md` §5.
+ *
+ * Everything here is decoration: `aria-hidden` unless a `title` is passed,
+ * which nothing does.
  */
 
-export type TwinPose = "reading" | "shrug" | "point" | "wave";
+export type TwinPose =
+  | "reading"
+  | "shrug"
+  | "point"
+  | "wave"
+  | "camera"
+  | "measure"
+  | "magnify"
+  | "stack";
 export type TwinTone = "ink" | "cream";
 
 /**
@@ -65,12 +85,15 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
       [182, 136],
     ],
   },
+  /* Out and *down*, at whatever is below the heading it stands beside. Raised,
+     it was a second `wave` — the two poses differed by about fifteen degrees of
+     forearm and read as the same drawing. */
   point: {
     left: "M46 178 C 28 190 24 206 34 214",
-    right: "M154 170 C 176 162 188 146 186 132",
+    right: "M154 180 C 174 186 188 198 190 212",
     hands: [
       [34, 218],
-      [186, 128],
+      [192, 216],
     ],
   },
   wave: {
@@ -81,6 +104,121 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
       [169, 112],
     ],
   },
+  camera: {
+    left: "M44 176 C 30 188 38 202 52 202",
+    right: "M156 176 C 170 188 162 202 148 202",
+    hands: [
+      [52, 206],
+      [148, 206],
+    ],
+  },
+  measure: {
+    left: "M46 180 C 32 186 22 192 20 198",
+    right: "M154 180 C 168 186 178 192 180 198",
+    hands: [
+      [19, 202],
+      [181, 202],
+    ],
+  },
+  magnify: {
+    left: "M46 180 C 30 192 26 208 36 216",
+    right: "M154 172 C 176 158 186 132 182 110",
+    hands: [
+      [36, 220],
+      [182, 106],
+    ],
+  },
+  stack: {
+    left: "M46 180 C 32 190 36 202 48 206",
+    right: "M154 180 C 168 190 164 202 152 206",
+    hands: [
+      [48, 210],
+      [152, 210],
+    ],
+  },
+};
+
+/**
+ * Whatever the pose is holding, drawn between the arms and the hands so the
+ * hands close over it.
+ *
+ * The props are what stop the set reading as one figure with different arms.
+ * A silhouette is recognised before a limb is, so a pose that only moves an
+ * elbow is the same drawing again at a glance — a pose holding something the
+ * body does not have is not. `shrug`, `point` and `wave` carry nothing and are
+ * the three that look most alike; keep them apart on the page.
+ */
+const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
+  switch (pose) {
+    /* Two panels meeting at a fold, the outer top corner curled — the one
+       detail that stops it reading as a folded napkin. */
+    case "reading":
+      return (
+        <>
+          <path d="M34 202 L100 193 L100 248 L38 255 Z" fill={c.paper} stroke={c.line} strokeWidth="6" />
+          <path d="M166 202 L100 193 L100 248 L162 255 Z" fill={c.paper} stroke={c.line} strokeWidth="6" />
+          <path d="M100 193 L100 248" stroke={c.line} strokeWidth="3.5" opacity="0.45" />
+          <path
+            d="M34 202 C 28 195 32 188 41 190 C 37 195 35 199 37 203"
+            fill={c.paper}
+            stroke={c.line}
+            strokeWidth="5"
+          />
+        </>
+      );
+
+    /* A camera held at chest height, lens to the viewer. The site's first
+       sentence is that Normascope photographs your running app; this is that
+       sentence with no words in it. */
+    case "camera":
+      return (
+        <>
+          <rect x="76" y="150" width="26" height="10" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <rect x="56" y="158" width="88" height="52" rx="10" fill={c.paper} stroke={c.line} strokeWidth="6" />
+          <circle cx="100" cy="184" r="17" fill={c.body} stroke={c.line} strokeWidth="6" />
+          <circle cx="100" cy="184" r="7" fill={c.line} />
+          <circle cx="130" cy="168" r="4" fill={c.line} />
+        </>
+      );
+
+    /* A tape pulled taut between both hands. The widest silhouette in the set
+       by a long way, which is most of why it is here. */
+    case "measure":
+      return (
+        <>
+          <rect x="18" y="192" width="164" height="16" rx="4" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          {[46, 70, 94, 118, 142, 166].map((x) => (
+            <path key={x} d={`M${x} 192 L${x} ${x === 94 || x === 118 ? 205 : 200}`} stroke={c.line} strokeWidth="3" opacity="0.55" />
+          ))}
+        </>
+      );
+
+    /* Held up beside the head rather than over a lens: over the glasses it
+       reads as a second pair of spectacles, not as a magnifier. */
+    case "magnify":
+      return (
+        <>
+          <path d="M187 88 L196 104" stroke={c.line} strokeWidth="9" strokeLinecap="round" />
+          <circle cx="172" cy="66" r="25" fill={c.paper} opacity="0.55" />
+          <circle cx="172" cy="66" r="25" fill="none" stroke={c.line} strokeWidth="7" />
+          <path d="M160 74 L170 56" stroke={c.glare} strokeWidth="4.5" opacity="0.7" strokeLinecap="round" />
+        </>
+      );
+
+    /* Three sheets, each a slightly different width, because a stack drawn
+       from one repeated rectangle reads as a box. */
+    case "stack":
+      return (
+        <>
+          <rect x="60" y="170" width="80" height="16" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <rect x="54" y="184" width="88" height="16" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <rect x="58" y="198" width="84" height="16" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+        </>
+      );
+
+    default:
+      return null;
+  }
 };
 
 /** The mitten hand from the reference: a blob with two finger notches. */
@@ -164,32 +302,7 @@ export function Twin({
         <path d={arms.left} stroke={c.line} strokeWidth="7" />
         <path d={arms.right} stroke={c.line} strokeWidth="7" />
 
-        {/* The page. Two panels meeting at a fold, the outer top corner curled
-            — the one detail that stops it reading as a folded napkin. */}
-        {pose === "reading" && (
-          <>
-            <path
-              d="M34 202 L100 193 L100 248 L38 255 Z"
-              fill={c.paper}
-              stroke={c.line}
-              strokeWidth="6"
-            />
-            <path
-              d="M166 202 L100 193 L100 248 L162 255 Z"
-              fill={c.paper}
-              stroke={c.line}
-              strokeWidth="6"
-            />
-            <path d="M100 193 L100 248" stroke={c.line} strokeWidth="3.5" opacity="0.45" />
-            {/* The curled outer corner. Without it the page reads as a napkin. */}
-            <path
-              d="M34 202 C 28 195 32 188 41 190 C 37 195 35 199 37 203"
-              fill={c.paper}
-              stroke={c.line}
-              strokeWidth="5"
-            />
-          </>
-        )}
+        <Prop pose={pose} c={c} />
 
         {arms.hands.map(([hx, hy]) => (
           <Hand key={`${hx}-${hy}`} x={hx} y={hy} c={c} />

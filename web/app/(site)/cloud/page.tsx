@@ -127,15 +127,12 @@ export default function CloudPage() {
       </section>
 
       <Section tone="paper">
-        {/* Reading, next to the section about the questions people re-ask. */}
-        <TwinAside pose="reading" className="mb-11">
-          <Eyebrow>The questions behind every diff</Eyebrow>
-          <h2 className="display-md mb-4 max-w-2xl">The answers your team keeps asking for</h2>
-          <p className="max-w-xl text-base leading-relaxed text-text/60">
-            Cloud puts the context next to the report instead of making someone reconstruct it from
-            old files, Slack threads and memory.
-          </p>
-        </TwinAside>
+        <Eyebrow>The questions behind every diff</Eyebrow>
+        <h2 className="display-md mb-4 max-w-2xl">The answers your team keeps asking for</h2>
+        <p className="mb-11 max-w-xl text-base leading-relaxed text-text/60">
+          Cloud puts the context next to the report instead of making someone reconstruct it from old
+          files, Slack threads and memory.
+        </p>
         <div className="grid gap-x-10 gap-y-9 md:grid-cols-2">
           {ANSWERS.map((item) => (
             <div key={item.head} className="min-w-0 rounded-xl border border-black/8 bg-white/55 px-5 py-5">

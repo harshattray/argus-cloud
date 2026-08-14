@@ -132,17 +132,14 @@ export default function HowItWorksPage() {
       </section>
 
       <Section tone="ink">
-        {/* Shrugging at the question the section asks. */}
-        <TwinAside pose="shrug" tone="cream" className="mb-10">
-          <Eyebrow dark>Start with the question</Eyebrow>
-          <h2 className="display-md mb-5 max-w-2xl text-white">
-            What should this page be compared with?
-          </h2>
-          <p className="max-w-2xl text-base leading-relaxed text-white/55">
-            Normascope is not tied to one kind of reference. Choose the source that matches the way
-            your team works today.
-          </p>
-        </TwinAside>
+        <Eyebrow dark>Start with the question</Eyebrow>
+        <h2 className="display-md mb-5 max-w-2xl text-white">
+          What should this page be compared with?
+        </h2>
+        <p className="mb-10 max-w-2xl text-base leading-relaxed text-white/55">
+          Normascope is not tied to one kind of reference. Choose the source that matches the way
+          your team works today.
+        </p>
         <div className="grid gap-5 md:grid-cols-3">
           {SOURCES.map((source) => (
             <div key={source.number} className="rounded-xl border border-white/10 bg-white/[0.05] p-5">
@@ -272,8 +269,10 @@ export default function HowItWorksPage() {
           is learned by dragging it in about three seconds. Same three real
           frames as the explainer above. */}
       <Section tone="paper">
-        {/* Pointing at the slider, which is the one thing on this page to drag. */}
-        <TwinAside pose="point" className="mb-9">
+        {/* Holding a tape measure, beside the section about where you set the
+            line. The page's own sentence is a camera and a measuring tape; the
+            hero has the camera, this has the other half. */}
+        <TwinAside pose="measure" twinClassName="hidden w-28 shrink-0 lg:block" className="mb-9">
           <Eyebrow>Your call, not ours</Eyebrow>
           <h2 className="display-md mb-4 max-w-2xl">One setting decides what counts as flagged</h2>
           <p className="max-w-2xl text-base leading-relaxed text-text/60">

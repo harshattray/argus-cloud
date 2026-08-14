@@ -300,8 +300,8 @@ export default function ReportPage() {
 
       {/* ── Reading an overlay ── */}
       <Section tone="sand" id="overlay">
-        {/* Pointing at the two overlays below it. */}
-        <TwinAside pose="point" className="mb-10">
+        {/* Holding a magnifier, next to the section about looking closely. */}
+        <TwinAside pose="magnify" className="mb-10">
           <Eyebrow>The picture on the right</Eyebrow>
           <h2 className="display-md mb-4 max-w-2xl">
             How to read a difference overlay in three seconds
@@ -450,15 +450,12 @@ export default function ReportPage() {
 
       {/* ── Honest limits ── */}
       <Section tone="sand" id="limits">
-        {/* Shrugging, because this is the section that owns up. */}
-        <TwinAside pose="shrug" flip className="mb-9">
-          <Eyebrow>Where it tells on itself</Eyebrow>
-          <h2 className="display-md mb-4 max-w-2xl">Three things the report will admit</h2>
-          <p className="max-w-xl text-base leading-relaxed text-text/60">
-            A measuring instrument that hides its own floor isn&rsquo;t one. These are measured, not
-            estimated.
-          </p>
-        </TwinAside>
+        <Eyebrow>Where it tells on itself</Eyebrow>
+        <h2 className="display-md mb-4 max-w-2xl">Three things the report will admit</h2>
+        <p className="mb-9 max-w-xl text-base leading-relaxed text-text/60">
+          A measuring instrument that hides its own floor isn&rsquo;t one. These are measured, not
+          estimated.
+        </p>
 
         <div className="grid gap-5 md:grid-cols-3">
           <Note kind="limit" title="When a frame animates">

@@ -34,8 +34,8 @@ export default function LegalIndex() {
             public website and the Cloud waitlist — nothing on this site is for sale, and joining
             the waitlist creates no account, subscription or payment obligation.
           </p>
-          {/* Reading the fine print, which on this page is the whole joke. */}
-          <Twin pose="reading" className="hidden w-20 shrink-0 sm:block" />
+          {/* Carrying the four documents this page indexes. */}
+          <Twin pose="stack" className="hidden w-20 shrink-0 sm:block" />
         </div>
 
         <ul className="space-y-3">

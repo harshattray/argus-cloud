@@ -201,11 +201,8 @@ export default function CommandsPage() {
 
       {/* ── The three papercuts ── */}
       <Section tone="sand" size="sm">
-        {/* Shrugging at the three things everyone gets caught by. */}
-        <TwinAside pose="shrug" flip twinClassName="hidden w-20 shrink-0 sm:block" className="mb-8">
-          <Eyebrow>Worth knowing</Eyebrow>
-          <h2 className="display-md max-w-xl">Three things that trip people up</h2>
-        </TwinAside>
+        <Eyebrow>Worth knowing</Eyebrow>
+        <h2 className="display-md mb-8 max-w-xl">Three things that trip people up</h2>
 
         <div className="grid gap-7 md:grid-cols-3">
           {[
