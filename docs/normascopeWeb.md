@@ -367,6 +367,11 @@ gate while the public pages explained the same ideas in prose:
 | `AlignmentExplainer` (§8.1) | `/how-it-works` | pitch only |
 | `ThresholdSlider` (§8.2) | `/how-it-works` | pitch only |
 | `AgentLoop` (§8.6) + the five MCP tools | **new public `/agents`** | pitch only |
+| `AgentLoop` again, as the home page's trailer for it | `/#agents` | pitch only |
+
+The home page carries the loop as well as `/agents` does, because §9 has always
+put it there: PR comment → agent loop → Cloud tease. It is the same component
+and the same words as the page it links to, cut short — not a second telling.
 
 The sharpest of these was the PR comment. The Cloud page carried a *drawn* PR
 comment and the public site carried none, so the only pull-request picture a

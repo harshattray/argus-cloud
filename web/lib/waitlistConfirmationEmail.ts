@@ -8,7 +8,7 @@ export const WAITLIST_CONFIRMATION_SUBJECT = "We heard you — Normascope early 
  * Tables and inline styles keep the email usable across common clients.
  */
 export function waitlistConfirmationHtml(): string {
-  const logoUrl = `${SITE_URL}/normascope-wordmark.svg`;
+  const logoUrl = `${SITE_URL}/normascope-cloud.svg`;
   const yuticMarkUrl = `${SITE_URL}/yutic-teal-mark.svg`;
 
   return `<!doctype html>
