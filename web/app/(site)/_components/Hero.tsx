@@ -2,7 +2,7 @@ import { NPM_URL } from "../../../lib/site";
 import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
-import { Twins } from "./twins";
+import { Twin, Twins } from "./twins";
 
 /**
  * The home page's fold.
@@ -54,13 +54,23 @@ export function Hero() {
               commit.
             </p>
 
-            <div className="mt-8 flex flex-wrap items-center gap-5">
-              <CopyLine command="npx norma-scope init" />
+            {/* `items-end`, not `items-center`: the twin makes this row taller
+                than the command pill, and centring would float the npm link up
+                beside the figure's head instead of level with the command. */}
+            <div className="mt-8 flex flex-wrap items-end gap-5">
+              {/* One of them stands on the command and leans down at it. The
+                  figure's feet sit on 280 of a 300 viewBox, so a negative
+                  bottom margin of roughly that remainder puts it on the pill
+                  rather than floating above it. */}
+              <div className="flex flex-col items-start">
+                <Twin pose="reach" className="ml-7 -mb-[0.6rem] w-16" flip />
+                <CopyLine command="npx norma-scope init" />
+              </div>
               <a
                 href={NPM_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-widest text-text/50 transition-colors hover:text-text"
+                className="mb-2.5 inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-widest text-text/50 transition-colors hover:text-text"
               >
                 View on npm
                 <span aria-hidden>→</span>

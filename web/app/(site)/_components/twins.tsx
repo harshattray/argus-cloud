@@ -17,7 +17,7 @@
  * unless a `title` is passed, which nothing currently does.
  */
 
-export type TwinPose = "reading" | "shrug" | "point" | "wave";
+export type TwinPose = "reading" | "shrug" | "point" | "wave" | "reach";
 export type TwinTone = "ink" | "cream";
 
 /**
@@ -80,6 +80,15 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
     hands: [
       [34, 218],
       [169, 112],
+    ],
+  },
+  /** Leaning down at whatever it is standing on. The one that perches. */
+  reach: {
+    left: "M46 176 C 28 184 20 200 26 214",
+    right: "M154 184 C 174 200 186 224 182 244",
+    hands: [
+      [25, 218],
+      [181, 248],
     ],
   },
 };
@@ -216,23 +225,27 @@ export function Twin({
 }
 
 /**
- * The pair, as filmed: two of them turned inward, each with its own copy.
+ * The pair. Same figure twice, turned inward — the right one is the left one
+ * mirrored, so anything true of one is true of the other.
  *
- * They are deliberately *not* one drawing repeated at a different rotation —
- * the right one is the same figure mirrored, so anything true of one is true of
- * the other. That is the joke.
+ * They do *different* things, though. Two identical figures in identical poses
+ * read as one drawing pasted twice; giving them separate business is what makes
+ * them a pair rather than a repeat. One reads, one points at whatever is above
+ * them, by default.
  */
 export function Twins({
+  poses = ["reading", "point"],
   tone = "ink",
   className = "",
 }: {
+  poses?: [TwinPose, TwinPose];
   tone?: TwinTone;
   className?: string;
 }) {
   return (
     <div className={`flex items-end justify-center gap-[2%] ${className}`} aria-hidden>
-      <Twin pose="reading" tone={tone} className="w-1/2" />
-      <Twin pose="reading" tone={tone} className="w-1/2" flip />
+      <Twin pose={poses[0]} tone={tone} className="w-1/2" />
+      <Twin pose={poses[1]} tone={tone} className="w-1/2" flip />
     </div>
   );
 }
