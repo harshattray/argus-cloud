@@ -3,6 +3,7 @@ import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
 import { Twin } from "./twins";
+import { CookingCluster } from "./CloudCorner";
 
 /**
  * The home page's fold.
@@ -78,15 +79,34 @@ export function Hero() {
             </p>
 
             {/* Cloud gets one mention this high up, and it is an invitation
-                rather than an advert — the free tool has to carry the hero. */}
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <WaitlistBadge />
-              <span className="text-[13px] text-text/45">shared visual memory for your team</span>
+                rather than an advert — the free tool has to carry the hero.
+
+                Below `md` it also carries the lockup, because the header's
+                Cloud corner is hidden at that width. A phone was getting a
+                black `join waitlist` pill that never said what it was joining,
+                and the word Cloud only as the sixth grey chip in the nav strip
+                — measured, the first readable mention was this badge and the
+                next was the Cloud band at 80% down the page. The rule is in
+                `CloudCorner.tsx`: the cluster is near the top at every width,
+                in the header from `md` up and here below it, never both.
+
+                The rule above it is a divider, not decoration. Without one the
+                lockup reads as a third line of the free tool's own pitch, which
+                is the one thing this mention must not do. */}
+            <div className="mt-7 border-t border-clay/25 pt-6 md:border-0 md:pt-0">
+              <CookingCluster className="mb-4 inline-flex md:hidden" />
+
+              <div className="flex flex-wrap items-center gap-3">
+                <WaitlistBadge />
+                <span className="text-[13px] text-text/45">
+                  shared visual memory for your team
+                </span>
+              </div>
+              <p className="mt-3 max-w-md text-[13px] leading-relaxed text-text/45">
+                Use Normascope free on your machine today. When your team needs a shared history,
+                stable links and trends, that&rsquo;s Normascope Cloud.
+              </p>
             </div>
-            <p className="mt-3 max-w-md text-[13px] leading-relaxed text-text/45">
-              Use Normascope free on your machine today. When your team needs a shared history,
-              stable links and trends, that&rsquo;s Normascope Cloud.
-            </p>
           </div>
 
           <div className="w-full shrink-0 lg:w-[400px]">

@@ -53,11 +53,31 @@ import { CloudLink } from "./HeaderNav";
  *   -site demand gate names the old wording; the gate's substance ("lands on
  *   `/cloud#waitlist`") still holds, but the doc's wording is now stale.
  *
- * ── Still unsolved ──────────────────────────────────────────────────────────
+ * ── The phone (fixed 2026-08-14) ────────────────────────────────────────────
  *
- * Below `md` the cluster is hidden, exactly as the bare lockup was, and Cloud
- * is still a grey chip in the strip. The button is visible at every width — it
- * is the site's only conversion mechanism and phones must not lose it.
+ * This corner is still hidden below `md` — there is no room for it beside the
+ * brand and the button on a phone, and that has not changed. What changed is
+ * where it goes instead.
+ *
+ * Measured on a 390×844 phone before the fix: the cluster was `display:none`,
+ * so the only Cloud a visitor met above the fold was a black `join waitlist`
+ * pill that did not say what it was joining, and the word "Cloud" as the sixth
+ * grey chip in the nav strip. The next mention was the hero's waitlist badge at
+ * y=631, and the next after that the Cloud band at y=6525 of an 8144px page.
+ *
+ * So `CookingCluster` is exported and the hero renders it below `md`, at the
+ * point where its own copy turns to Cloud — inside the first screen, measured
+ * at y=668 of an 844px viewport. Exactly one of the two ever renders, so the
+ * lockup is never on screen twice.
+ *
+ * **This fixes the home page only.** The hero is the home page's, so on a phone
+ * every other route still meets Cloud first as the grey chip and then not again
+ * until its closing band. Fixing that means pinning a cluster to the right of
+ * the mobile nav strip, which is a header change and a busier one — four things
+ * in a two-row bar — so it is deliberately not bundled in here.
+ *
+ * The button is visible at every width — it is the site's only conversion
+ * mechanism and phones must not lose it.
  */
 
 /** Steam off a pan. 34 × 26, drawn to sit on the lockup's baseline. */
@@ -144,20 +164,28 @@ const CookingLabel = () => (
   </span>
 );
 
+/**
+ * The titled lockup: eyebrow, mark, pan, linking to `/cloud`.
+ *
+ * Exported because the hero renders it below `md`, where this file's own corner
+ * is hidden. Caller owns the breakpoint — pass `hidden md:inline-flex` here, and
+ * `md:hidden` in the hero, so exactly one of the two is ever on screen.
+ */
+export const CookingCluster = ({ className = "" }: { className?: string }) => (
+  <CloudLink className={className}>
+    <span className="flex items-center gap-2">
+      <span className="flex flex-col items-start gap-0.5">
+        <CookingLabel />
+        <CloudMark size="nav" title="Normascope Cloud" />
+      </span>
+      <Pan />
+    </span>
+  </CloudLink>
+);
+
 export const CloudCorner = () => (
   <div className="ml-auto flex shrink-0 items-center gap-3.5">
-    {/* Hidden below `md` for the same reason the bare lockup was: there is no
-        room for it beside the brand and the button on a phone. */}
-    <CloudLink className="hidden md:inline-flex">
-      <span className="flex items-center gap-2">
-        <span className="flex flex-col items-start gap-0.5">
-          <CookingLabel />
-          <CloudMark size="nav" title="Normascope Cloud" />
-        </span>
-        <Pan />
-      </span>
-    </CloudLink>
-
+    <CookingCluster className="hidden md:inline-flex" />
     <StormWaitlist />
   </div>
 );
