@@ -6,6 +6,7 @@ import { CopyLine } from "./_components/CopyLine";
 import { Hero } from "./_components/Hero";
 import { PrComment } from "../(pitch)/pitch/_components/PrComment";
 import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
+import { Twin } from "./_components/twins";
 
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
@@ -249,17 +250,23 @@ export default function HomePage() {
           words and the loop are the ones already public on `/agents`; this is
           the trailer, not a second version of it. */}
       <Section id="agents" tone="ink">
-        <Eyebrow dark>For coding agents</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
-        <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
-          Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a UI
-          task, declares it done, and has no way to know whether the thing it built looks anything
-          like the thing it was asked for.
-        </p>
-        <p className="mb-9 max-w-2xl text-[15px] leading-relaxed text-white/45">
-          Normascope gives it a camera and a measuring tape — a number it can move, so it can tell
-          whether its last edit helped. Free and local, the same engine the CLI runs.
-        </p>
+        <div className="mb-9 flex items-end justify-between gap-10">
+          <div>
+            <Eyebrow dark>For coding agents</Eyebrow>
+            <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
+            <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
+              Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a
+              UI task, declares it done, and has no way to know whether the thing it built looks
+              anything like the thing it was asked for.
+            </p>
+            <p className="max-w-2xl text-[15px] leading-relaxed text-white/45">
+              Normascope gives it a camera and a measuring tape — a number it can move, so it can
+              tell whether its last edit helped. Free and local, the same engine the CLI runs.
+            </p>
+          </div>
+          {/* Reading intently, in dark glasses. The heading is the caption. */}
+          <Twin pose="reading" tone="cream" className="hidden w-28 shrink-0 lg:block" />
+        </div>
 
         <AgentLoop />
 
@@ -304,8 +311,13 @@ export default function HomePage() {
 
       {/* ── What it won't do ── */}
       <Section tone="paper" size="sm">
-        <Eyebrow>Before you install it</Eyebrow>
-        <h2 className="display-sm mb-7 max-w-xl">Four things it will never do</h2>
+        <div className="mb-7 flex items-end justify-between gap-10">
+          <div>
+            <Eyebrow>Before you install it</Eyebrow>
+            <h2 className="display-sm max-w-xl">Four things it will never do</h2>
+          </div>
+          <Twin pose="shrug" className="hidden w-20 shrink-0 sm:block" />
+        </div>
         <ul className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
           {[
             ["It won't block your commit.", "Or your build, unless you explicitly ask it to."],
@@ -326,11 +338,14 @@ export default function HomePage() {
       {/* ── Close ── */}
       <Section tone="sand" size="sm">
         <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="display-sm mb-2">Try it on your next commit</h2>
-            <p className="text-[14.5px] text-text/55">
-              Sixty seconds, no account, nothing to uninstall.
-            </p>
+          <div className="flex items-center gap-6">
+            <Twin pose="wave" className="hidden w-16 shrink-0 md:block" />
+            <div>
+              <h2 className="display-sm mb-2">Try it on your next commit</h2>
+              <p className="text-[14.5px] text-text/55">
+                Sixty seconds, no account, nothing to uninstall.
+              </p>
+            </div>
           </div>
           <CopyLine command="npx norma-scope init" />
         </div>

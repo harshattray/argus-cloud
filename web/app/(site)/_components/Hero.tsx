@@ -2,6 +2,7 @@ import { NPM_URL } from "../../../lib/site";
 import { Spark, Wordmark, WaitlistBadge } from "./ui";
 import { HeroPreview } from "./HeroPreview";
 import { CopyLine } from "./CopyLine";
+import { Twins } from "./twins";
 
 /**
  * The home page's fold.
@@ -20,6 +21,15 @@ export function Hero() {
         <div className="h-full w-full bg-gradient-to-br from-[#e8c9bf]/70 via-[#f3e3d8]/50 to-[#d8c3e0]/40" />
         <div className="absolute right-[-80px] top-[-110px] h-[28rem] w-[28rem] rounded-full bg-clay opacity-35 blur-3xl" />
         <div className="absolute bottom-[-90px] left-[-70px] h-96 w-96 rounded-full bg-[#fbc3bd] opacity-40 blur-3xl" />
+
+        {/* The twins, standing in the gap the preview card leaves under itself.
+            They are in the backdrop rather than in the layout so they cost the
+            fold no height, and they track the same `max-w-5xl` container as the
+            content, which is what lands them under the card instead of out in
+            the bleed. Hidden below `lg`, where that gap does not exist. */}
+        <div className="absolute inset-0 mx-auto hidden max-w-5xl items-end justify-end px-4 md:px-8 lg:flex">
+          <Twins className="w-[15rem] opacity-80" />
+        </div>
       </div>
 
       <div className="mx-auto max-w-5xl pt-14 pb-12 md:pt-16 md:pb-16">

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { CloudBand, Eyebrow, Section, Spark } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
 import { AgentLoop } from "../../(pitch)/pitch/_components/AgentLoop";
+import { Twin } from "../_components/twins";
 import { MCP_PACKAGE } from "../../../lib/site";
 
 /**
@@ -193,12 +194,19 @@ export default function AgentsPage() {
 
       {/* ── Safety ── */}
       <Section tone="paper">
-        <Eyebrow>Safety</Eyebrow>
-        <h2 className="display-md mb-5 max-w-2xl">An agent will absolutely try to fetch anything</h2>
-        <p className="mb-9 max-w-2xl text-base leading-relaxed text-text/60">
-          Handing a network-capable tool to something that improvises is exactly where visual testing
-          becomes a security question. These are the three guarantees.
-        </p>
+        <div className="mb-9 flex items-end justify-between gap-10">
+          <div>
+            <Eyebrow>Safety</Eyebrow>
+            <h2 className="display-md mb-5 max-w-2xl">
+              An agent will absolutely try to fetch anything
+            </h2>
+            <p className="max-w-2xl text-base leading-relaxed text-text/60">
+              Handing a network-capable tool to something that improvises is exactly where visual
+              testing becomes a security question. These are the three guarantees.
+            </p>
+          </div>
+          <Twin pose="point" className="hidden w-24 shrink-0 lg:block" />
+        </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           {GUARDS.map((g) => (
