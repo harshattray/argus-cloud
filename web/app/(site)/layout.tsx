@@ -5,7 +5,7 @@ import { SITE_URL, TAGLINE, NAV_LINKS, NPM_URL } from "../../lib/site";
 import { Wordmark, CloudMark } from "./_components/ui";
 import { WaitlistForm } from "./_components/WaitlistForm";
 import { HeaderNav } from "./_components/HeaderNav";
-import { CloudCorner } from "./_components/CloudCorner";
+import { CloudCorner, CookingCluster } from "./_components/CloudCorner";
 import { YuticEndorsement } from "../_components/YuticEndorsement";
 import { LEGAL_DOCUMENTS } from "../../lib/legal.generated";
 
@@ -52,6 +52,15 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
         Below `md` the navigation drops to a second row. Sharing the top row
         with the brand and the action left it roughly 120px wide and clipped
         mid-word; a full-width strip is the whole structure, one swipe away.
+
+        **That second row also carries the Cloud lockup**, pinned to its end
+        while the strip fades out under it. The header is sticky, so this is
+        what puts Cloud on screen at every scroll position of every route on a
+        phone — the hero's copy of the lockup reached the home page and nothing
+        else, and a visitor in the middle of `/guide` was 30,000 pixels from
+        the nearest mention either way. The strip loses its `Cloud` chip in
+        exchange, so the bar holds the same number of things; one of them is
+        now the mark rather than a grey word.
       */}
       <header className="sticky top-0 z-50 border-b border-black/8 bg-paper/85 backdrop-blur-md">
         <nav className="mx-auto max-w-5xl px-4 md:px-8" aria-label="Main">
@@ -65,10 +74,16 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
             <CloudCorner />
           </div>
 
-          <HeaderNav
-            links={NAV_LINKS}
-            className="-mx-2 h-11 border-t border-black/[0.06] px-2 md:hidden"
-          />
+          <div className="-mx-2 flex h-12 items-center gap-1 border-t border-black/[0.06] px-2 md:hidden">
+            {/* `flex-1` rather than letting the strip size to its chips: the
+                lockup belongs at the row's end at every width, not floating
+                wherever the labels happen to stop. `strip-fade` is then the
+                cue that the strip continues past that end — without it, a
+                label cut off at the lockup reads as a rendering fault rather
+                than as something to swipe to. */}
+            <HeaderNav links={NAV_LINKS} className="strip-fade h-full flex-1" />
+            <CookingCluster className="shrink-0" panClassName="hidden sm:block" />
+          </div>
         </nav>
       </header>
 

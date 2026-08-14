@@ -122,6 +122,24 @@
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+
+    /*
+     * A long word that does not fit its column breaks rather than overflowing.
+     *
+     * This is defensive, and it was earning its keep before it existed. `/guide`
+     * writes URLs into prose — `http://localhost:3000/products/red-sneakers` is
+     * one unbreakable word, 314px wide in a 238px column — so at 320×700 the
+     * page's `scrollWidth` was 355 against a 320 viewport. Nothing looked wrong
+     * in isolation: no element's box overflowed, only the text inside it, which
+     * is why this reads as "the whole site slid sideways" rather than as a
+     * broken paragraph.
+     *
+     * `break-word`, not `anywhere`: it only breaks a word that has no other way
+     * to fit, so ordinary prose is measured and wrapped exactly as before. It
+     * has no effect inside `white-space: pre` blocks, which never wrap at all —
+     * the code blocks that opt into wrapping do it explicitly.
+     */
+    overflow-wrap: break-word;
   }
 
   /* Every animation on this site is decorative. None of it is allowed to
@@ -146,6 +164,257 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/**
+ * The fade at the end of the phone's navigation strip, which now runs up
+ * against the Cloud lockup pinned beside it (`(site)/layout.tsx`).
+ *
+ * A mask rather than a gradient overlay, and the difference is not cosmetic:
+ * the header is `bg-paper/85` over `backdrop-blur-md`, so any opaque gradient
+ * painted on top of it is *more* solid than the bar it sits in and reads as a
+ * pale patch. Masking fades the strip's own pixels and leaves the bar alone.
+ */
+@utility strip-fade {
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+}
+
+/*
+ * ── The twins ──────────────────────────────────────────────────────────────
+ *
+ * One idle animation per pose, each doing the thing that pose is *for* — the
+ * camera takes a photograph, the tape is drawn out, the glass sweeps, the
+ * sheets are tapped square. `_components/twins.tsx` holds the map of which
+ * parts of each drawing move, and why the grouping is what it is.
+ *
+ * **Every cycle is mostly rest.** The action sits in the last fifth of a 4–6s
+ * loop, so a figure acts about ten times a minute rather than continuously. A
+ * character that never stops moving beside a paragraph is a distraction, and
+ * on `/report` it would be a distraction next to the evidence.
+ *
+ * `offer` is the exception and loops without a pause: a held cloud that stops
+ * dead looks broken, and that figure's entire job is to be looked at.
+ *
+ * **Transform-box is deliberately left at the default (`view-box`).** The
+ * Cloud corner's animations opt into `fill-box` because each is one self-
+ * contained drawing; these are not. An arm, its hand and the thing the hand
+ * holds must turn about one shared point in the drawing's own coordinates, and
+ * `fill-box` would give each its own bounding-box centre instead.
+ *
+ * Reduced motion is handled by the blanket rule in the base layer above: these
+ * are all `animation`, so they collapse to a single 0.01ms cycle and every
+ * figure sits still in its rest pose. That is the correct still frame for all
+ * nine — each keyframe list starts and ends at no transform.
+ */
+
+/* Two jabs at whatever is under the heading. */
+@keyframes tw-point {
+  0%,
+  62%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(11deg);
+  }
+  77% {
+    transform: rotate(0deg);
+  }
+  84% {
+    transform: rotate(11deg);
+  }
+  92% {
+    transform: rotate(0deg);
+  }
+}
+
+/* Three waves, from the shoulder. */
+@keyframes tw-wave {
+  0%,
+  58%,
+  100% {
+    transform: rotate(0deg);
+  }
+  67% {
+    transform: rotate(-13deg);
+  }
+  76% {
+    transform: rotate(6deg);
+  }
+  85% {
+    transform: rotate(-10deg);
+  }
+  94% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The glass sweeps across and back, the way you actually look for something. */
+@keyframes tw-magnify {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+  68% {
+    transform: rotate(-11deg);
+  }
+  82% {
+    transform: rotate(5deg);
+  }
+  93% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The cloud drifts. The only pose with no rest in it. */
+@keyframes tw-offer {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(2.5deg);
+  }
+}
+
+/* The page is turned and settles back. */
+@keyframes tw-reading {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72% {
+    transform: rotate(-3deg);
+  }
+  84% {
+    transform: rotate(2deg);
+  }
+  93% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The shutter kicks the camera down and it comes back up. */
+@keyframes tw-camera {
+  0%,
+  76%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  81% {
+    transform: translateY(7px) scale(0.96);
+  }
+  88% {
+    transform: translateY(-2px) scale(1.02);
+  }
+  94% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* The flash out of the lens, on the same beat as the kick above. */
+@keyframes tw-flash {
+  0%,
+  77%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  80% {
+    opacity: 0.9;
+    transform: scale(0.7);
+  }
+  87% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+/* The tape is drawn out to the left and springs back. */
+@keyframes tw-measure {
+  0%,
+  66%,
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+  76% {
+    transform: translateX(-10px) scaleX(1.06);
+  }
+  86% {
+    transform: translateX(3px) scaleX(0.99);
+  }
+  94% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+/* The sheets are lifted and tapped square. */
+@keyframes tw-stack {
+  0%,
+  64%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  74% {
+    transform: translateY(-13px) rotate(-3deg);
+  }
+  83% {
+    transform: translateY(3px) rotate(1.5deg);
+  }
+  91% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+/* Shoulders up, shoulders down. The shadow stays put — see `twins.tsx`. */
+@keyframes tw-shrug {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  72%,
+  84% {
+    transform: translateY(-14px);
+  }
+  94% {
+    transform: translateY(0);
+  }
+}
+
+.tw-point {
+  animation: tw-point 4.6s ease-in-out infinite;
+}
+.tw-wave {
+  animation: tw-wave 4.2s ease-in-out infinite;
+}
+.tw-magnify {
+  animation: tw-magnify 5.4s ease-in-out infinite;
+}
+.tw-offer {
+  animation: tw-offer 3.6s ease-in-out infinite;
+}
+.tw-reading {
+  animation: tw-reading 6s ease-in-out infinite;
+}
+.tw-camera {
+  animation: tw-camera 5s ease-in-out infinite;
+}
+.tw-flash {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: tw-flash 5s ease-out infinite;
+}
+.tw-measure {
+  animation: tw-measure 5.2s ease-in-out infinite;
+}
+.tw-stack {
+  animation: tw-stack 5.6s ease-in-out infinite;
+}
+.tw-shrug {
+  animation: tw-shrug 4.8s ease-in-out infinite;
 }
 
 /*

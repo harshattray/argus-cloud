@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Eyebrow, Section, Shot } from "../_components/ui";
+import { CloudBand, Eyebrow, Section, Shot } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
 import {
   FlowAutoCapture,
@@ -1284,6 +1284,25 @@ npx norma-scope explain --deep`}</code>
           </p>
         </div>
       </Section>
+
+      {/* The last page on the site to get one, and the one that needed it most.
+          Measured on a 375×812 phone before this landed: the guide is 35,764px
+          long, and Cloud appeared as a grey chip in a nav strip you have to
+          swipe to reach, once as a clause at y=2,110, and then not again until
+          the footer mark at y=35,320 — 98.8% of the page with no way to it.
+          The header's lockup (see `layout.tsx`) is the other half of the fix;
+          this is the half that makes an argument. */}
+      <CloudBand
+        wall={<>This guide ends at today&rsquo;s run.</>}
+        answer={
+          <>
+            The CLI has no memory of the run before it — deliberately, and that is also its
+            ceiling. Cloud keeps every run, gives your team a stable link to any of them, and puts
+            a page&rsquo;s own history behind each number: not just what broke, but how long it has
+            been breaking.
+          </>
+        }
+      />
     </>
   );
 }

@@ -204,11 +204,39 @@ at `-11`, not `0` — the first cut sheared the ascenders off and rendered as
 **Type:** Poppins for UI (as the portfolio does), a mono for all terminal and
 code surfaces.
 
+### Where Cloud appears — the rule (2026-08-14)
+
+**Cloud is the destination of the whole site, so the lockup is on screen at
+every width, on every route, at every scroll position.** The header is sticky
+and carries it in one of two places, never both:
+
+| Width | Where the lockup is | Notes |
+|---|---|---|
+| `md` and up | `CloudCorner`, top row, right | Eyebrow above it — the only titled object in the bar |
+| Below `md` | end of the navigation row | The strip fades out under it; the pan drops below `sm` for width |
+
+Two things follow from that rule and should not be undone without replacing it:
+
+- **`Cloud` is not a chip in the navigation strip, at any width.** It was one
+  below `md`, which made the paid tier the sixth grey label in a strip you have
+  to swipe to reach. The lockup replaced what the chip was for. It stays in the
+  footer's Product column, which is a directory rather than a hierarchy.
+- **The hero does not carry a second lockup.** It did between 2026-08-14 and
+  this change, as the phone's only copy — which reached the home page and no
+  other route. Measured on a 375×812 phone at the time, `/guide` is 35,764px
+  long and had no way to Cloud between y=2,110 and the footer mark at y=35,320:
+  98.8% of the page.
+
+Below that, every page that argues for Cloud ends in a `CloudBand` — `/`,
+`/how-it-works`, `/commands`, `/report`, `/agents`, `/guide`. One per page, at
+the foot, leading with the limitation rather than the feature. `/legal` has none
+deliberately: an index of legal documents is not a place to sell.
+
 ### The twins (2026-08-14)
 
 Two identical figures in dark glasses, each reading its own copy of the same
 page. Traced from a frame of Harsha's own generated footage — the still is not
-in the repo. `web/app/(site)/_components/twins.tsx`, one character, eight poses,
+in the repo. `web/app/(site)/_components/twins.tsx`, one character, nine poses,
 two tones (charcoal line on paper, cream line on ink).
 
 They are not general decoration. **Eight placements, eight poses, no pose twice
@@ -226,6 +254,26 @@ an existing placement's slot.
 | `/cloud` | the waitlist | wave (cream) |
 | `/legal` | the document index | stack |
 
+**The ninth pose is the exception, and it is the point of the set.** `offer`
+holds a clay-coloured cloud up. It lives in `CloudBand` (`_components/ui.tsx`)
+and nowhere else, which means it appears at the foot of every page that has a
+band — `/`, `/how-it-works`, `/commands`, `/report`, `/agents`, `/guide`.
+
+That does not reopen the ceiling. The rule against repetition exists so the
+figures do not become wallpaper beside headings; one gesture that always means
+the same thing and always sits in the same place is the opposite of wallpaper.
+The other eight photograph, measure, magnify and stack their way across the
+site, and then the last figure a visitor meets, on whichever page they were
+reading, hands them Cloud. It rides in `TwinAside`, so on a wide screen it
+stands at the inner edge of the copy with the cloud raised toward the action,
+and below `lg` it drops to the right margin directly above it.
+
+**Nothing else may use `offer`, and it may not be given a second meaning.**
+
+The cloud is the only colour anywhere in the set — the same clay the lockup
+gives `norma` at that tone. Two-tone is the rule everywhere else; this shape has
+to read as *the product* rather than as a weather symbol.
+
 **Why the ceiling exists.** The first pass put fifteen of them across the pages
 drawn from four poses, and it read as wallpaper — a figure beside every other
 heading stops being a character and starts being skipped. Worse, on `/report` it
@@ -238,8 +286,63 @@ The camera and the tape are the copy, not invention: the home page says
 Normascope photographs your running app, and `/agents` says it gives an agent a
 camera and a measuring tape.
 
-**Motion:** every animation respects `prefers-reduced-motion`. The existing page
-does this correctly and the pattern carries over.
+#### They move, and they are the way to Cloud (2026-08-14)
+
+**Each pose animates as the thing it is for.** The camera takes a photograph —
+kick and flash. The tape is drawn out and springs back. The glass sweeps. The
+sheets are tapped square. The page turns. Shoulders shrug, a hand waves, a
+finger jabs twice, the held cloud drifts. Nine poses, nine animations, in
+`globals.css` under "The twins"; `twins.tsx` holds the map of which parts of
+each drawing move.
+
+**Every cycle is mostly rest.** The action sits in the last fifth of a 4–6
+second loop, so a figure acts about ten times a minute. Continuous motion beside
+a paragraph is a distraction, and on `/report` it competes with the evidence
+(§7). `offer` is the one exception and drifts without pausing: a held cloud that
+stops dead looks broken, and that figure's whole job is to be looked at.
+
+**Every twin is a link to `/cloud`, and wears a `get cloud` sticker.** Clay
+fill, paper edge, 6 degrees off true, drawn into the figure's own geometry so it
+scales and inverts with everything else. Mono and lowercase, the same voice as
+`cloud` in the lockup and `join waitlist` on the header button.
+
+Two quieter versions were tried and both failed, which is worth recording:
+
+- **Revealed on hover** — a phone has no hover, so the surface that needs Cloud
+  most would never have been shown the offer at all.
+- **Set in the drawing's own line colour** — same ink, same weight, so it read
+  as part of the character rather than as an offer.
+
+Five rules that came out of building it:
+
+- **The link is the figure, not the sticker.** A tap anywhere on the twin goes
+  to `/cloud`.
+- **Clay always means Cloud in this set.** The held cloud and the sticker are
+  the only things wearing it; the twins are two-tone everywhere else.
+- **The sticker clears the drawing entirely** — it lives above y=20 in the
+  viewBox, over every pose. It sat in the empty strip over the head first and
+  covered `offer`'s held cloud, which is the one thing that pose exists to show.
+  **A new pose may not raise anything above y=20.**
+- **Nothing under `w-20` may carry a sticker.** The text is 26 units against a
+  200-unit drawing, so it renders at 12.5px on a `w-24` twin and 8px on the old
+  `w-14`. This is why the placements grew a step.
+- **A twin inside an `aria-hidden` container may not be a link**, and the
+  sticker may not sit inside the `flip` transform — `scale(-1 1)` mirrors the
+  word, and `/agents` rendered `duolc teg` until it was moved out.
+- **`/cloud`'s twin has neither** (`link={false}`). It is already on the page
+  the link points at, and still waves.
+
+**The hero's figure is not in the corner.** It was, while it was decoration.
+As a labelled link it collided with the preview card — which drew over the legs
+and left a figure sliced at the knees — and its sticker landed under the
+header's Cloud lockup, so that corner carried two Cloud messages within 60px.
+It stands at the end of the hero's own Cloud sentence instead, beside the one
+paragraph in the fold that is about Cloud.
+
+**Motion:** every animation respects `prefers-reduced-motion` — the blanket rule
+in `globals.css` collapses them to a single 0.01ms cycle, and every keyframe
+list starts and ends at no transform, so each figure parks in its rest pose
+rather than mid-gesture.
 
 **Responsive:** every interactive piece must work on a phone. The threshold
 slider, the alignment toggle and the config builder are all designed

@@ -15,9 +15,15 @@ import { usePathname } from "next/navigation";
  * two, and a hamburger would hide the site's entire structure behind a tap on
  * exactly the screens where a visitor is least likely to go looking for it.
  * Sharing the top row with the brand and the waitlist badge was tried first and
- * left the strip about 120px wide, clipped mid-word — unusable. `Cloud` joins
- * the strip at that size, because the lockup it normally links from is hidden
- * below `md`.
+ * left the strip about 120px wide, clipped mid-word — unusable.
+ *
+ * **`Cloud` is not one of the chips, at any width.** It used to join the strip
+ * below `md`, because the lockup was hidden there — which made the paid tier
+ * the sixth grey label in a strip that has to be swiped to reach it. The lockup
+ * now sits at the end of that same row instead (`layout.tsx`), so the chip
+ * would be the second Cloud link in one bar, and the weaker of the two. It
+ * stays in the footer's Product column, which is a directory rather than a
+ * hierarchy.
  */
 export const HeaderNav = ({
   links,
@@ -47,22 +53,24 @@ export const HeaderNav = ({
       ref={strip}
       className={`scrollbar-none flex min-w-0 items-center overflow-x-auto ${className}`}
     >
-      {links.map((link) => {
-        const active = pathname === link.href;
+      {links
+        .filter((link) => link.href !== "/cloud")
+        .map((link) => {
+          const active = pathname === link.href;
 
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            aria-current={active ? "page" : undefined}
-            className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors sm:px-2.5 ${
-              active ? "text-text" : "text-text/50 hover:bg-black/5 hover:text-text"
-            } ${link.href === "/cloud" ? "md:hidden" : ""}`}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={active ? "page" : undefined}
+              className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors sm:px-2.5 ${
+                active ? "text-text" : "text-text/50 hover:bg-black/5 hover:text-text"
+              }`}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
     </div>
   );
 };

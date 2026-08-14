@@ -53,16 +53,40 @@ import { CloudLink } from "./HeaderNav";
  *   -site demand gate names the old wording; the gate's substance ("lands on
  *   `/cloud#waitlist`") still holds, but the doc's wording is now stale.
  *
- * ── Still unsolved ──────────────────────────────────────────────────────────
+ * ── The phone ───────────────────────────────────────────────────────────────
  *
- * Below `md` the cluster is hidden, exactly as the bare lockup was, and Cloud
- * is still a grey chip in the strip. The button is visible at every width — it
- * is the site's only conversion mechanism and phones must not lose it.
+ * This corner is hidden below `md` and always will be: there is no room for it
+ * beside the brand and the button on a phone. The question was only ever where
+ * the lockup goes instead.
+ *
+ * *First answer, 2026-08-14 — the hero.* Measured on a 390×844 phone, the
+ * cluster was `display:none`, so the only Cloud a visitor met above the fold
+ * was a black `join waitlist` pill that did not say what it was joining, and
+ * the word "Cloud" as the sixth grey chip in the nav strip. The hero rendered
+ * `CookingCluster` below `md` and put a real lockup at y=668 of the first
+ * screen.
+ *
+ * That fixed the home page and nothing else, which the note here said at the
+ * time. The hero is the home page's. Measured on a 375×812 phone, `/guide` —
+ * 35,764px, the longest page on the site — met Cloud as the grey chip in a
+ * strip you have to swipe to reach, as one clause of a sentence at y=2,110,
+ * and then not again until the footer mark at y=35,320. **98.8% of the page
+ * with no way to Cloud.**
+ *
+ * *Second answer, and the one in the code — the navigation row.* The lockup is
+ * pinned to the end of the row the strip already occupies (`layout.tsx`), so
+ * every route carries it at every width, and the grey chip is gone from the
+ * strip because the lockup replaced what it was for. The hero's copy of it went
+ * with the change: the header covers the home page too, and two lockups in one
+ * screen is the thing this file has been avoiding from the start.
+ *
+ * The button is visible at every width — it is the site's only conversion
+ * mechanism and phones must not lose it.
  */
 
 /** Steam off a pan. 34 × 26, drawn to sit on the lockup's baseline. */
-const Pan = () => (
-  <svg viewBox="0 0 34 26" width="34" height="26" fill="none" aria-hidden className="shrink-0">
+const Pan = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 34 26" width="34" height="26" fill="none" aria-hidden className={`shrink-0 ${className}`}>
     <g stroke="var(--color-clay)" strokeWidth="1.5" strokeLinecap="round">
       <path className="hc-steam-a" d="M11 13.5 C9 11 13 9.6 11 7.1 C9.6 5.2 11.4 4.1 11 2.6" />
       <path className="hc-steam-b" d="M17 13.5 C15 10.6 19 9.1 17 6.4 C15.6 4.3 17.4 3.2 17 1.6" />
@@ -144,20 +168,38 @@ const CookingLabel = () => (
   </span>
 );
 
+/**
+ * The titled lockup: eyebrow, mark, pan, linking to `/cloud`.
+ *
+ * Exported because the header renders it twice at different breakpoints — in
+ * the top row from `md` up, and at the end of the navigation row below it. The
+ * caller owns the breakpoint, so exactly one of the two is ever on screen.
+ *
+ * `panClassName` exists so the navigation row can hide the pan on the narrowest
+ * screens. A 375px phone has ~230px left in that row once the lockup is in it,
+ * and the pan is 34 of them; the strip needs those more than the joke does.
+ */
+export const CookingCluster = ({
+  className = "",
+  panClassName = "",
+}: {
+  className?: string;
+  panClassName?: string;
+}) => (
+  <CloudLink className={className}>
+    <span className="flex items-center gap-2">
+      <span className="flex flex-col items-start gap-0.5">
+        <CookingLabel />
+        <CloudMark size="nav" title="Normascope Cloud" />
+      </span>
+      <Pan className={panClassName} />
+    </span>
+  </CloudLink>
+);
+
 export const CloudCorner = () => (
   <div className="ml-auto flex shrink-0 items-center gap-3.5">
-    {/* Hidden below `md` for the same reason the bare lockup was: there is no
-        room for it beside the brand and the button on a phone. */}
-    <CloudLink className="hidden md:inline-flex">
-      <span className="flex items-center gap-2">
-        <span className="flex flex-col items-start gap-0.5">
-          <CookingLabel />
-          <CloudMark size="nav" title="Normascope Cloud" />
-        </span>
-        <Pan />
-      </span>
-    </CloudLink>
-
+    <CookingCluster className="hidden md:inline-flex" />
     <StormWaitlist />
   </div>
 );
