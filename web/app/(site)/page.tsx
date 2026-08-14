@@ -6,7 +6,7 @@ import { CopyLine } from "./_components/CopyLine";
 import { Hero } from "./_components/Hero";
 import { PrComment } from "../(pitch)/pitch/_components/PrComment";
 import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
-import { Twin } from "./_components/twins";
+import { Twin, TwinAside } from "./_components/twins";
 
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
@@ -250,23 +250,25 @@ export default function HomePage() {
           words and the loop are the ones already public on `/agents`; this is
           the trailer, not a second version of it. */}
       <Section id="agents" tone="ink">
-        <div className="mb-9 flex items-end justify-between gap-10">
-          <div>
-            <Eyebrow dark>For coding agents</Eyebrow>
-            <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
-            <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
-              Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a
-              UI task, declares it done, and has no way to know whether the thing it built looks
-              anything like the thing it was asked for.
-            </p>
-            <p className="max-w-2xl text-[15px] leading-relaxed text-white/45">
-              Normascope gives it a camera and a measuring tape — a number it can move, so it can
-              tell whether its last edit helped. Free and local, the same engine the CLI runs.
-            </p>
-          </div>
-          {/* Reading intently, in dark glasses. The heading is the caption. */}
-          <Twin pose="reading" tone="cream" className="hidden w-28 shrink-0 lg:block" />
-        </div>
+        {/* Reading intently, in dark glasses. The heading is the caption. */}
+        <TwinAside
+          pose="reading"
+          tone="cream"
+          twinClassName="hidden w-28 shrink-0 lg:block"
+          className="mb-9"
+        >
+          <Eyebrow dark>For coding agents</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl text-white">Your coding agent cannot see</h2>
+          <p className="mb-4 max-w-2xl text-base leading-relaxed text-white/55">
+            Agents ship frontends fast, and blind. They diff text, not pixels — so one finishes a UI
+            task, declares it done, and has no way to know whether the thing it built looks anything
+            like the thing it was asked for.
+          </p>
+          <p className="max-w-2xl text-[15px] leading-relaxed text-white/45">
+            Normascope gives it a camera and a measuring tape — a number it can move, so it can tell
+            whether its last edit helped. Free and local, the same engine the CLI runs.
+          </p>
+        </TwinAside>
 
         <AgentLoop />
 
@@ -311,13 +313,15 @@ export default function HomePage() {
 
       {/* ── What it won't do ── */}
       <Section tone="paper" size="sm">
-        <div className="mb-7 flex items-end justify-between gap-10">
-          <div>
-            <Eyebrow>Before you install it</Eyebrow>
-            <h2 className="display-sm max-w-xl">Four things it will never do</h2>
-          </div>
-          <Twin pose="shrug" className="hidden w-20 shrink-0 sm:block" />
-        </div>
+        {/* Shrugging at a list of things it refuses to do. */}
+        <TwinAside
+          pose="shrug"
+          twinClassName="hidden w-20 shrink-0 sm:block"
+          className="mb-7"
+        >
+          <Eyebrow>Before you install it</Eyebrow>
+          <h2 className="display-sm max-w-xl">Four things it will never do</h2>
+        </TwinAside>
         <ul className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
           {[
             ["It won't block your commit.", "Or your build, unless you explicitly ask it to."],

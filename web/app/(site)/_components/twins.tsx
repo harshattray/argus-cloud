@@ -213,3 +213,39 @@ export function Twin({
     </svg>
   );
 }
+
+/**
+ * A section's heading block with one of them standing to the right of it.
+ *
+ * This is the shape every placement wants — the figure at the far end of the
+ * line the heading starts, sharing its baseline — and writing it out at each
+ * site meant five copies of the same flex row drifting apart. Pass the heading
+ * as children; the wrapper owns the spacing below it, so the heading's own
+ * elements keep their margins and nothing has to be restyled to fit.
+ *
+ * It disappears below `lg` by default. These are the width of a paragraph at
+ * small sizes, and a figure that squeezes a heading is worse than no figure.
+ */
+export function TwinAside({
+  pose,
+  tone = "ink",
+  flip = false,
+  twinClassName = "hidden w-24 shrink-0 lg:block",
+  className = "",
+  children,
+}: {
+  pose: TwinPose;
+  tone?: TwinTone;
+  flip?: boolean;
+  /** Width and the breakpoint it appears at. */
+  twinClassName?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex items-end justify-between gap-10 ${className}`}>
+      <div className="min-w-0">{children}</div>
+      <Twin pose={pose} tone={tone} flip={flip} className={twinClassName} />
+    </div>
+  );
+}

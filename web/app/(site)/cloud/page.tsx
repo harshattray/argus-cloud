@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Eyebrow, Section, Spark, CloudMark } from "../_components/ui";
 import { WaitlistForm } from "../_components/WaitlistForm";
 import { CompareRow, HistoryStrip, TrendChart } from "../_components/CloudVisuals";
+import { TwinAside } from "../_components/twins";
 
 export const metadata: Metadata = {
   title: { absolute: "Normascope Cloud — shared visual memory for your team" },
@@ -126,12 +127,15 @@ export default function CloudPage() {
       </section>
 
       <Section tone="paper">
-        <Eyebrow>The questions behind every diff</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl">The answers your team keeps asking for</h2>
-        <p className="mb-11 max-w-xl text-base leading-relaxed text-text/60">
-          Cloud puts the context next to the report instead of making someone reconstruct it from old
-          files, Slack threads and memory.
-        </p>
+        {/* Reading, next to the section about the questions people re-ask. */}
+        <TwinAside pose="reading" className="mb-11">
+          <Eyebrow>The questions behind every diff</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl">The answers your team keeps asking for</h2>
+          <p className="max-w-xl text-base leading-relaxed text-text/60">
+            Cloud puts the context next to the report instead of making someone reconstruct it from
+            old files, Slack threads and memory.
+          </p>
+        </TwinAside>
         <div className="grid gap-x-10 gap-y-9 md:grid-cols-2">
           {ANSWERS.map((item) => (
             <div key={item.head} className="min-w-0 rounded-xl border border-black/8 bg-white/55 px-5 py-5">
@@ -222,12 +226,16 @@ export default function CloudPage() {
       <Section tone="ink" id="waitlist">
         <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-6">
-            <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
-            <h2 className="display-md mb-4 text-white">Join the first Cloud teams</h2>
-            <p className="text-[15px] leading-relaxed text-white/55">
-              Get first access when hosted reports open, and help shape the workflows that matter to
-              your team. One email when it&rsquo;s ready — nothing else, ever.
-            </p>
+            {/* Waving at the signup. The only place on the site asking a
+                visitor for something, so it gets the friendly one. */}
+            <TwinAside pose="wave" tone="cream" twinClassName="hidden w-20 shrink-0 sm:block">
+              <CloudMark size="md" dark className="mb-6" title="Normascope Cloud" />
+              <h2 className="display-md mb-4 text-white">Join the first Cloud teams</h2>
+              <p className="text-[15px] leading-relaxed text-white/55">
+                Get first access when hosted reports open, and help shape the workflows that matter
+                to your team. One email when it&rsquo;s ready — nothing else, ever.
+              </p>
+            </TwinAside>
           </div>
           <div className="lg:col-span-6">
             <WaitlistForm source="cloud" tone="dark" layout="stacked" cta="Join early access" />

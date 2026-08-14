@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { CloudBand, Eyebrow, Section, Spark } from "../_components/ui";
 import { CopyLine } from "../_components/CopyLine";
 import { AgentLoop } from "../../(pitch)/pitch/_components/AgentLoop";
-import { Twin } from "../_components/twins";
+import { TwinAside } from "../_components/twins";
 import { MCP_PACKAGE } from "../../../lib/site";
 
 /**
@@ -126,8 +126,12 @@ export default function AgentsPage() {
 
       {/* ── Two ways in ── */}
       <Section tone="sand">
-        <Eyebrow>Two ways in</Eyebrow>
-        <h2 className="display-md mb-9 max-w-2xl">Give it one command, or give it five tools</h2>
+        {/* Shrugging between the two options, which is the section's point —
+            neither one is the recommended one. */}
+        <TwinAside pose="shrug" flip className="mb-9">
+          <Eyebrow>Two ways in</Eyebrow>
+          <h2 className="display-md max-w-2xl">Give it one command, or give it five tools</h2>
+        </TwinAside>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-black/8 bg-white/60 p-6">
@@ -194,19 +198,16 @@ export default function AgentsPage() {
 
       {/* ── Safety ── */}
       <Section tone="paper">
-        <div className="mb-9 flex items-end justify-between gap-10">
-          <div>
-            <Eyebrow>Safety</Eyebrow>
-            <h2 className="display-md mb-5 max-w-2xl">
-              An agent will absolutely try to fetch anything
-            </h2>
-            <p className="max-w-2xl text-base leading-relaxed text-text/60">
-              Handing a network-capable tool to something that improvises is exactly where visual
-              testing becomes a security question. These are the three guarantees.
-            </p>
-          </div>
-          <Twin pose="point" className="hidden w-24 shrink-0 lg:block" />
-        </div>
+        <TwinAside pose="point" className="mb-9">
+          <Eyebrow>Safety</Eyebrow>
+          <h2 className="display-md mb-5 max-w-2xl">
+            An agent will absolutely try to fetch anything
+          </h2>
+          <p className="max-w-2xl text-base leading-relaxed text-text/60">
+            Handing a network-capable tool to something that improvises is exactly where visual
+            testing becomes a security question. These are the three guarantees.
+          </p>
+        </TwinAside>
 
         <div className="grid gap-4 md:grid-cols-3">
           {GUARDS.map((g) => (

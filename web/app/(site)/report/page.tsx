@@ -6,6 +6,7 @@ import { Note } from "../../(pitch)/pitch/_components/editorial";
 import { ReportVariants } from "../../(pitch)/pitch/_components/ReportVariants";
 import { GLOSSARY } from "../../../lib/glossary";
 import { CASE_02 } from "../../../lib/cases";
+import { TwinAside } from "../_components/twins";
 
 /**
  * Reading the report.
@@ -299,12 +300,17 @@ export default function ReportPage() {
 
       {/* ── Reading an overlay ── */}
       <Section tone="sand" id="overlay">
-        <Eyebrow>The picture on the right</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl">How to read a difference overlay in three seconds</h2>
-        <p className="mb-10 max-w-xl text-base leading-relaxed text-text/60">
-          Two real overlays from the same project. Both are one-line commits. They look nothing
-          alike, and once you&rsquo;ve seen the pair you can tell them apart instantly.
-        </p>
+        {/* Pointing at the two overlays below it. */}
+        <TwinAside pose="point" className="mb-10">
+          <Eyebrow>The picture on the right</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl">
+            How to read a difference overlay in three seconds
+          </h2>
+          <p className="max-w-xl text-base leading-relaxed text-text/60">
+            Two real overlays from the same project. Both are one-line commits. They look nothing
+            alike, and once you&rsquo;ve seen the pair you can tell them apart instantly.
+          </p>
+        </TwinAside>
 
         <div className="grid gap-8 md:grid-cols-2">
           <Shot
@@ -444,12 +450,15 @@ export default function ReportPage() {
 
       {/* ── Honest limits ── */}
       <Section tone="sand" id="limits">
-        <Eyebrow>Where it tells on itself</Eyebrow>
-        <h2 className="display-md mb-4 max-w-2xl">Three things the report will admit</h2>
-        <p className="mb-9 max-w-xl text-base leading-relaxed text-text/60">
-          A measuring instrument that hides its own floor isn&rsquo;t one. These are measured, not
-          estimated.
-        </p>
+        {/* Shrugging, because this is the section that owns up. */}
+        <TwinAside pose="shrug" flip className="mb-9">
+          <Eyebrow>Where it tells on itself</Eyebrow>
+          <h2 className="display-md mb-4 max-w-2xl">Three things the report will admit</h2>
+          <p className="max-w-xl text-base leading-relaxed text-text/60">
+            A measuring instrument that hides its own floor isn&rsquo;t one. These are measured, not
+            estimated.
+          </p>
+        </TwinAside>
 
         <div className="grid gap-5 md:grid-cols-3">
           <Note kind="limit" title="When a frame animates">
