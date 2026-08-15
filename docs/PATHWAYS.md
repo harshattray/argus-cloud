@@ -1510,6 +1510,32 @@ Implement:
 - repository and seat list;
 - internal admin view for margin, storage, spend, and breaker status.
 
+#### Re-branching staging — the step that is not obvious
+
+A Neon **schema only** branch copies table structures and **no rows**. That
+includes `schema_migrations`, whose rows *are* the record of what has been
+applied. So a fresh schema-only branch arrives with every table its parent has
+and a log claiming nothing was ever applied.
+
+`migrate()` then reads an empty log, starts at `001`, and fails:
+
+    error: relation "orgs" already exists
+
+The database is not broken and must not be re-created. The record is missing,
+not the schema. Sequence:
+
+1. Delete and re-create the branch from production, schema-only.
+2. Point Vercel's **Preview** `DATABASE_URL` at the new connection string.
+3. `node scripts/adopt-schema.mjs --url "<staging url>"` — records the
+   migrations the schema already reflects. It refuses unless every table the
+   build creates is present, so it cannot mask a database that genuinely needs
+   migrating.
+4. `node scripts/schema-drift.mjs --from "$PROD_URL" --to "$STAGING_URL"` —
+   expect *level*.
+
+`schema-drift` recognises this state and says so; it used to advise re-branching,
+which would have produced another branch with the identical problem.
+
 **Redesign the operator surfaces as one pass, before launch.** The pages under
 `/admin` were each built beside the control they expose — rate limits and spend
 with the breaker, waitlist with its export, API keys with revocation — which is
