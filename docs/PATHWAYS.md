@@ -1290,9 +1290,19 @@ stored, not re-sent), a failed transfer left its reservation held until the
 sweeper reclaimed all 300,866 bytes, and `deleteOrg` afterwards removed 9
 objects and 1,083,850 bytes and left a receipt.
 
-Real payload sizes, for the quota conversation: **0.30 MB** for the default
-`flagged` mode and **0.78 MB** for all three frames, against a 250 MB per-run
-limit.
+Real payload sizes, measured: **0.30 MB** for the default `flagged` mode and
+**0.78 MB** for all three frames.
+
+**The per-plan quota numbers are not settled and this document does not set
+them.** `plan_limits` is seeded with 200 runs/day, 600 artifacts/run, 250 MB
+per run and 50 GB stored — figures taken from `BuildV5.md` §G2c, which is
+implementation detail and not authority. Neither FUTURENORMA nor this document
+states them. The dimensions are settled here ("runs, artifacts/run, bytes/run,
+total storage, and retention"; the service owns the policy); **the values are
+owed to FUTURENORMA §3's plan contract and are Harsha's call**, alongside the
+open question of what 500 credits should buy. Until then they are configuration
+that can be changed with an UPDATE, which is the point of holding them in a
+table.
 
 Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
 path, and the post-crop calibration.
