@@ -183,7 +183,7 @@ maintainer machine. Both manifests now declare `>=0.112.3`.
 | Provider-dollar reservation before every call, idempotent settlement | ✅ | 54 checks incl. 20 separate processes sharing one budget on real Postgres — §3d |
 | Credit prices derived from worst-case cost, 50% margin floor enforced | ✅ | Asserted every run: no operation can be sold below cost — §3e |
 | Retention sweep + run/repo/org deletion of rows **and** objects | ✅ | 55 checks incl. 20 separate processes contending for one deletion job — §3j |
-| Encrypted backups + a rehearsed restore + operational alerts | ✅ logic, ❌ **not scheduled in production** | 91 checks; a real dump restored into a scratch database and compared table by table on 2026-08-14 — §3k |
+| Encrypted backups + a rehearsed restore + operational alerts | ✅ logic, ✅ **production backed up and restored 2026-08-15**, ❌ not scheduled (deferred) | 91 checks; the production Neon database dumped, encrypted and restored, 32 tables compared, on 2026-08-15 — §3k. The nightly schedule is deferred to the first paying organization |
 | CI batch service — Batches API, 50% rate, reserve→refund, escaped PR line | 🟡 | 18 checks (D2), **fixture-level only** |
 | MoR webhook handling — HMAC, idempotent | 🟡 ⚠️ | C5 fixture-level, **and unreachable** — §7 #4 |
 | Monthly reconciliation + <50% margin alert | 🟡 ⚠️ | C8 — **unreachable, and carries a bug** — §7 #7 |
@@ -1053,17 +1053,34 @@ to 25acdf83…, backup recorded 971ef6c5…`); overstating one table in the mani
 produced `orgs: manifest 9999, restored 46` and exit code 1. The webhook path was
 proven against a real HTTP listener, which received the alert body verbatim.
 
-**What is not proven, and is not claimed:** the schedule. `.github/workflows/backup.yml`
-exists and is correct as written, but it needs `BACKUP_DATABASE_URL`,
-`NORMA_BACKUP_KEY`, the R2 credentials and an alert webhook — secrets only Harsha
-can set — so **no backup of the production Neon database has been taken**, and
-the R2 leg of the storage port is untested for objects this size. Until those
-secrets exist the workflow deliberately exits 0 with a notice rather than failing
-nightly. Item 10's logic is Verified; its deployment is `Blocked` on the same
-account access as Step 5.
+**The production database has now been backed up and the backup restored** —
+2026-08-15, against production Neon (Postgres 17) over the direct endpoint, not
+the pooled one, because `pg_dump` reads a snapshot exported by a second
+connection and a pooler does not guarantee both land on the same backend:
 
-**Suite:** 511 checks green on PGlite, **539 against a real Postgres server**,
-across sixteen suites — run 2026-08-14.
+```
+migration 014 applied to production   2026-08-15 08:05:58 UTC
+backup bk_20260815T081143_1beed8fc  — 72,807 bytes encrypted, 38s,
+  manifest 32 tables / 23 rows
+rehearsal rh_20260815T082935_5600a89c — restored into a scratch database on a
+  local Postgres 17.10 cluster, 32 tables, 23 rows compared, 0.7s — PASSED
+```
+
+The restore target was supplied explicitly with `--target-url`. Left to itself
+the rehearsal creates its scratch database *beside the source*, which for a
+production `DATABASE_URL` means `CREATE DATABASE` on production Neon.
+
+**What is not proven, and is not claimed:** the schedule, and the R2 leg. The
+backup above went to the filesystem driver on Harsha's laptop, so the storage
+port's S3/R2 path is still untested for objects this size.
+`.github/workflows/backup.yml` exists and is correct as written but has never
+run: scheduling is **deferred to the first paying organization** (decision
+2026-08-15), because the only data at risk today is a 2-row waitlist and hand
+backups cover it. That is a decision, not a blocker — `PATHWAYS.md` Pathway 1
+item 10 carries the switch-on checklist.
+
+**Suite:** 532 checks green on PGlite, **560 against a real Postgres server**,
+across eighteen suites — run 2026-08-15.
 
 ---
 
@@ -1561,7 +1578,7 @@ this section and are deliberately absent.
 | No provider-dollar reservation before calls | **Closed** (§3d). Reserved before every call, settled idempotently, proven across 20 separate processes |
 | ~~Worst-case cost exceeds credit revenue~~ | **Closed** (§3e). Credits are derived from the hard maximum with a 50% margin floor, enforced by the suite. **Consequence needs a decision:** the 500 included credits now buy 100 analyses, not 500; analysis on Haiku 4.5 would make it 250, gated on a calibration run |
 | Budget alerts at 50/75/90% | **Closed** (§3f). All four thresholds deliver, once per period, proven across 20 separate processes. The breaker reset is audited |
-| No backups, and no restore ever rehearsed | **Closed for the logic** (§3k). A real dump was restored into a scratch database and compared table by table; both failure paths were watched. **Open for the deployment:** the nightly workflow needs secrets only Harsha can set, so the production Neon database has never been backed up |
+| No backups, and no restore ever rehearsed | **Closed** (§3k). A real dump was restored and compared table by table, both failure paths were watched, and on 2026-08-15 the **production** Neon database was dumped, encrypted, restored and compared — 32 tables. **Open by choice:** the nightly schedule is deferred to the first paying organization, so production is covered by hand backups and today's snapshot goes stale as signups arrive |
 | Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
