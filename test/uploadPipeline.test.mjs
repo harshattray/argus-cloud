@@ -5,7 +5,7 @@
 // Run against a real server:
 //   DATABASE_URL="$(scripts/test-db.sh start)" node test/uploadPipeline.test.mjs
 //
-// Checks are U1-U15, H1-H9 and V1-V2. The thing under test is a protocol where the application
+// Checks are U1-U15, H1-H9 and V1-V3. The thing under test is a protocol where the application
 // is deliberately not in the byte path: after `declare` hands out a presigned
 // URL, the client uploads straight to storage and we see nothing until
 // `commit`. Every check here is therefore about what can be proven *afterwards*
@@ -42,6 +42,8 @@ const { planLimitsFor } = await import(path.join(DIST, "plans.js"));
 const { createApiKey, NotEntitled } = await import(path.join(DIST, "apiKeys.js"));
 const { declareResponse, commitResponse } = await import(path.join(DIST, "uploadHttp.js"));
 const { buildEnrichment } = await import(path.join(DIST, "enrichment.js"));
+const { creditsForPass, hardMaxCostMicrodollars, OPERATIONS, MARGIN_FLOOR, CREDIT_REVENUE_FLOOR_MICRODOLLARS } =
+  await import(path.join(DIST, "providerBudget.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -673,6 +675,40 @@ check(
   "V2",
   unguarded.length === 0,
   `every route that reads a run by id filters on committed (${unguarded.join(", ") || "all guarded"})`
+);
+
+// ---------------------------------------------------------------------------
+// V3 — the price a customer is shown is the price they are charged
+// ---------------------------------------------------------------------------
+//
+// The explain buttons read "1 credit" and "3 credits" for months after those
+// prices were abandoned. They were replaced on 2026-08-10 because they lost
+// money at the ceiling; `creditsRequired` derives the real ones from the worst
+// case cost of the model each pass runs on, and the charge followed
+// immediately. The labels did not, so the paid button offered a price the
+// system did not honour.
+//
+// Checked at the source, because a React component the suite cannot render is
+// where a hardcoded number has nowhere to be caught.
+const panel = await readFile(path.resolve(HERE, "..", "web/app/r/[runId]/explain-panel.tsx"), "utf-8");
+const literalPrice = /\(\s*\d+\s+credits?\s*\)/.exec(panel);
+check(
+  "V3",
+  literalPrice === null,
+  `the explain buttons carry no literal price${literalPrice ? ` — found "${literalPrice[0]}"` : ""}`
+);
+
+// V3b — and the numbers themselves still clear the margin floor at the worst
+// case, so the fix cannot be "make the label match a price that is too low".
+const analysis = creditsForPass("analysis");
+const deep = creditsForPass("deep");
+const worst = (pass) => hardMaxCostMicrodollars(OPERATIONS[pass].model);
+const margin = (credits, pass) => 1 - worst(pass) / (credits * CREDIT_REVENUE_FLOOR_MICRODOLLARS);
+check(
+  "V3b",
+  margin(analysis, "analysis") >= MARGIN_FLOOR && margin(deep, "deep") >= MARGIN_FLOOR,
+  `analysis ${analysis} credits (${(100 * margin(analysis, "analysis")).toFixed(1)}% at worst case), ` +
+    `deep ${deep} (${(100 * margin(deep, "deep")).toFixed(1)}%) — both clear the ${100 * MARGIN_FLOOR}% floor`
 );
 
 await rm(ROOT, { recursive: true, force: true });

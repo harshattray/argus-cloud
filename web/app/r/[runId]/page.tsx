@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { getDb } from "../../../lib/db";
+import { CREDITS_PER_ANALYSIS, CREDITS_PER_DEEP } from "argus-cloud/explainService.js";
 import { ExplainPanel } from "./explain-panel";
 
 /**
@@ -125,6 +126,8 @@ export default async function ReportPage({
             frame={s.frame}
             flagged={s.flagged}
             initialFindings={findingsByFrame.get(s.frame) ?? null}
+            analysisCredits={CREDITS_PER_ANALYSIS}
+            deepCredits={CREDITS_PER_DEEP}
           />
         </section>
       ))}
