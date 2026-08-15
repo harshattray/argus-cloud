@@ -84,15 +84,29 @@ async function makeRun(orgId, repoId, createdAt = T0) {
   return id;
 }
 
-/** Stores `content` and records it as an artifact of `runId`. Returns the key. */
+/**
+ * Stores `content` and records it as an artifact of `runId`. Returns the key.
+ *
+ * **The frame name is derived from the content**, and that is load-bearing in
+ * two directions. Migration 015 allows one artifact per `(run, frame, kind)`,
+ * so the old fixture — every artifact named `"home"` — described a run that
+ * cannot exist: a run has one build screenshot per frame, not five. Deriving
+ * the name from the content gives distinct frames within a run whenever the
+ * content differs, which is the real shape.
+ *
+ * It also keeps the case T2 and T2b are built on: two *different* runs storing
+ * identical content still land on one deduplicated object, and now on the same
+ * frame name too, which is exactly what an unchanged frame across two runs is.
+ */
 async function putArtifact(orgId, runId, content, kind = "build") {
   const payload = bytes(content);
   const key = blobKey(orgId, sha256(content), "png");
+  const frame = content.replace(/[^a-z0-9]+/gi, "-").slice(0, 40).toLowerCase();
   await storage.put(key, payload, { contentType: "image/png" });
   await db.query(
-    `INSERT INTO run_artifacts (id, org_id, run_id, frame, kind, storage_key, sha256, bytes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [randomUUID(), orgId, runId, "home", kind, key, sha256(content), payload.byteLength]
+    `INSERT INTO run_artifacts (id, org_id, run_id, frame, kind, storage_key, sha256, bytes, declared_bytes, state)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 'committed')`,
+    [randomUUID(), orgId, runId, frame, kind, key, sha256(content), payload.byteLength]
   );
   return key;
 }
