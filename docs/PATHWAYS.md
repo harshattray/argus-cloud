@@ -1243,7 +1243,7 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **594 checks on PGlite, 621 against a real Postgres server**, across
+green: **594 checks on PGlite, 622 against a real Postgres server**, across
 twenty suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
@@ -1279,7 +1279,7 @@ post-crop COGS.
 Migrations 015-018, `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`,
 `/api/blob`, both upload endpoints, `/admin/keys`, and `norma-scope upload` in
 Argus (branch `feat/cloud-upload`, `norma-scope@0.8.0`, 107 checks). Cloud side:
-**594 checks on PGlite, 621 against a real Postgres server**.
+**594 checks on PGlite, 622 against a real Postgres server**.
 
 **Proven against a real run, not only against fixtures.** The portfolio capture
 in `norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots — was

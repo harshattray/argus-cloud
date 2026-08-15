@@ -53,9 +53,17 @@ webhooks, reconciliation). The real hosted product is the Next.js app in
 no accounts, and no money. It ships to **normascope.com** at Step 5.
 
 What's genuinely missing before launch: **a payment provider** (MoR account —
-Harsha's call), **real multi-tenancy** (§5, built across Steps 6 and 8),
-**artifact upload** (hosted explain currently reasons over diff metadata, not
-image crops), and **the deployment itself**.
+Harsha's call), **real multi-tenancy** (§5, built across Steps 6 and 8), **crop
+grounding** (hosted explain still reasons over diff metadata rather than image
+crops), and **the deployment itself**.
+
+**Artifact upload is no longer on that list — 2026-08-15.** Declare → transfer →
+commit is built on both sides and has been run end to end against the real
+portfolio capture: uploaded through presigned URLs, committed after size and
+content-hash verification, and read back in a browser. `norma-scope@0.8.0` is
+built and awaiting publish. Two things it did not prove and does not claim: **the
+R2 leg has never carried a real artifact**, and nothing is deployed. See
+`FinishedSPEC.md` §3l.
 
 ---
 
@@ -133,7 +141,7 @@ served from R2.
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
-| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.5` | Registry `dist-tags.latest` = **0.7.5**, verified 2026-08-10. (0.7.3 reported 50 files / 142,348 B unpacked; not re-measured for 0.7.5) |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ published `norma-scope@0.7.5`; **`0.8.0` built and awaiting publish** | Registry `dist-tags.latest` = **0.7.5**, verified 2026-08-10. `0.8.0` adds the `upload` command: 52 files / 50.2 kB packed, 0 declarations and 0 source, verified 2026-08-15. `normascope-mcp@0.2.3` follows it — its floor moved to `^0.8.0`, so **the root must publish first or the MCP package cannot install** |
 | `normascope-mcp` on npm | ✅ **published** v0.2.2 | Registry reports **0.2.2**, verified 2026-08-10. Its `norma-scope` floor was raised `^0.7.0` → `^0.7.4` in `8e96b5e` — see below |
 
 `main` @ **`12af929`**. Full suite: **83 checks green** (run 2026-08-10).
@@ -288,7 +296,7 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**594 checks green** on PGlite, **621** against real Postgres, across twenty
+**594 checks green** on PGlite, **622** against real Postgres, across twenty
 suites — `apiKeyRevocation`, `artifactUploads`, `backup`, `budgetAlerts`, `cibatch`, `enrichment`,
 `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
 `rateLimit`, `reconcile`, `retention`, `storage`, `uploadPipeline`, `waitlist`,
