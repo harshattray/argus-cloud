@@ -4,7 +4,7 @@
 // Run against a real server:
 //   DATABASE_URL="$(scripts/test-db.sh start)" node test/planLimits.test.mjs
 //
-// Checks are P1-P8. Two questions are being protected here, and G2c is explicit
+// Checks are P1-P8, covering migrations 016 and 019. Two questions are being protected here, and G2c is explicit
 // that they are different questions:
 //
 //   entitlement — may this organization upload at all?
@@ -24,6 +24,7 @@ const DIST = path.resolve(HERE, "..", "dist");
 const REAL_PG = Boolean(process.env.DATABASE_URL?.trim());
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
+const { planLimitsFor } = await import(path.join(DIST, "plans.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -78,9 +79,18 @@ check("P2", p2.rows[0].plan === "free", `a new organization defaults to 'free' (
 const p3 = await db.query("SELECT plan FROM plan_limits ORDER BY plan");
 check(
   "P3",
-  p3.rows.map((r) => r.plan).join(",") === "free,lapsed,team",
-  `all three plans have a limits row (${p3.rows.map((r) => r.plan).join(", ")})`
+  p3.rows.map((r) => r.plan).join(",") === "free,team",
+  `both plans have a limits row (${p3.rows.map((r) => r.plan).join(", ")})`
 );
+
+// P3b — and 'lapsed' is no longer a plan at all. It is a subscription state
+// (migration 019): the tier says what was bought, the status says what happened
+// to it. The old lapsed limits row differed from free on one column that is
+// only read after the can_upload gate both fail, so it decided nothing.
+const p3b = await rejected(() =>
+  db.query("INSERT INTO orgs (id, name, plan) VALUES ($1, $2, 'lapsed')", [randomUUID(), "p3b"])
+);
+check("P3b", p3b !== null, "'lapsed' is refused as a plan — it is a subscription status now");
 
 // ---------------------------------------------------------------------------
 // P4 — the org plan values and the limits table cannot drift apart
@@ -117,18 +127,49 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-// P7 — a lapsed organization keeps its data and gains no new capacity
+// P7 — a lapsed subscription blocks uploads without touching the tier
 // ---------------------------------------------------------------------------
 //
 // The standing rule for payment failure: rejected politely, CI stays green,
-// nothing is deleted. A lapsed plan that dropped `bytes_stored_max` to zero
-// would be a deletion order wearing a quota's clothes.
-const lapsed = (await db.query("SELECT * FROM plan_limits WHERE plan = 'lapsed'")).rows[0];
+// nothing deleted. The organization stays on `team` — it bought team — and the
+// lapse lives in the status, which is also the only place `past_due` and
+// `refunded` can be expressed at all.
+const lapsedOrg = randomUUID();
+await db.query(
+  "INSERT INTO orgs (id, name, plan, subscription_status) VALUES ($1, $2, 'team', 'lapsed')",
+  [lapsedOrg, "p7-" + lapsedOrg.slice(0, 8)]
+);
+const lapsedLimits = await planLimitsFor(db, lapsedOrg);
 check(
   "P7",
-  lapsed.can_upload === false && lapsed.runs_per_day === 0 && Number(lapsed.bytes_stored_max) > 0,
-  "lapsed: cannot upload, no new runs, but its stored bytes are still allowed to exist"
+  lapsedLimits.plan === "team" &&
+    lapsedLimits.canUpload === true &&
+    lapsedLimits.uploadAllowed === false &&
+    Number(lapsedLimits.bytesStoredMax) > 0,
+  "a lapsed subscription blocks uploads while the tier and its stored bytes stay intact"
 );
+
+// P7b — grace does not block. PATHWAYS is explicit that a past_due org keeps
+// working during grace; a failed card must not read as an outage.
+const graceOrg = randomUUID();
+await db.query(
+  "INSERT INTO orgs (id, name, plan, subscription_status) VALUES ($1, $2, 'team', 'past_due')",
+  [graceOrg, "p7b-" + graceOrg.slice(0, 8)]
+);
+check(
+  "P7b",
+  (await planLimitsFor(db, graceOrg)).uploadAllowed === true,
+  "past_due still uploads — grace is not a lockout"
+);
+
+// P7c — an invented status cannot exist to be mis-handled.
+const p7c = await rejected(() =>
+  db.query("INSERT INTO orgs (id, name, plan, subscription_status) VALUES ($1, $2, 'team', 'suspended')", [
+    randomUUID(),
+    "p7c",
+  ])
+);
+check("P7c", p7c !== null, "a status outside the five is refused by the database");
 
 // ---------------------------------------------------------------------------
 // P8 — retention cannot be configured to zero

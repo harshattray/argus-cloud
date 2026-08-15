@@ -75,9 +75,14 @@ const storage = createFilesystemStorage({
 const bytesOf = (s) => new TextEncoder().encode(s);
 const sha256 = (s) => createHash("sha256").update(bytesOf(s)).digest("hex");
 
-async function makeOrg(plan = "team") {
+async function makeOrg(plan = "team", subscriptionStatus = "active") {
   const id = randomUUID();
-  await db.query("INSERT INTO orgs (id, name, plan) VALUES ($1, $2, $3)", [id, "up-" + id.slice(0, 8), plan]);
+  await db.query("INSERT INTO orgs (id, name, plan, subscription_status) VALUES ($1, $2, $3, $4)", [
+    id,
+    "up-" + id.slice(0, 8),
+    plan,
+    subscriptionStatus,
+  ]);
   return id;
 }
 const counters = async (orgId) =>
@@ -114,9 +119,24 @@ check(
   `a free organization is refused as unentitled, not as over quota — "${u1?.message?.slice(0, 60)}…"`
 );
 
-const lapsedOrg = await makeOrg("lapsed");
+// Lapse is a subscription status now, not a plan (migration 019). The
+// organization stays on the tier it bought; what changed is the state of the
+// subscription, which is also the only place past_due and refunded can live.
+const lapsedOrg = await makeOrg("team", "lapsed");
 const u2 = await refusal(() => declareOne(lapsedOrg, "U2"));
-check("U2", u2 instanceof UploadRefused && u2.reason === "not_entitled", "a lapsed organization cannot upload either");
+check(
+  "U2",
+  u2 instanceof UploadRefused && u2.reason === "not_entitled" && /lapsed/.test(u2.message),
+  `a lapsed subscription cannot upload, and is told why — "${u2?.message?.slice(0, 58)}…"`
+);
+
+// U2c — and the refusal names the right fix. A paying customer whose card
+// failed must not be told to go and buy what they already bought.
+check(
+  "U2c",
+  !/subscribe to Normascope Cloud/.test(u2.message) && /renewing/.test(u2.message),
+  "the lapsed message points at renewal, not at signing up"
+);
 
 // U2b — and neither of them reserved anything on the way to being refused.
 const u2b = await counters(freeOrg);
@@ -427,9 +447,9 @@ check("U14c", issued.plaintext.startsWith("nsk_"), "a team organization is issue
 // U14d — the two checks are independent. A key minted while entitled stops
 // working the moment the plan changes, which is why the request path asks
 // again rather than trusting the key's existence.
-await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [org]);
+await db.query("UPDATE orgs SET subscription_status = 'lapsed' WHERE id = $1", [org]);
 const u14d = await refusal(() => declareOne(org, "U14d after lapse"));
-await db.query("UPDATE orgs SET plan = 'team' WHERE id = $1", [org]);
+await db.query("UPDATE orgs SET subscription_status = 'active' WHERE id = $1", [org]);
 check(
   "U14d",
   u14d instanceof UploadRefused && u14d.reason === "not_entitled",
@@ -450,7 +470,7 @@ const midflight = await declareOne(lapsing, "U15 declared while paying");
 const midKey = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [midflight.runId])).rows[0]
   .storage_key;
 await storage.put(midKey, bytesOf("U15 declared while paying"), { contentType: "image/png" });
-await db.query("UPDATE orgs SET plan = 'free' WHERE id = $1", [lapsing]);
+await db.query("UPDATE orgs SET subscription_status = 'lapsed' WHERE id = $1", [lapsing]);
 
 const u15 = await refusal(() => commitUpload(db, storage, { orgId: lapsing, runId: midflight.runId }));
 check(
@@ -480,7 +500,7 @@ const settledKey = (await db.query("SELECT storage_key FROM run_artifacts WHERE 
   .rows[0].storage_key;
 await storage.put(settledKey, bytesOf("U15c already published"), { contentType: "image/png" });
 await commitUpload(db, storage, { orgId: settled, runId: settledRun.runId });
-await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [settled]);
+await db.query("UPDATE orgs SET subscription_status = 'lapsed' WHERE id = $1", [settled]);
 const u15c = await refusal(() => commitUpload(db, storage, { orgId: settled, runId: settledRun.runId }));
 check(
   "U15c",
@@ -606,7 +626,7 @@ const h9run = await declareResponse(db, storage, h9org, {
 const h9key = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [h9run.body.runId])).rows[0]
   .storage_key;
 await storage.put(h9key, bytesOf("H9 content"), { contentType: "image/png" });
-await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [h9org]);
+await db.query("UPDATE orgs SET subscription_status = 'lapsed' WHERE id = $1", [h9org]);
 const h9 = await commitResponse(db, storage, h9org, String(h9run.body.runId));
 check(
   "H9",

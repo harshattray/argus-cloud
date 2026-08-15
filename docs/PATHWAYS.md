@@ -1243,7 +1243,7 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **594 checks on PGlite, 622 against a real Postgres server**, across
+green: **598 checks on PGlite, 626 against a real Postgres server**, across
 twenty suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
@@ -1279,7 +1279,7 @@ post-crop COGS.
 Migrations 015-018, `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`,
 `/api/blob`, both upload endpoints, `/admin/keys`, and `norma-scope upload` in
 Argus (branch `feat/cloud-upload`, `norma-scope@0.8.0`, 107 checks). Cloud side:
-**594 checks on PGlite, 622 against a real Postgres server**.
+**598 checks on PGlite, 626 against a real Postgres server**.
 
 **Proven against a real run, not only against fixtures.** The portfolio capture
 in `norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots — was
@@ -1382,7 +1382,7 @@ one of them sat where no test could see it, which is the point worth keeping:
 | # | Item | Why it matters |
 |---|---|---|
 | 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
-| 2 | `plan` and `subscription_status` can both say `lapsed` | Migration 016 followed G2c literally; 012 already tracks lapse. Two columns for one fact. Resolve before any code branches on either — most likely by letting `plan` mean only the tier. |
+| 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
 | 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
 | 5 | The R2 leg has never carried a real artifact | Step 5 requires the G suite re-run against real R2. |

@@ -15,8 +15,30 @@
 
 import type { Db } from "./db.js";
 
+/**
+ * Statuses that block new paid work.
+ *
+ * `past_due` is deliberately absent: PATHWAYS' payment-failure table says
+ * existing reports, history and share links stay available during grace and
+ * that new work follows the grace policy — blocking on a failed card would turn
+ * a billing hiccup into an outage. `none` is absent because manual
+ * provisioning is the only path that exists before Paddle, so blocking it would
+ * refuse every organization created so far.
+ */
+export const BLOCKING_STATUSES = ["lapsed", "refunded"] as const;
+
 export interface PlanLimits {
   plan: string;
+  /** `active | past_due | lapsed | refunded | none` — the lifecycle, from migration 012. */
+  subscriptionStatus: string;
+  /**
+   * Entitled *and* in a state that permits work.
+   *
+   * Two questions, deliberately answered together, because the upload path
+   * needs one answer and asking it in two places is how they drift. `canUpload`
+   * below is the plan's own entitlement; this is that plus the lifecycle.
+   */
+  uploadAllowed: boolean;
   /** Entitlement, not a quota. Asked before any number is looked at. */
   canUpload: boolean;
   runsPerDay: number;
@@ -41,11 +63,29 @@ export class PlanConfigError extends Error {
 }
 
 export async function planLimitsFor(db: Db, orgId: string): Promise<PlanLimits> {
-  const org = await db.query<{ plan: string }>("SELECT plan FROM orgs WHERE id = $1", [orgId]);
+  const org = await db.query<{ plan: string; subscription_status: string }>(
+    "SELECT plan, subscription_status FROM orgs WHERE id = $1",
+    [orgId]
+  );
   if (org.rows.length === 0) {
     throw new PlanConfigError(`no such organization: ${orgId}`);
   }
-  return planLimitsForPlan(db, org.rows[0].plan);
+  const limits = await planLimitsForPlan(db, org.rows[0].plan);
+  return withStatus(limits, org.rows[0].subscription_status);
+}
+
+/**
+ * Folds the lifecycle into the plan's entitlement.
+ *
+ * **Until migration 019 nothing outside `webhooks.ts` read `subscription_status`
+ * at all.** The webhook wrote it and no authorization path asked, so an
+ * organization whose subscription lapsed kept uploading — the entitlement check
+ * consulted a column no billing event touched. That gap existed whichever
+ * column held `lapsed`; moving it here is what closes it.
+ */
+export function withStatus(limits: PlanLimits, subscriptionStatus: string): PlanLimits {
+  const blocked = (BLOCKING_STATUSES as readonly string[]).includes(subscriptionStatus);
+  return { ...limits, subscriptionStatus, uploadAllowed: limits.canUpload && !blocked };
 }
 
 export async function planLimitsForPlan(db: Db, plan: string): Promise<PlanLimits> {
@@ -67,6 +107,11 @@ export async function planLimitsForPlan(db: Db, plan: string): Promise<PlanLimit
   const r = limits.rows[0];
   return {
     plan,
+    // Overwritten by `withStatus` when looked up per organization. A plan on
+    // its own has no lifecycle, and defaulting to permissive here would mean a
+    // caller that forgot the organization got a yes.
+    subscriptionStatus: "none",
+    uploadAllowed: r.can_upload,
     canUpload: r.can_upload,
     runsPerDay: r.runs_per_day,
     artifactsPerRun: r.artifacts_per_run,
