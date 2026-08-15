@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "../../../lib/db";
 import { getStorage } from "../../../lib/storage";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
-import { declareUpload, UploadRefused, type DeclaredArtifact } from "argus-cloud/artifactUploads.js";
+import { declareResponse } from "argus-cloud/uploadHttp.js";
+import type { DeclaredArtifact } from "argus-cloud/artifactUploads.js";
 
 /**
  * Upload API. Two shapes through one endpoint, decided by whether the body
@@ -47,31 +48,6 @@ interface UploadBody {
   };
 }
 
-/**
- * Turns a refusal into a response.
- *
- * **Every one of these is a refusal the CLI prints and exits 0 on.** The
- * standing rule (BuildV3.5 item 6) is that an upload which cannot happen never
- * reddens a build — so the body always names the plan state and the fix, and
- * `reason` is a stable string the client branches on rather than a status code
- * it has to interpret.
- *
- * Statuses are chosen to be honest to an ordinary HTTP client that knows
- * nothing about us: 402 for "this plan does not include it", 413 for "too
- * large", 429 for "too often", 400 for "malformed".
- */
-function refusal(err: UploadRefused): Response {
-  const status =
-    err.reason === "not_entitled"
-      ? 402
-      : err.reason === "runs_per_day"
-        ? 429
-        : err.reason === "malformed"
-          ? 400
-          : 413;
-  return Response.json({ error: err.message, code: err.reason }, { status });
-}
-
 export async function POST(request: Request): Promise<Response> {
   const db = await getDb();
   const key = await requireApiKey(db, request);
@@ -102,35 +78,17 @@ export async function POST(request: Request): Promise<Response> {
   }
   const orgId = key.org_id;
 
-  // The declare path. Entitlement, quota and reservation all happen inside
-  // `declareUpload` — deliberately not re-implemented here, because a second
-  // copy of that order is how the two paths drift.
+  // The declare path. Entitlement, quota, reservation and the status mapping
+  // all live in `declareResponse` — this route only carries the result out.
   if (Array.isArray(body.artifacts) && body.artifacts.length > 0) {
-    try {
-      const declared = await declareUpload(db, await getStorage(), {
-        orgId,
-        repoName,
-        commitSha: body.commitSha,
-        branch: body.branch,
-        summary,
-        artifacts: body.artifacts,
-      });
-      return Response.json(
-        {
-          runId: declared.runId,
-          uploads: declared.uploads,
-          deduplicated: declared.deduplicated,
-          bytesReserved: declared.bytesReserved,
-          commit: `/api/upload/${declared.runId}/commit`,
-        },
-        { status: 201 }
-      );
-    } catch (err) {
-      if (err instanceof UploadRefused) {
-        return refusal(err);
-      }
-      throw err;
-    }
+    const result = await declareResponse(db, await getStorage(), orgId, {
+      repo: repoName,
+      commitSha: body.commitSha,
+      branch: body.branch,
+      summary,
+      artifacts: body.artifacts,
+    });
+    return Response.json(result.body, { status: result.status });
   }
 
   // Schema-version tolerant: v2 is what we understand; newer majors are

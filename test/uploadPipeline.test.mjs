@@ -40,6 +40,7 @@ const {
 } = await import(path.join(DIST, "artifactUploads.js"));
 const { planLimitsFor } = await import(path.join(DIST, "plans.js"));
 const { createApiKey, NotEntitled } = await import(path.join(DIST, "apiKeys.js"));
+const { declareResponse, commitResponse } = await import(path.join(DIST, "uploadHttp.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -432,8 +433,114 @@ check(
   "a key minted while entitled is refused once the plan lapses — key existence is never authorization"
 );
 
+// ---------------------------------------------------------------------------
+// H1-H8 — the HTTP surface
+// ---------------------------------------------------------------------------
+//
+// The route files themselves are Next modules the suite cannot import, so
+// everything that could be *wrong* about them lives in `uploadHttp.ts` and is
+// checked here: which refusal becomes which status, and whether a key from one
+// organization can act on another's run.
+
+const h1 = await declareResponse(db, storage, freeOrg, {
+  repo: "web",
+  summary: {},
+  artifacts: [artifactFor("H1")],
+});
+check(
+  "H1",
+  h1.status === 402 && h1.body.code === "not_entitled",
+  `an unentitled organization gets 402 with a code the client can branch on (${h1.status})`
+);
+
+const h2 = await declareResponse(db, storage, org, { repo: "", summary: {}, artifacts: [artifactFor("H2")] });
+const h2b = await declareResponse(db, storage, org, { repo: "web", summary: {}, artifacts: [] });
+check(
+  "H2",
+  h2.status === 400 && h2b.status === 400 && h2b.body.code === "malformed",
+  "a missing repo and an empty artifact list are both 400"
+);
+
+const overOrg = await makeOrg("team");
+await declareOne(overOrg, "H3 first");
+await db.query("UPDATE org_storage SET runs_today = 200 WHERE org_id = $1", [overOrg]);
+const h3 = await declareResponse(db, storage, overOrg, {
+  repo: "web",
+  summary: {},
+  artifacts: [artifactFor("H3")],
+});
+check("H3", h3.status === 429 && h3.body.code === "runs_per_day", `too many runs today is 429 (${h3.status})`);
+
+const h4 = await declareResponse(db, storage, org, {
+  repo: "web",
+  summary: {},
+  artifacts: [{ frame: "big", kind: "build", sha256: sha256("h4"), bytes: 300_000_000 }],
+});
+check("H4", h4.status === 413 && h4.body.code === "bytes_per_run", `an oversized run is 413 (${h4.status})`);
+
+// H5 — the successful declare carries everything the client needs to finish:
+// where to PUT, and where to commit.
+const h5 = await declareResponse(db, storage, org, {
+  repo: "web",
+  summary: { frames: [] },
+  artifacts: [artifactFor("H5 content", "h5")],
+});
+check(
+  "H5",
+  h5.status === 201 &&
+    typeof h5.body.runId === "string" &&
+    Array.isArray(h5.body.uploads) &&
+    h5.body.commit === `/api/upload/${h5.body.runId}/commit`,
+  "a successful declare is 201 with the upload URLs and the commit path"
+);
+
+// H6 — commit before anything was uploaded.
+const h6 = await commitResponse(db, storage, org, String(h5.body.runId));
+check(
+  "H6",
+  h6.status === 422 && h6.body.code === "commit_rejected" && /never uploaded/.test(String(h6.body.error)),
+  `committing an untransferred run is 422 and says why (${h6.status})`
+);
+
+// H7 — the whole path through the HTTP layer.
+const h7declare = await declareResponse(db, storage, org, {
+  repo: "web",
+  summary: { frames: [] },
+  artifacts: [artifactFor("H7 content", "h7")],
+});
+const h7key = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [h7declare.body.runId]))
+  .rows[0].storage_key;
+await storage.put(h7key, bytesOf("H7 content"), { contentType: "image/png" });
+const h7 = await commitResponse(db, storage, org, String(h7declare.body.runId));
+check(
+  "H7",
+  h7.status === 200 && h7.body.artifacts === 1 && h7.body.url === `/r/${h7declare.body.runId}`,
+  "a verified commit is 200 with the run's URL"
+);
+
+// H8 — a key from another organization cannot commit this run.
+//
+// A run id travels in a URL and is guessable in a way a key is not. Without the
+// organization check, a valid key from any other customer could commit — and,
+// because a rejected commit deletes what it found, destroy — this one's run.
+const neighbour = await makeOrg("team");
+const h8declare = await declareResponse(db, storage, org, {
+  repo: "web",
+  summary: { frames: [] },
+  artifacts: [artifactFor("H8 content", "h8")],
+});
+const h8 = await commitResponse(db, storage, neighbour, String(h8declare.body.runId));
+const h8survived = await db.query("SELECT count(*)::int AS n FROM run_artifacts WHERE run_id = $1", [
+  h8declare.body.runId,
+]);
+check(
+  "H8",
+  h8.status === 422 && /no such run/.test(String(h8.body.error)) && h8survived.rows[0].n === 1,
+  "a neighbouring organization's key cannot commit this run, and the run survives the attempt"
+);
+
 await rm(ROOT, { recursive: true, force: true });
-for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan]) {
+for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour]) {
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();
