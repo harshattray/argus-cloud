@@ -1275,17 +1275,34 @@ abandoned uploads, duplicate artifacts, crop grounding, secret scanning, COGS.
 **Gate:** findings reference actual image regions and all pricing uses measured
 post-crop COGS.
 
-**Progress — 2026-08-15. Items 1-6 are built end to end.** Migrations 015-017,
-`artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`, both endpoints, and
-`norma-scope upload` in Argus (branch `feat/cloud-upload`, 20 checks). Cloud
-side: **593 checks on PGlite, 621 against a real Postgres server**.
+**Progress — 2026-08-15. Items 1-6 are built and proven end to end.**
+Migrations 015-018, `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`,
+`/api/blob`, both upload endpoints, `/admin/keys`, and `norma-scope upload` in
+Argus (branch `feat/cloud-upload`, `norma-scope@0.8.0`, 107 checks). Cloud side:
+**593 checks on PGlite, 621 against a real Postgres server**.
+
+**Proven against a real run, not only against fixtures.** The portfolio capture
+in `norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots — was
+compared, uploaded from the CLI through presigned PUTs, committed after size and
+content-hash verification of every object, and read back in a browser with its
+real numbers. Deduplication held on a second upload (3 of 9 files already
+stored, not re-sent), a failed transfer left its reservation held until the
+sweeper reclaimed all 300,866 bytes, and `deleteOrg` afterwards removed 9
+objects and 1,083,850 bytes and left a receipt.
+
+Real payload sizes, for the quota conversation: **0.30 MB** for the default
+`flagged` mode and **0.78 MB** for all three frames, against a 250 MB per-run
+limit.
 
 Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
 path, and the post-crop calibration.
 
-**Not yet true in production:** nothing has been deployed and the R2 leg has
-never carried a real artifact. The pipeline is proven against the filesystem
-driver only.
+**Not yet true in production:** nothing has been deployed and **the R2 leg has
+never carried a real artifact**. Everything above is the filesystem driver.
+`Step 5` requires the whole G suite re-run against real R2, and that requirement
+stands — presigning, `Content-Length` pinning and TTL behave differently against
+a real service, and the local driver is now a complete implementation precisely
+so that difference is the only thing left untested.
 
 **Two things must be scheduled before uploads are enabled for customers.** Both
 are built and neither runs:
@@ -1328,14 +1345,41 @@ it", and both are now closed:
   in the branch that deletes the object, not the one that deletes the row —
   `bytes_stored` counts objects, and a deduplicated artifact never added to it.
 
-**Carried forward: `plan` and `subscription_status` can both say `lapsed`.**
-Migration 016 followed `BuildV5.md` G2c's `free | team | lapsed` literally, but
-012 already tracks lapse in `subscription_status`. Two columns for one fact.
-Resolve it when entitlement is wired — most likely by letting `plan` mean only
-the tier — and do it before any code branches on either.
+**Four more found only by running the thing, after the suite was green.** Every
+one of them sat where no test could see it, which is the point worth keeping:
 
-Next: the three-phase upload itself (declare → transfer → commit), then
-entitlement enforcement.
+- **`runs.state` promised uncommitted runs were invisible and nothing read it.**
+  Half-finished uploads were viewable at `/r/{id}`, could be turned into a public
+  share token, would have provider money spent explaining them, and counted in
+  history. Live from the moment 017 landed, including under everything built on
+  top of it that day.
+- **The transfer phase had never run.** The filesystem driver signs URLs pointing
+  at `/api/blob`, and that route did not exist — the verifier for it did, which
+  is how it survived review. The suite bypasses the leg entirely by calling
+  `storage.put`, so the one phase where the application is deliberately not in
+  the byte path was never exercised. A real CLI upload failed on it with a 404.
+- **An uploaded run rendered as "no compared frames".** Only the older
+  summary-only route wrote `frame_stats`, and that is what the report lists and
+  what `enrichment.ts` derives first-drift and recurrence from. Artifact uploads
+  arrived committed, with their images, contributing nothing to the history that
+  is the entire paid argument.
+- **The explain buttons quoted 1 and 3 credits.** Those prices were abandoned on
+  2026-08-10 for losing money at the ceiling; the charge followed the decision
+  and the labels never did. Harsha caught it, not a test.
+
+**Carried forward — open, and none of them blocking today's work:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 1 | **`/r/` is a blank page in production** | The CSP sets `default-src 'none'` and `script-src 'self'`, and Next delivers page content through inline scripts. Proven against a real production build: the body is empty. The correct fix is a per-request nonce, not `unsafe-inline` — that page exists to sandbox model output. **This blocks shipping the report page at all.** |
+| 2 | `plan` and `subscription_status` can both say `lapsed` | Migration 016 followed G2c literally; 012 already tracks lapse. Two columns for one fact. Resolve before any code branches on either — most likely by letting `plan` mean only the tier. |
+| 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
+| 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
+| 5 | The R2 leg has never carried a real artifact | Step 5 requires the G suite re-run against real R2. |
+| 6 | `--target` produces no summary, so it cannot upload | The zero-config flow is outside the upload path entirely. Fine today; a decision if that flow should reach Cloud. |
+| 7 | `revokeApiKey` now has a surface, but no rotation | A leaked key can be withdrawn from `/admin/keys`. Issuing a replacement is still a script. |
+
+Next: Pathway 3 — the report page — which item 1 above blocks.
 
 #### CLI-to-Cloud connection
 
