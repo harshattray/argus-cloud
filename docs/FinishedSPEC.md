@@ -1079,8 +1079,79 @@ run: scheduling is **deferred to the first paying organization** (decision
 backups cover it. That is a decision, not a blocker — `PATHWAYS.md` Pathway 1
 item 10 carries the switch-on checklist.
 
-**Suite:** 591 checks green on PGlite, **619 against a real Postgres server**,
+**Suite:** 594 checks green on PGlite, **622 against a real Postgres server**,
 across twenty suites — run 2026-08-15.
+
+---
+
+### 3l. The artifact upload pipeline — Pathway 2, items 1–6 ✅
+
+Declare → transfer → commit, plus entitlement, quotas, the sweeper and the
+operator surface for withdrawing a key. Migrations 015–018. `norma-scope upload`
+ships from the Argus side at `0.8.0`.
+
+**Run end to end against a real capture, not fixtures.** The portfolio run in
+`norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots:
+
+```
+compare --json          3 frames, 1 flagged, references recorded beside the diffs
+upload (flagged)        3 files, 0.30 MB, presigned PUTs → /api/blob
+commit                  size AND content hash verified per object
+report                  renders with real numbers, 5 and 8 credit prices
+upload --mode all       9 files declared, 3 already stored and not re-sent
+deleteOrg               9 objects, 1,083,850 bytes removed, receipt kept
+```
+
+A transfer that failed mid-run left its reservation held until
+`sweep-uploads.mjs` reclaimed all 300,866 bytes — the leak control working, not
+a hypothetical.
+
+**Five things this found that the suite could not, all now closed.** Each sat
+where no test reaches, which is the part worth remembering:
+
+| Found | Why no test saw it |
+|---|---|
+| Entitlement checked at declare, not commit | A plan can change *between* two phases; each phase needs its own check |
+| `bytes_stored` only ever rose | Deletion freed objects and not quota — two subsystems, one invariant |
+| `runs.state` promised invisibility and nothing read it | The state existed; no reader filtered on it |
+| The transfer phase had never executed | `/api/blob` did not exist; the suite calls `storage.put` directly |
+| Uploaded runs contributed nothing to history | Only the older route wrote `frame_stats` |
+
+**What is still not proven:** the R2 leg. Everything above is the filesystem
+driver. Step 5 requires the whole G suite re-run against real R2, and that
+requirement is unchanged — presigning, `Content-Length` pinning and TTL behave
+differently against a real service. The local driver is now a complete
+implementation of the port precisely so that difference is the only untested
+thing left.
+
+---
+
+### 3m. The report page rendered blank in production — closed 2026-08-15
+
+`/r/{runId}` served an **empty body** in production for as long as its CSP had
+existed. `script-src 'self'` blocks the inline scripts the App Router streams
+page content through. Dev mode fails differently and the suite does not render
+pages, so nothing caught it.
+
+The policy moved from `next.config.mjs` to `middleware.ts` and now carries a
+per-request nonce with `strict-dynamic`, plus the `font-src 'self'` whose
+absence had been blocking every self-hosted face.
+
+**`'unsafe-inline'` was considered and refused.** It would have made the page
+render by deleting the protection the page exists to provide. Hashes are not
+available either: the flight payload differs per request, so nothing is stable
+to hash. A nonce is the only option that renders the page without weakening it.
+
+Verified against a real production build — a frame label carrying
+`<script>` and an `onerror` image rendered as visible text, nothing executed, and
+the only script holding the payload was Next's own nonced flight data with the
+string escaped. An earlier devtools probe appeared to bypass it and proves
+nothing: `strict-dynamic` trusts scripts inserted by an already-trusted script,
+and a devtools evaluation is one.
+
+**Open beneath it:** `style-src` keeps `'unsafe-inline'`. Removing it was tried
+and leaves the page unstyled — twelve elements carry inline `style` attributes.
+Phase H rebuilds that page; move it to classes and the directive can go.
 
 ---
 
@@ -1550,6 +1621,10 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 | Build order: **local first, deploy when demonstrable** | 2026-08-03 | BuildV5 Phase F / J |
 | **One paid tier at $59/mo**, no ladder, no lite tier; packs need a live subscription | 2026-08-05 | CLAUDE.md, `migrations/007` |
 | `/pitch` and `/admin` use **separate passwords** — the pitch phrase is expected to leak | 2026-08-10 | §4c, `web/lib/gate.ts` |
+| **The nightly backup schedule is deferred to the first paying organization**, not blocked. Hand backups cover the waitlist until then | 2026-08-15 | `PATHWAYS.md` Pathway 1 item 10 |
+| **Local, staging and production are separate.** `web/.env.local` holds no production credential; production lives in Vercel; staging is a Neon branch behind Preview deploys | 2026-08-15 | `scripts/schema-drift.mjs`, `scripts/seed-dev.mjs` |
+| **The `/r/` CSP uses a per-request nonce.** `'unsafe-inline'` is refused permanently — that tree renders model output; hashes are impossible because the flight payload is per-request | 2026-08-15 | §3m, `web/middleware.ts` |
+| **Credit prices are derived, never chosen.** Analysis 5, deep 8, from worst-case model cost with a 50% margin floor. Any figure shown to a customer is rendered from that derivation, never typed | 2026-08-10 | FUTURENORMA §3, §3m |
 
 ---
 
@@ -1573,6 +1648,12 @@ this section and are deliberately absent.
 | `reconcile.ts` margin bug (§7 #7) | **Open**, and the module is unreachable. Fix before the first paying org |
 | `webhooks.ts` unreachable, Paddle adapter unwritten | **Open — launch blocker.** No revenue can be provisioned |
 | No rate limiting on any request path | **Closed for authenticated API paths** (§3c): per-key and per-org ceilings counted in the database, proven across 20 separate processes. **Still open in front of auth** — no IP or endpoint limit, so the unauthenticated surface is unprotected |
+| The R2 leg has never carried a real artifact | **Open.** The whole upload pipeline is proven against the filesystem driver only. Step 5 requires the G suite re-run against real R2 — §3l |
+| `sweep-uploads.mjs` is built and unscheduled | **Open.** Without it an abandoned declaration holds a byte reservation nothing else releases. Must run before customers upload — §3l |
+| `style-src` still allows `'unsafe-inline'` on the report tree | **Open, and measured.** Removing it leaves the page unstyled: twelve elements carry inline `style` attributes. Closes when Phase H rebuilds that page with classes — §3m |
+| `plan` and `subscription_status` can both say `lapsed` | **Open.** Two columns for one fact since migration 016. Resolve before any code branches on either |
+| 500 included credits buy 100 analyses, not 500 | **Open — needs Harsha's decision.** A consequence of the 2026-08-10 derived pricing. The lever is the model, and §8's substitution process governs any cutover |
+| API keys can be withdrawn but not rotated | **Open.** `/admin/keys` revokes with an actor and a reason; issuing a replacement is still a script |
 | Retention sweep unbuilt | **Closed** (§3j). Run, repo and org deletion remove objects as well as rows; the 90-day sweep runs dry by default; deletion is claimed, batched and resumable, proven across 20 separate processes |
 | Deleting an org deletes its books | **Open — needs a decision, not code.** `usage_events`, `credit_grants` and `subscription_periods` cascade from `orgs`, so an erasure rewrites the reconciliation history for every month that customer traded in. The receipt now keeps the aggregate totals (§3j); whether anonymised per-event records must also be retained for the accounting period is Harsha's call |
 | No provider-dollar reservation before calls | **Closed** (§3d). Reserved before every call, settled idempotently, proven across 20 separate processes |

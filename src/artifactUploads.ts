@@ -348,6 +348,12 @@ export async function declareUpload(
       [runId, orgId, repoId, request.commitSha ?? "", request.branch ?? "", JSON.stringify(request.summary ?? {})]
     );
 
+    // Written here, while the run is still pending. Safe because every reader
+    // filters on a committed run, so these are invisible until the commit —
+    // and writing them at declare keeps them in the same transaction as the
+    // run they describe.
+    await recordFrameStats(tx, { orgId, repoId, runId, summary: request.summary });
+
     const expiresAt = new Date(Date.now() + PUT_TTL_SECONDS * 1000);
     const toSign: { artifact: DeclaredArtifact; key: string; nonce: string }[] = [];
     const deduplicated: { frame: string; kind: ArtifactKind }[] = [];
@@ -397,6 +403,68 @@ export async function declareUpload(
     deduplicated: prepared.deduplicated,
     bytesReserved: prepared.freshBytes,
   };
+}
+
+/**
+ * The per-frame numbers a run is read through.
+ *
+ * **Everything downstream reads `frame_stats`, not the summary blob.** The
+ * report page lists frames from here, and `enrichment.ts` computes the first
+ * drift commit and the recurrence count from it — the history that is the whole
+ * argument for the paid tier. A run with no rows here is a run that renders as
+ * "no compared frames" and contributes nothing to any trend.
+ *
+ * This used to be written only by the summary-only upload route, so every run
+ * that came through the artifact pipeline arrived invisible. Found by uploading
+ * a real portfolio run and opening it.
+ *
+ * Shared rather than copied, so the two upload shapes cannot disagree about
+ * what a frame's stats are — the same reason `economicPath.ts` owns the money
+ * sequence for both explain paths.
+ */
+export async function recordFrameStats(
+  tx: Db,
+  args: { orgId: string; repoId: string; runId: string; summary: unknown }
+): Promise<number> {
+  const frames = (args.summary as { frames?: unknown })?.frames;
+  if (!Array.isArray(frames)) {
+    return 0;
+  }
+  let written = 0;
+  for (const raw of frames) {
+    const frame = raw as {
+      status?: string;
+      screenshot?: string;
+      mode?: string;
+      source?: string;
+      alignedMismatchPercent?: number;
+      structuralSimilarity?: number;
+      flagged?: boolean;
+    };
+    // Skipped frames have no numbers to record. Storing them would put nulls
+    // into a trend and make "seen 4 times" count runs where nothing was looked
+    // at.
+    if (frame?.status !== "compared" || typeof frame.screenshot !== "string") {
+      continue;
+    }
+    await tx.query(
+      `INSERT INTO frame_stats (org_id, repo_id, run_id, frame, mode, source, aligned_mismatch_percent, structural_similarity, flagged)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        args.orgId,
+        args.repoId,
+        args.runId,
+        frame.screenshot,
+        typeof frame.mode === "string" ? frame.mode : "fidelity",
+        typeof frame.source === "string" ? frame.source : "images",
+        typeof frame.alignedMismatchPercent === "number" ? frame.alignedMismatchPercent : null,
+        typeof frame.structuralSimilarity === "number" ? frame.structuralSimilarity : null,
+        frame.flagged === true,
+      ]
+    );
+    written++;
+  }
+  return written;
 }
 
 async function upsertRepo(tx: Db, orgId: string, name: string): Promise<string> {

@@ -53,9 +53,17 @@ webhooks, reconciliation). The real hosted product is the Next.js app in
 no accounts, and no money. It ships to **normascope.com** at Step 5.
 
 What's genuinely missing before launch: **a payment provider** (MoR account —
-Harsha's call), **real multi-tenancy** (§5, built across Steps 6 and 8),
-**artifact upload** (hosted explain currently reasons over diff metadata, not
-image crops), and **the deployment itself**.
+Harsha's call), **real multi-tenancy** (§5, built across Steps 6 and 8), **crop
+grounding** (hosted explain still reasons over diff metadata rather than image
+crops), and **the deployment itself**.
+
+**Artifact upload is no longer on that list — 2026-08-15.** Declare → transfer →
+commit is built on both sides and has been run end to end against the real
+portfolio capture: uploaded through presigned URLs, committed after size and
+content-hash verification, and read back in a browser. `norma-scope@0.8.0` is
+built and awaiting publish. Two things it did not prove and does not claim: **the
+R2 leg has never carried a real artifact**, and nothing is deployed. See
+`FinishedSPEC.md` §3l.
 
 ---
 
@@ -133,7 +141,7 @@ served from R2.
 | Explain engine (Build 4.0 Phase A) | ✅ | 25 checks, no live calls in CI |
 | Calibration harness (Phase B) | ✅ **and executed** | `docs/calibration.md` |
 | Commands | `init` `doctor` `auto` `compare` `check` `comment` `explain` `baseline` `snapshot` `clean` | `normascope101.md` |
-| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ **published** `norma-scope@0.7.5` | Registry `dist-tags.latest` = **0.7.5**, verified 2026-08-10. (0.7.3 reported 50 files / 142,348 B unpacked; not re-measured for 0.7.5) |
+| Packaging: esbuild bundle + minify, no `.d.ts` in the tarball, Apache-2.0, SDK optional | ✅ published `norma-scope@0.7.5`; **`0.8.0` built and awaiting publish** | Registry `dist-tags.latest` = **0.7.5**, verified 2026-08-10. `0.8.0` adds the `upload` command: 52 files / 50.2 kB packed, 0 declarations and 0 source, verified 2026-08-15. `normascope-mcp@0.2.3` follows it — its floor moved to `^0.8.0`, so **the root must publish first or the MCP package cannot install** |
 | `normascope-mcp` on npm | ✅ **published** v0.2.2 | Registry reports **0.2.2**, verified 2026-08-10. Its `norma-scope` floor was raised `^0.7.0` → `^0.7.4` in `8e96b5e` — see below |
 
 `main` @ **`12af929`**. Full suite: **83 checks green** (run 2026-08-10).
@@ -274,6 +282,8 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
 | **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ✅ **production backed up 2026-08-15**, ❌ not scheduled | 91 checks; both failure paths watched — §3k. **Production Neon was dumped, encrypted, restored and compared table by table on 2026-08-15** (32 tables). The nightly workflow exists and is inert; scheduling is **deferred to the first paying organization**, with hand backups covering the waitlist meanwhile. Switch-on checklist: `PATHWAYS.md` Pathway 1 item 10 |
 | **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
+| **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-6) | ✅ built and run end to end, ❌ never against R2 | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Filesystem driver only — `PATHWAYS.md` Pathway 2 |
+| **The hosted run report renders** | ❌ **blank in production** | The `/r/` CSP blocks the inline scripts Next uses to deliver page content. Proven against a real production build. Fix is a per-request nonce, not `unsafe-inline` — the strictness is deliberate, that page renders model output. **Blocks Pathway 3** |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
 | **Missing `DATABASE_URL` on Vercel fails loudly** | ✅ | Refuses to boot rather than silently losing writes to in-process PGlite — §4f |
@@ -286,7 +296,7 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**591 checks green** on PGlite, **619** against real Postgres, across twenty
+**594 checks green** on PGlite, **622** against real Postgres, across twenty
 suites — `apiKeyRevocation`, `artifactUploads`, `backup`, `budgetAlerts`, `cibatch`, `enrichment`,
 `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
 `rateLimit`, `reconcile`, `retention`, `storage`, `uploadPipeline`, `waitlist`,
@@ -727,6 +737,16 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 
 **Steps 1–4 are roughly the whole of the remaining product work.** Steps 5–8
 are infrastructure, plumbing, and paperwork.
+
+**Where this stands on 2026-08-15.** Step 2's upload half is built and has been
+run end to end against the real portfolio capture — declared, transferred
+through presigned URLs, committed after verification, read back in a browser.
+What remains in Step 2 is crop grounding and recalibration. Step 3 is blocked by
+something outside its own scope: **the run report is a blank page in
+production**, because the `/r/` CSP blocks the inline scripts Next uses to
+deliver content. Fixing that comes before building the page it would render.
+Details and the rest of the open list: `PATHWAYS.md` Pathway 2, "Carried
+forward".
 
 ### The capture test applied to this path
 

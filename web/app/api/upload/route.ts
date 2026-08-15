@@ -3,6 +3,7 @@ import { getDb } from "../../../lib/db";
 import { getStorage } from "../../../lib/storage";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { declareResponse } from "argus-cloud/uploadHttp.js";
+import { recordFrameStats } from "argus-cloud/artifactUploads.js";
 import type { DeclaredArtifact } from "argus-cloud/artifactUploads.js";
 
 /**
@@ -93,7 +94,6 @@ export async function POST(request: Request): Promise<Response> {
 
   // Schema-version tolerant: v2 is what we understand; newer majors are
   // accepted and stored verbatim, but frames we can't read produce no stats.
-  const frames = Array.isArray(summary.frames) ? summary.frames : [];
 
   const runId = randomUUID();
   await db.transaction(async (tx) => {
@@ -114,23 +114,9 @@ export async function POST(request: Request): Promise<Response> {
       "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary, state) VALUES ($1,$2,$3,$4,$5,$6,'committed')",
       [runId, orgId, repoId, body.commitSha ?? "", body.branch ?? "", JSON.stringify(summary)]
     );
-    for (const frame of frames) {
-      if (frame?.status !== "compared" || typeof frame.screenshot !== "string") {
-        continue;
-      }
-      await tx.query(
-        `INSERT INTO frame_stats (org_id, repo_id, run_id, frame, mode, source, aligned_mismatch_percent, structural_similarity, flagged)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          orgId, repoId, runId, frame.screenshot,
-          typeof frame.mode === "string" ? frame.mode : "fidelity",
-          typeof frame.source === "string" ? frame.source : "images",
-          typeof frame.alignedMismatchPercent === "number" ? frame.alignedMismatchPercent : null,
-          typeof frame.structuralSimilarity === "number" ? frame.structuralSimilarity : null,
-          frame.flagged === true,
-        ]
-      );
-    }
+    // Shared with the declare path so the two upload shapes cannot disagree
+    // about what a frame's stats are.
+    await recordFrameStats(tx, { orgId, repoId, runId, summary });
   });
 
   return Response.json({ runId, url: `/r/${runId}` }, { status: 201 });
