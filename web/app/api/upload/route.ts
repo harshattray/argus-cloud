@@ -75,8 +75,12 @@ export async function POST(request: Request): Promise<Response> {
       repoId = randomUUID();
       await tx.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, $3)", [repoId, orgId, repoName]);
     }
+    // `state` is explicit because migration 017 flipped the default to
+    // 'pending' so that a forgotten commit hides a run instead of showing a
+    // broken one. This path carries no artifacts and has nothing to wait for,
+    // so it is complete on arrival — but it now has to say so.
     await tx.query(
-      "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary) VALUES ($1,$2,$3,$4,$5,$6)",
+      "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary, state) VALUES ($1,$2,$3,$4,$5,$6,'committed')",
       [runId, orgId, repoId, body.commitSha ?? "", body.branch ?? "", JSON.stringify(summary)]
     );
     for (const frame of frames) {

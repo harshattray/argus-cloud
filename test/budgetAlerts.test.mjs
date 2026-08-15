@@ -507,7 +507,7 @@ if (REAL_PG) {
   const repoId = randomUUID();
   const runId = randomUUID();
   await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'r')", [repoId, orgId]);
-  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary) VALUES ($1,$2,$3,'c1','{}')", [
+  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary, state) VALUES ($1,$2,$3,'c1','{}','committed')", [
     runId,
     orgId,
     repoId,
@@ -616,7 +616,7 @@ if (REAL_PG) {
   const repoB = randomUUID();
   const runB = randomUUID();
   await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'r')", [repoB, orgB]);
-  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary) VALUES ($1,$2,$3,'c1','{}')", [runB, orgB, repoB]);
+  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary, state) VALUES ($1,$2,$3,'c1','{}','committed')", [runB, orgB, repoB]);
   const batched = await enqueueCiBatch(
     db,
     {

@@ -78,7 +78,7 @@ async function makeRepo(orgId) {
 async function makeRun(orgId, repoId, createdAt = T0) {
   const id = randomUUID();
   await db.query(
-    "INSERT INTO runs (id, org_id, repo_id, summary, created_at) VALUES ($1, $2, $3, $4, $5)",
+    "INSERT INTO runs (id, org_id, repo_id, summary, created_at, state) VALUES ($1, $2, $3, $4, $5, 'committed')",
     [id, orgId, repoId, JSON.stringify({ frames: [] }), createdAt.toISOString()]
   );
   return id;
