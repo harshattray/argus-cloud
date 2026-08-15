@@ -133,6 +133,13 @@ export async function commitResponse(
       },
     };
   } catch (err) {
+    // A refusal and a rejection are different answers and must not share a
+    // status. "Your plan cannot publish this" is 402 and is about billing;
+    // "the object you promised never arrived" is 422 and is about the upload.
+    // Collapsing them would tell a lapsed customer their files were corrupt.
+    if (err instanceof UploadRefused) {
+      return { status: statusForRefusal(err.reason), body: { error: err.message, code: err.reason } };
+    }
     if (err instanceof UploadRejected) {
       // 422, not 400: the request is well-formed. What failed is the upload it
       // describes, and the run has already been cleaned up — so the honest

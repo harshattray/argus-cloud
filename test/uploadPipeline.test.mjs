@@ -5,7 +5,7 @@
 // Run against a real server:
 //   DATABASE_URL="$(scripts/test-db.sh start)" node test/uploadPipeline.test.mjs
 //
-// Checks are U1-U14. The thing under test is a protocol where the application
+// Checks are U1-U15 and H1-H9. The thing under test is a protocol where the application
 // is deliberately not in the byte path: after `declare` hands out a presigned
 // URL, the client uploads straight to storage and we see nothing until
 // `commit`. Every check here is therefore about what can be proven *afterwards*
@@ -434,7 +434,59 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-// H1-H8 — the HTTP surface
+// U15 — the plan changes between declare and commit
+// ---------------------------------------------------------------------------
+//
+// The case that looked safe by construction and was not. Declare refuses an
+// unentitled organization, so a free plan can never own a pending run — but an
+// organization that declares while paying and lapses before committing has one
+// already, fully transferred. Without a second check it becomes visible on a
+// plan that is not entitled to it.
+const lapsing = await makeOrg("team");
+const midflight = await declareOne(lapsing, "U15 declared while paying");
+const midKey = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [midflight.runId])).rows[0]
+  .storage_key;
+await storage.put(midKey, bytesOf("U15 declared while paying"), { contentType: "image/png" });
+await db.query("UPDATE orgs SET plan = 'free' WHERE id = $1", [lapsing]);
+
+const u15 = await refusal(() => commitUpload(db, storage, { orgId: lapsing, runId: midflight.runId }));
+check(
+  "U15",
+  u15 instanceof UploadRefused && u15.reason === "not_entitled",
+  `a run declared on a paying plan cannot be published after a downgrade — "${u15?.message?.slice(0, 55)}…"`
+);
+
+// U15b — refused, not destroyed. A refusal is not a verification failure: the
+// rows stay for the sweeper, which releases the reservation on its own
+// schedule. Deleting here would make a billing state look like data loss.
+const u15b = await db.query("SELECT count(*)::int AS n FROM run_artifacts WHERE run_id = $1 AND state = 'pending'", [
+  midflight.runId,
+]);
+check(
+  "U15b",
+  u15b.rows[0].n === 1 && (await runState(midflight.runId)) === "pending" && (await storage.head(midKey)) !== null,
+  "the refused run keeps its rows and its object — the sweeper cleans up, not the refusal"
+);
+
+// U15c — a lapsed organization retrying a commit that already succeeded still
+// gets its success. Lapse never removes what was already published, and a CI
+// runner retrying a completed step must not start failing.
+const settled = await makeOrg("team");
+const settledRun = await declareOne(settled, "U15c already published");
+const settledKey = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [settledRun.runId]))
+  .rows[0].storage_key;
+await storage.put(settledKey, bytesOf("U15c already published"), { contentType: "image/png" });
+await commitUpload(db, storage, { orgId: settled, runId: settledRun.runId });
+await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [settled]);
+const u15c = await refusal(() => commitUpload(db, storage, { orgId: settled, runId: settledRun.runId }));
+check(
+  "U15c",
+  u15c === null && (await runState(settledRun.runId)) === "committed",
+  "re-committing an already-published run still succeeds after a lapse"
+);
+
+// ---------------------------------------------------------------------------
+// H1-H9 — the HTTP surface
 // ---------------------------------------------------------------------------
 //
 // The route files themselves are Next modules the suite cannot import, so
@@ -539,8 +591,28 @@ check(
   "a neighbouring organization's key cannot commit this run, and the run survives the attempt"
 );
 
+// H9 — and that refusal reaches the wire as a billing answer, not a corruption
+// answer. A lapsed customer told "422 commit rejected" would go looking for a
+// broken file; 402 with `not_entitled` sends them to the right place.
+const h9org = await makeOrg("team");
+const h9run = await declareResponse(db, storage, h9org, {
+  repo: "web",
+  summary: { frames: [] },
+  artifacts: [artifactFor("H9 content", "h9")],
+});
+const h9key = (await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [h9run.body.runId])).rows[0]
+  .storage_key;
+await storage.put(h9key, bytesOf("H9 content"), { contentType: "image/png" });
+await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [h9org]);
+const h9 = await commitResponse(db, storage, h9org, String(h9run.body.runId));
+check(
+  "H9",
+  h9.status === 402 && h9.body.code === "not_entitled",
+  `a commit refused on plan grounds is 402, not 422 (${h9.status})`
+);
+
 await rm(ROOT, { recursive: true, force: true });
-for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour]) {
+for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org]) {
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();

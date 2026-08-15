@@ -473,6 +473,35 @@ export async function commitUpload(
     };
   }
 
+  // Entitlement, again, and after the idempotent return above rather than
+  // before it.
+  //
+  // **Why commit needs its own check.** Declare refuses an unentitled
+  // organization, so the obvious reading is that a free plan can never own a
+  // pending run and commit is therefore safe by construction. That reading is
+  // wrong in one case which is not exotic at all: an organization that declares
+  // while paying and downgrades — or whose card fails — before it commits. The
+  // run is already pending and already transferred, and without this check it
+  // becomes visible on a plan that is not entitled to it.
+  //
+  // Ordered after the idempotency check on purpose. A lapsed organization
+  // retrying a commit that already succeeded must still get its success back:
+  // the run is theirs, it is already visible, and the standing rule is that
+  // lapse never removes what was already uploaded. What is refused is *new*
+  // visibility, which is exactly the case below.
+  //
+  // Nothing is deleted here. The pending rows are left alone for
+  // `sweepAbandonedUploads`, which releases the reservation on its own schedule
+  // — a refusal is not a verification failure and must not behave like one.
+  const limits = await limitsFor(db, orgId);
+  if (!limits.canUpload) {
+    throw new UploadRefused(
+      "not_entitled",
+      `the ${limits.plan} plan cannot publish new runs. This upload was started on a plan that could; ` +
+        `everything already uploaded stays readable.`
+    );
+  }
+
   const pending = await db.query<{ id: string; storage_key: string; sha256: string; declared_bytes: string }>(
     "SELECT id, storage_key, sha256, declared_bytes FROM run_artifacts WHERE run_id = $1 AND state = 'pending' ORDER BY id",
     [runId]
