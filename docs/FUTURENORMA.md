@@ -286,7 +286,7 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**575 checks green** on PGlite, **603** against real Postgres, across nineteen
+**577 checks green** on PGlite, **605** against real Postgres, across nineteen
 suites — `artifactUploads`, `backup`, `budgetAlerts`, `cibatch`, `enrichment`,
 `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
 `rateLimit`, `reconcile`, `retention`, `storage`, `uploadPipeline`, `waitlist`,

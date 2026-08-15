@@ -45,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
   // Tenant isolation: the run must belong to the key's org.
   const run = (
     await db.query<{ id: string; repo_id: string; commit_sha: string; summary: unknown }>(
-      "SELECT id, repo_id, commit_sha, summary FROM runs WHERE id = $1 AND org_id = $2",
+      "SELECT id, repo_id, commit_sha, summary FROM runs WHERE id = $1 AND org_id = $2 AND state = 'committed'",
       [body.runId, key.org_id]
     )
   ).rows[0];

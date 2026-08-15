@@ -1243,7 +1243,7 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **575 checks on PGlite, 603 against a real Postgres server**, across
+green: **577 checks on PGlite, 605 against a real Postgres server**, across
 nineteen suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
@@ -1278,7 +1278,7 @@ post-crop COGS.
 **Progress — 2026-08-15. Items 1-6 are built end to end.** Migrations 015-017,
 `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`, both endpoints, and
 `norma-scope upload` in Argus (branch `feat/cloud-upload`, 20 checks). Cloud
-side: **575 checks on PGlite, 603 against a real Postgres server**.
+side: **577 checks on PGlite, 605 against a real Postgres server**.
 
 Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
 path, and the post-crop calibration.

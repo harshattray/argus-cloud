@@ -69,7 +69,9 @@ export default async function ReportPage({
   const db = await getDb();
   const run = (
     await db.query<{ id: string; commit_sha: string; branch: string; created_at: string }>(
-      "SELECT id, commit_sha, branch, created_at FROM runs WHERE id = $1",
+      // state: a declared-but-uncommitted run is not published. Migration 017
+      // promises "not queryable until it commits"; this is where that is kept.
+      "SELECT id, commit_sha, branch, created_at FROM runs WHERE id = $1 AND state = 'committed'",
       [runId]
     )
   ).rows[0];

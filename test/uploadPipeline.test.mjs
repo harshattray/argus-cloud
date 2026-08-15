@@ -5,7 +5,7 @@
 // Run against a real server:
 //   DATABASE_URL="$(scripts/test-db.sh start)" node test/uploadPipeline.test.mjs
 //
-// Checks are U1-U15 and H1-H9. The thing under test is a protocol where the application
+// Checks are U1-U15, H1-H9 and V1-V2. The thing under test is a protocol where the application
 // is deliberately not in the byte path: after `declare` hands out a presigned
 // URL, the client uploads straight to storage and we see nothing until
 // `commit`. Every check here is therefore about what can be proven *afterwards*
@@ -21,7 +21,7 @@
 //         which would poison deduplication for every later run in the org.
 
 import { randomUUID, createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +41,7 @@ const {
 const { planLimitsFor } = await import(path.join(DIST, "plans.js"));
 const { createApiKey, NotEntitled } = await import(path.join(DIST, "apiKeys.js"));
 const { declareResponse, commitResponse } = await import(path.join(DIST, "uploadHttp.js"));
+const { buildEnrichment } = await import(path.join(DIST, "enrichment.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -611,8 +612,71 @@ check(
   `a commit refused on plan grounds is 402, not 422 (${h9.status})`
 );
 
+// ---------------------------------------------------------------------------
+// V1-V2 — "not queryable until it commits" is enforced, not just declared
+// ---------------------------------------------------------------------------
+//
+// Migration 017 added `runs.state` and promised a declared-but-uncommitted run
+// is invisible. The state existed and **nothing read it**: the run page, the
+// share endpoint, both explain routes and the trend queries all selected runs
+// by id alone. A half-finished upload was viewable, shareable, and counted in
+// history — which is the entire failure the state was added to prevent.
+//
+// V1 covers the trend path, which is the one reachable from the suite. The four
+// route queries are one `AND state = 'committed'` each; V2 pins them by reading
+// the source, because a route file the suite cannot import is a route file
+// where a silent regression has nowhere to show up.
+const visOrg = await makeOrg("team");
+const visRepo = randomUUID();
+await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'vis')", [visRepo, visOrg]);
+
+async function statsRun(state, flagged) {
+  const id = randomUUID();
+  await db.query("INSERT INTO runs (id, org_id, repo_id, commit_sha, summary, state) VALUES ($1,$2,$3,$4,'{}',$5)", [
+    id,
+    visOrg,
+    visRepo,
+    `sha-${state}`,
+    state,
+  ]);
+  await db.query(
+    `INSERT INTO frame_stats (org_id, repo_id, run_id, frame, mode, source, aligned_mismatch_percent, flagged)
+     VALUES ($1,$2,$3,'home','fidelity','figma',5.0,$4)`,
+    [visOrg, visRepo, id, flagged]
+  );
+  return id;
+}
+await statsRun("committed", true);
+await statsRun("pending", true);
+
+const enrich = await buildEnrichment(db, { orgId: visOrg, repoId: visRepo, frame: "home" });
+check(
+  "V1",
+  enrich !== null && !JSON.stringify(enrich).includes("sha-pending"),
+  "an uncommitted run does not appear in history or trends"
+);
+
+const routeSources = [
+  "web/app/r/[runId]/page.tsx",
+  "web/app/api/share/route.ts",
+  "web/app/api/explain/route.ts",
+  "web/app/api/ci-explain/route.ts",
+];
+const unguarded = [];
+for (const file of routeSources) {
+  const source = await readFile(path.resolve(HERE, "..", file), "utf-8");
+  const selectsRuns = /FROM runs WHERE/.test(source);
+  const guarded = /state = 'committed'/.test(source);
+  if (selectsRuns && !guarded) unguarded.push(file);
+}
+check(
+  "V2",
+  unguarded.length === 0,
+  `every route that reads a run by id filters on committed (${unguarded.join(", ") || "all guarded"})`
+);
+
 await rm(ROOT, { recursive: true, force: true });
-for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org]) {
+for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg]) {
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();
