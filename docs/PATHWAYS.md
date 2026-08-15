@@ -485,8 +485,16 @@ No paid Cloud launch is verified until the relevant pathways have evidence for:
 - [ ] SSRF, redirect, DNS-rebinding, and capture containment suites;
 - [ ] rate-limit, quota, concurrency, replay, and abuse tests;
 - [ ] webhook signature, session, CSRF, and key-revocation tests;
-- [ ] backup restore, retention, deletion, and incident-drill evidence;
-- [ ] redacted audit logs and working operator alerts/kill switches;
+- [ ] backup restore, retention, deletion, and incident-drill evidence —
+  **three of four.** Retention and deletion are proven (`FinishedSPEC.md` §3j),
+  and a real backup was restored and compared table by table on 2026-08-14
+  (§3k). **No incident drill has been run**, and backups are not yet scheduled
+  against the production database;
+- [ ] redacted audit logs and working operator alerts/kill switches —
+  **alerts only.** Spend and operational alerts reach a configured webhook or
+  mailbox, and an alert claimed but never delivered is itself an alert (§3k).
+  The breaker is the one kill switch that exists; the scoped pauses and the
+  redacted audit log are Phase 6 work;
 - [ ] an external security review or penetration test before scaling beyond
   the first controlled customers.
 
@@ -1183,7 +1191,16 @@ each item, and nothing lives only there:
    `subscription_periods`, which rewrites past reconciliation months. The
    receipt keeps the aggregate; whether anonymised per-event records must be
    retained is a policy call, not an implementation gap.
-10. ⬅️ **next.** Add backups, restore rehearsal, and operational alerts.
+10. ✅ Add backups, restore rehearsal, and operational alerts. —
+    `FinishedSPEC.md` §3k. Encrypted `pg_dump` through the storage port with a
+    manifest taken inside the dump's own snapshot; a rehearsal that restores into
+    a scratch database and compares every table's row count; eight operational
+    signals delivered once per period through a real webhook/email channel. A
+    real backup was restored and compared on 2026-08-14, and both failure paths
+    were watched. **The schedule is `Blocked`:** `.github/workflows/backup.yml`
+    is written but needs `BACKUP_DATABASE_URL`, `NORMA_BACKUP_KEY` and the R2
+    credentials, so the production database has not yet been backed up. That is
+    the same account access Phase 5 waits on, not a gap in this item.
 
 > Items 4–6 were previously described **only** in §10.3 and were missing from
 > this list. That is not a formatting detail: an agent working from the list
@@ -1198,6 +1215,17 @@ settlement/refund, margin-floor assertion, alert/breaker, Paddle signatures,
 reconciliation fixtures, restore.
 
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
+
+**Gate state — 2026-08-14.** All ten items are implemented and their suites are
+green: **511 checks on PGlite, 539 against a real Postgres server**, across
+sixteen suites, plus `npm run verify` (types for both packages, the web build,
+the dependency audit). Three things remain, and none is a logic gap:
+
+- the **Paddle sandbox loop** (item 8) — `Blocked` on an account, and Phase 7's
+  gate rather than this one;
+- the **backup schedule** (item 10) — `Blocked` on production secrets;
+- the **org-deletion policy question** (item 9) — a decision for Harsha, not
+  code.
 
 ### Pathway 2 — Build the artifact pipeline
 
@@ -1578,7 +1606,10 @@ Cloud is not ready to charge until:
 - [ ] included-credit reconciliation is correct;
 - [ ] tenant, storage, deletion, and hosted injection suites pass;
 - [ ] provider retention posture is documented;
-- [ ] backup restore is rehearsed;
+- [x] backup restore is rehearsed — 2026-08-14, a real encrypted dump restored
+  into a scratch database and compared table by table (`FinishedSPEC.md` §3k).
+  **This is rehearsed, not scheduled:** no backup of the production database
+  exists until the workflow secrets are set;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
 - [ ] a real demo uses real historical Normascope data.

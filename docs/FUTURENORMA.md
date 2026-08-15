@@ -2,7 +2,11 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-10** — state facts in §0 and §2 refreshed against the
+Last updated: **2026-08-14** — §2 state facts refreshed after Pathway 1 item 10
+(encrypted backups, a rehearsed restore, and operational alerts): suite counts,
+suite names and the migration range. Strategy is unchanged.
+
+Before that, **2026-08-10** — state facts in §0 and §2 refreshed against the
 code and the npm registry (published versions, branch heads, suite counts, and
 the three defect fixes that shipped after 0.7.3). The §4 path now distinguishes
 the public waitlist launch from the later paid Cloud launch.
@@ -268,6 +272,8 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Credits derived from each operation's hard maximum (Pathway 1 item 5, §10.3 1B.2) | ✅ | Suite fails if any operation earns below the margin floor — §3e |
 | Budget alerts at 50/75/90/100% + audited manual reset (Pathway 1 item 6) | ✅ | 20 separate processes page a human once; unattributed reset impossible — §3f |
 | Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
+| **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ❌ **not scheduled** | 91 checks; a real dump restored into a scratch database and compared table by table on 2026-08-14, both failure paths watched — §3k. The nightly workflow exists and waits on production secrets |
+| **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
 | **Missing `DATABASE_URL` on Vercel fails loudly** | ✅ | Refuses to boot rather than silently losing writes to in-process PGlite — §4f |
@@ -277,13 +283,19 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 
 Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 `normascope-site` that landed the public marketing site, the gated `/pitch` tree
-and the waitlist route). Pathway 1 items 1–9 are implemented, and the public
+and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**410 checks green** on PGlite, **434** against real Postgres, across thirteen
-suites — `migrations`, `storage`, `rateLimit`, `providerBudget`, `budgetAlerts`,
-`metering`, `reconcile`, `retention`, `enrichment`, `cibatch`, `legal`,
-`waitlist`, `webhooks` — run 2026-08-13. Migrations are now `001`–`013`.
+**511 checks green** on PGlite, **539** against real Postgres, across sixteen
+suites — `backup`, `budgetAlerts`, `cibatch`, `enrichment`, `legal`, `metering`,
+`migrations`, `opsAlerts`, `providerBudget`, `rateLimit`, `reconcile`,
+`retention`, `storage`, `waitlist`, `waitlistConfirmationEmail`, `webhooks` —
+run 2026-08-14. Migrations are now `001`–`014`.
+
+Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
+loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
+(item 10, `Blocked` on production secrets), and the **org-deletion policy
+question** (item 9 — Harsha's call, not code).
 
 > The real-Postgres number moved by more than the new suite adds. Running the
 > existing suites against one shared server exposed four `budgetAlerts` checks
@@ -1125,10 +1137,12 @@ Nothing here is optional, and none of it is invisible if skipped.
   a customer with credits cannot spend them from the CLI. Step 2 gives the CLI an
   authenticated cloud client, which makes this small. **Launch blocker.**
 - **Retention sweep + deletion** — 90-day sweep with dry-run; run/repo/org delete
-  removes objects from storage, not just rows. Unbuilt; storage growth is
-  currently bounded by nothing.
+  removes objects from storage, not just rows. ✅ **Built** — `FinishedSPEC.md`
+  §3j.
 - **Ops** — backups with a *rehearsed* restore, uptime alerts that reach a phone,
-  `npm audit`, security headers.
+  `npm audit`, security headers. Backups, the rehearsal and the alert channel are
+  ✅ **built** (§3k) and `npm audit` runs in CI; what is still owed here is
+  **turning the schedule on in production** (secrets) and the security headers.
 - **Control-plane UI** — the organization and operator consoles pass their
   navigation, role, tenant-isolation, audit, responsive, keyboard, and
   screen-reader gates. No paid launch with scattered or support-only control
