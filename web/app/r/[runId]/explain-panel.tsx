@@ -31,11 +31,26 @@ export function ExplainPanel({
   frame,
   flagged,
   initialFindings,
+  analysisCredits,
+  deepCredits,
 }: {
   runId: string;
   frame: string;
   flagged: boolean;
   initialFindings: unknown | null;
+  /**
+   * What each pass actually costs, passed in from the server.
+   *
+   * **Never written as a literal here.** These prices are derived from the
+   * worst-case provider cost of the model each pass runs on
+   * (`providerBudget.ts`, `creditsRequired`), and they changed on 2026-08-10
+   * when the old chosen prices — 1 and 3 — were found to lose money at the
+   * ceiling. The charge followed the derivation immediately; these labels did
+   * not, and for months the button offered a price the system did not honour.
+   * A number typed here is a number that can drift again.
+   */
+  analysisCredits: number;
+  deepCredits: number;
 }) {
   const [findings, setFindings] = useState<Finding[]>(asFindings(initialFindings));
   const [hasFindings, setHasFindings] = useState(initialFindings !== null);
@@ -116,10 +131,10 @@ export function ExplainPanel({
             }}
           />
           <button onClick={() => explain(false)} disabled={busy || !apiKey} style={buttonStyle}>
-            {busy ? "Explaining…" : "Explain (1 credit)"}
+            {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
           </button>
           <button onClick={() => explain(true)} disabled={busy || !apiKey} style={buttonStyle}>
-            Deep explain (3 credits)
+            {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
           </button>
           {error && <span style={{ fontSize: 12, color: "#e0563c" }}>{error}</span>}
         </div>

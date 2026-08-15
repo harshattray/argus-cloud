@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
+import { planLimitsFor } from "./plans.js";
 
 /**
  * API keys: hashed at rest (sha256), plaintext shown exactly once at
@@ -27,11 +28,45 @@ function hashKey(plaintext: string): string {
   return createHash("sha256").update(plaintext).digest("hex");
 }
 
+/**
+ * An upload key an unentitled plan asked for. G2c's first line of defence.
+ *
+ * The point is not that the key would fail later — it would, because
+ * entitlement is re-checked on every request. The point is that the credential
+ * **does not exist to be leaked, stolen, or reused**. A key that was never
+ * minted cannot be sitting in a GitHub Actions secret when a plan lapses, and
+ * cannot be the thing someone finds in a log a year from now.
+ */
+export class NotEntitled extends Error {
+  constructor(readonly plan: string, message: string) {
+    super(message);
+    this.name = "NotEntitled";
+  }
+}
+
 export async function createApiKey(
   db: Db,
   orgId: string,
   options: { kind?: "upload" | "agent"; label?: string; monthlyBudgetCredits?: number; ratePerMinute?: number } = {}
 ): Promise<CreatedKey> {
+  const kind = options.kind ?? "upload";
+
+  // Checked here as well as on every request, because these two checks protect
+  // different things: this one keeps the credential from existing, and the
+  // request-time one catches the plan that lapsed after it was minted. Neither
+  // makes the other redundant — G2c calls for both, and says why: key existence
+  // is never authorization.
+  if (kind === "upload") {
+    const limits = await planLimitsFor(db, orgId);
+    if (!limits.canUpload) {
+      throw new NotEntitled(
+        limits.plan,
+        `the ${limits.plan} plan cannot hold an upload key. The CLI is complete and local on this plan; ` +
+          `subscribe to Normascope Cloud for hosted history and reports.`
+      );
+    }
+  }
+
   const id = randomUUID();
   const plaintext = `nsk_${options.kind === "agent" ? "agent_" : ""}${randomBytes(24).toString("base64url")}`;
   await db.query(
@@ -41,7 +76,7 @@ export async function createApiKey(
       id,
       orgId,
       hashKey(plaintext),
-      options.kind ?? "upload",
+      kind,
       options.label ?? "",
       options.monthlyBudgetCredits ?? null,
       options.ratePerMinute ?? null,
@@ -63,6 +98,94 @@ export async function findApiKey(db: Db, plaintext: string): Promise<ApiKeyRecor
   return key;
 }
 
-export async function revokeApiKey(db: Db, id: string): Promise<void> {
-  await db.query("UPDATE api_keys SET revoked_at = now() WHERE id = $1", [id]);
+/** One row of the operator's key list. Deliberately without `key_hash`. */
+export interface ApiKeySummary {
+  id: string;
+  org_id: string;
+  org_name: string;
+  kind: "upload" | "agent";
+  label: string;
+  monthly_budget_credits: number | null;
+  rate_per_minute: number | null;
+  created_at: string;
+  revoked_at: string | null;
+  revoked_by: string;
+  revoked_reason: string;
+}
+
+/**
+ * Lists keys for the operator surface.
+ *
+ * **`key_hash` is not selected, and that is not squeamishness.** The hash is
+ * the only stored form of the credential; a list that carries it puts it into a
+ * server-rendered page, a React payload, and any log that captures either. The
+ * plaintext is shown exactly once at creation and never again — this keeps that
+ * true. Nothing on the revoke path needs it: revocation is by row id.
+ */
+export async function listApiKeys(db: Db, options: { orgId?: string; includeRevoked?: boolean } = {}): Promise<ApiKeySummary[]> {
+  const conditions = ["1 = 1"];
+  const params: unknown[] = [];
+  if (options.orgId) {
+    params.push(options.orgId);
+    conditions.push(`k.org_id = $${params.length}`);
+  }
+  if (!options.includeRevoked) {
+    conditions.push("k.revoked_at IS NULL");
+  }
+  const result = await db.query<ApiKeySummary>(
+    `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.label,
+            k.monthly_budget_credits, k.rate_per_minute,
+            k.created_at, k.revoked_at, k.revoked_by, k.revoked_reason
+       FROM api_keys k JOIN orgs o ON o.id = k.org_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY k.created_at DESC`,
+    params
+  );
+  return result.rows;
+}
+
+/**
+ * Withdraws a key, with a name against it.
+ *
+ * **It takes effect on the next request, not eventually.** `findApiKey` reads
+ * the row and checks `revoked_at` on every call and there is no cache in front
+ * of it, so there is no window in which a revoked key still authenticates.
+ *
+ * **What revocation does not reach:** presigned upload URLs already issued to
+ * that key. They are bearer credentials signed by storage, valid for their
+ * remaining TTL (two minutes), and nothing we hold can withdraw them. The
+ * bytes they can still write are harmless — committing the run needs the key,
+ * which no longer works, so the objects are never published and the abandoned
+ * sweep deletes them. Worth knowing during an incident rather than discovering.
+ *
+ * Idempotent: revoking an already-revoked key keeps the original time, actor
+ * and reason. The first answer to "who pulled this and why" is the true one,
+ * and a second click must not overwrite it.
+ */
+export async function revokeApiKey(
+  db: Db,
+  id: string,
+  options: { actor: string; reason?: string }
+): Promise<{ revoked: boolean; alreadyRevoked: boolean }> {
+  const actor = options.actor.trim();
+  if (actor.length === 0) {
+    // The database enforces this too. Refusing here as well means the operator
+    // gets a sentence rather than a constraint violation.
+    throw new Error("revoking a key needs an actor — record who is withdrawing it");
+  }
+  const result = await db.query<{ id: string }>(
+    `UPDATE api_keys
+        SET revoked_at = now(), revoked_by = $2, revoked_reason = $3
+      WHERE id = $1 AND revoked_at IS NULL
+      RETURNING id`,
+    [id, actor, (options.reason ?? "").trim()]
+  );
+  if (result.rows.length > 0) {
+    return { revoked: true, alreadyRevoked: false };
+  }
+  const exists = await db.query<{ id: string }>("SELECT id FROM api_keys WHERE id = $1", [id]);
+  if (exists.rows.length === 0) {
+    throw new Error(`no such API key: ${id}`);
+  }
+  return { revoked: false, alreadyRevoked: true };
 }

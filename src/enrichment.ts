@@ -64,7 +64,7 @@ export async function buildEnrichment(
   const trend = (
     await db.query<TrendRow>(
       `SELECT r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at
-       FROM frame_stats fs JOIN runs r ON r.id = fs.run_id
+       FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
        WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3
        ORDER BY fs.created_at DESC, fs.id DESC
        LIMIT $4`,
@@ -78,7 +78,7 @@ export async function buildEnrichment(
   const first = (
     await db.query<{ commit_sha: string }>(
       `SELECT r.commit_sha
-       FROM frame_stats fs JOIN runs r ON r.id = fs.run_id
+       FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
        WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3 AND fs.flagged = true
        ORDER BY fs.created_at ASC, fs.id ASC
        LIMIT 1`,
@@ -88,8 +88,8 @@ export async function buildEnrichment(
 
   const flaggedCount = (
     await db.query<{ n: string | number }>(
-      `SELECT COUNT(*) AS n FROM frame_stats
-       WHERE org_id = $1 AND repo_id = $2 AND frame = $3 AND flagged = true`,
+      `SELECT COUNT(*) AS n FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
+       WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3 AND fs.flagged = true`,
       [args.orgId, args.repoId, args.frame]
     )
   ).rows[0];

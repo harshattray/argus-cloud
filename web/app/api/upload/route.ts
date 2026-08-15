@@ -1,12 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../../lib/db";
+import { getStorage } from "../../../lib/storage";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
+import { declareResponse } from "argus-cloud/uploadHttp.js";
+import type { DeclaredArtifact } from "argus-cloud/artifactUploads.js";
 
 /**
- * Upload API (Stage 4 item 2, minimal viable): summary.json v2 + run
- * metadata, key-gated, size-capped, schema-version tolerant. Artifacts
- * (report HTML, screenshots) land with the R2 integration; the summary is
- * what trends, reports, and Phase D enrichment run on.
+ * Upload API. Two shapes through one endpoint, decided by whether the body
+ * carries `artifacts`.
+ *
+ * **Without `artifacts`** — the original summary-only upload (Stage 4 item 2):
+ * summary.json v2 plus run metadata, key-gated, size-capped, schema-version
+ * tolerant. Still supported because a CLI that predates the artifact pipeline
+ * must keep working; a client that has nothing to transfer has nothing to wait
+ * for, and its run is complete on arrival.
+ *
+ * **With `artifacts`** — phase 1 of the three-phase upload (BuildV5 G2): the
+ * client declares each file's size and hash, and gets back presigned PUTs plus
+ * a run id to commit against. Nothing is visible until
+ * `POST /api/upload/{runId}/commit` verifies what actually arrived.
+ *
+ * One endpoint rather than two because the client's question is the same —
+ * "here is a run, take it" — and a second path would be a second place for the
+ * entitlement check to be forgotten.
  */
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -15,6 +31,7 @@ interface UploadBody {
   repo?: string;
   commitSha?: string;
   branch?: string;
+  artifacts?: DeclaredArtifact[];
   summary?: {
     schemaVersion?: number;
     threshold?: number;
@@ -59,11 +76,25 @@ export async function POST(request: Request): Promise<Response> {
   if (!repoName || typeof summary !== "object" || summary === null) {
     return Response.json({ error: "repo and summary are required" }, { status: 400 });
   }
+  const orgId = key.org_id;
+
+  // The declare path. Entitlement, quota, reservation and the status mapping
+  // all live in `declareResponse` — this route only carries the result out.
+  if (Array.isArray(body.artifacts) && body.artifacts.length > 0) {
+    const result = await declareResponse(db, await getStorage(), orgId, {
+      repo: repoName,
+      commitSha: body.commitSha,
+      branch: body.branch,
+      summary,
+      artifacts: body.artifacts,
+    });
+    return Response.json(result.body, { status: result.status });
+  }
+
   // Schema-version tolerant: v2 is what we understand; newer majors are
   // accepted and stored verbatim, but frames we can't read produce no stats.
   const frames = Array.isArray(summary.frames) ? summary.frames : [];
 
-  const orgId = key.org_id;
   const runId = randomUUID();
   await db.transaction(async (tx) => {
     const repoRow = await tx.query<{ id: string }>(
@@ -75,8 +106,12 @@ export async function POST(request: Request): Promise<Response> {
       repoId = randomUUID();
       await tx.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, $3)", [repoId, orgId, repoName]);
     }
+    // `state` is explicit because migration 017 flipped the default to
+    // 'pending' so that a forgotten commit hides a run instead of showing a
+    // broken one. This path carries no artifacts and has nothing to wait for,
+    // so it is complete on arrival — but it now has to say so.
     await tx.query(
-      "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary) VALUES ($1,$2,$3,$4,$5,$6)",
+      "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary, state) VALUES ($1,$2,$3,$4,$5,$6,'committed')",
       [runId, orgId, repoId, body.commitSha ?? "", body.branch ?? "", JSON.stringify(summary)]
     );
     for (const frame of frames) {

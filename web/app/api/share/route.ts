@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "runId is required" }, { status: 400 });
   }
   const run = (
-    await db.query<{ id: string }>("SELECT id FROM runs WHERE id = $1 AND org_id = $2", [body.runId, key.org_id])
+    await db.query<{ id: string }>("SELECT id FROM runs WHERE id = $1 AND org_id = $2 AND state = 'committed'", [body.runId, key.org_id])
   ).rows[0];
   if (!run) {
     return Response.json({ error: "run not found" }, { status: 404 });

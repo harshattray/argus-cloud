@@ -140,6 +140,9 @@ export default async function LimitsPage() {
             totals only — no request contents. All times UTC.{" "}
             <a href="/admin/waitlist" className="underline decoration-black/20 underline-offset-2 hover:text-clay">
               Waitlist
+            </a>{" "}
+            <a href="/admin/keys" className="underline decoration-black/20 underline-offset-2 hover:text-clay">
+              API keys
             </a>
           </p>
         </header>

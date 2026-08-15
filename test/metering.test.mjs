@@ -249,7 +249,7 @@ const baseReq = (orgId, over = {}) => ({
   // The product is unaffected: uploads/runs tables keep working.
   await db.query("INSERT INTO repos (id, org_id, name) VALUES ('r-c6', $1, 'web')", [org]);
   await db.query(
-    "INSERT INTO runs (id, org_id, repo_id, summary) VALUES ('run-c6', $1, 'r-c6', '{}'::jsonb)", [org]);
+    "INSERT INTO runs (id, org_id, repo_id, summary, state) VALUES ('run-c6', $1, 'r-c6', '{}'::jsonb, 'committed')", [org]);
   const run = await db.query("SELECT id FROM runs WHERE id = 'run-c6'");
   check("C6.3", run.rows.length === 1 && alerts.length === 1,
     "uploads/reports/diffs unaffected; alert fired exactly once");
