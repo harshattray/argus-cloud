@@ -32,18 +32,12 @@ const nextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "pg", "argus-cloud"],
   async headers() {
     return [
-      {
-        // Report pages render model output (escaped) — sandbox them hard
-        // (Stage 4 item 3: sandboxing CSP; Phase E3 surface).
-        source: "/r/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
-          },
-        ],
-      },
+      // The report tree's CSP is issued per request in `middleware.ts`, not
+      // here. It carries a nonce, and a nonce cannot exist in a static header —
+      // which is why the policy that used to sit here rendered /r/ blank in
+      // production: it blocked the inline scripts the App Router streams page
+      // content through. Two sources for one policy would be worse than either,
+      // so this deliberately has none.
       {
         source: "/:path*",
         headers: [

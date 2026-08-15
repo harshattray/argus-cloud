@@ -1243,7 +1243,7 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **593 checks on PGlite, 621 against a real Postgres server**, across
+green: **594 checks on PGlite, 621 against a real Postgres server**, across
 twenty suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
@@ -1279,7 +1279,7 @@ post-crop COGS.
 Migrations 015-018, `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`,
 `/api/blob`, both upload endpoints, `/admin/keys`, and `norma-scope upload` in
 Argus (branch `feat/cloud-upload`, `norma-scope@0.8.0`, 107 checks). Cloud side:
-**593 checks on PGlite, 621 against a real Postgres server**.
+**594 checks on PGlite, 621 against a real Postgres server**.
 
 **Proven against a real run, not only against fixtures.** The portfolio capture
 in `norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots — was
@@ -1371,7 +1371,7 @@ one of them sat where no test could see it, which is the point worth keeping:
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | **`/r/` is a blank page in production** | The CSP sets `default-src 'none'` and `script-src 'self'`, and Next delivers page content through inline scripts. Proven against a real production build: the body is empty. The correct fix is a per-request nonce, not `unsafe-inline` — that page exists to sandbox model output. **This blocks shipping the report page at all.** |
+| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
 | 2 | `plan` and `subscription_status` can both say `lapsed` | Migration 016 followed G2c literally; 012 already tracks lapse. Two columns for one fact. Resolve before any code branches on either — most likely by letting `plan` mean only the tier. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
 | 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |

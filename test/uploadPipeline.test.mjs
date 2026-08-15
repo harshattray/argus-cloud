@@ -756,6 +756,29 @@ check(
   "a skipped frame contributes no row, so it cannot pollute a trend"
 );
 
+// ---------------------------------------------------------------------------
+// V5 — the report tree's CSP carries a nonce and lives in exactly one place
+// ---------------------------------------------------------------------------
+//
+// `/r/` rendered blank in production for as long as the policy was static:
+// `script-src 'self'` blocks the inline scripts the App Router streams page
+// content through, so the body arrived empty. A nonce fixes that without
+// weakening anything, but only while three things stay true — and none of them
+// is visible to a test that does not render a page, which is why this reads the
+// source.
+//
+// The tempting wrong fix is `'unsafe-inline'`. It would make the page render
+// and delete the reason the policy is strict: these pages display model output
+// and uploaded frame labels.
+const middleware = await readFile(path.resolve(HERE, "..", "web/middleware.ts"), "utf-8");
+const nextConfig = await readFile(path.resolve(HERE, "..", "web/next.config.mjs"), "utf-8");
+const cspIssues = [];
+if (!/nonce-\$\{nonce\}/.test(middleware)) cspIssues.push("middleware does not issue a nonce");
+if (!/font-src 'self'/.test(middleware)) cspIssues.push("font-src missing — self-hosted fonts blocked");
+if (/script-src[^;`]*'unsafe-inline'/.test(middleware)) cspIssues.push("script-src allows unsafe-inline");
+if (/source: "\/r\/:path\*"/.test(nextConfig)) cspIssues.push("a second, static /r/ policy is back in next.config");
+check("V5", cspIssues.length === 0, `the /r/ policy is nonce-based, complete, and singular (${cspIssues.join("; ") || "all four hold"})`);
+
 await rm(ROOT, { recursive: true, force: true });
 for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg, statsOrg]) {
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
