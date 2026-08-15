@@ -1079,7 +1079,7 @@ run: scheduling is **deferred to the first paying organization** (decision
 backups cover it. That is a decision, not a blocker — `PATHWAYS.md` Pathway 1
 item 10 carries the switch-on checklist.
 
-**Suite:** 594 checks green on PGlite, **622 against a real Postgres server**,
+**Suite:** 598 checks green on PGlite, **626 against a real Postgres server**,
 across twenty suites — run 2026-08-15.
 
 ---
@@ -1613,7 +1613,8 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 | Licence: **Apache-2.0** for the client (CLI, MCP, Action); `argus-cloud` stays closed | 2026-07-29 | FUTURENORMA §5 item 11 |
 | Brand: **Normascope** for both tiers; paid tier is **Normascope Cloud**, never a second brand | — | RebrandV1 |
 | Payments: **merchant of record**, not Stripe (India constraint). **Paddle chosen** | 2026-08-03 | — |
-| **No trial.** `plan` is `free \| team \| lapsed`; the free CLI is the trial; risk reversal is a 30-day money-back guarantee | 2026-08-03 | BuildV5 §G2c |
+| **No trial.** The free CLI is the trial; risk reversal is a 30-day money-back guarantee | 2026-08-03 | PATHWAYS §2 |
+| **`plan` is `free \| team`** — the commercial tier. `lapsed` was moved to `subscription_status` on 2026-08-15; see the row below | 2026-08-15 | `migrations/019` |
 | **Free plans cannot upload anything** — no key, no presigned URL, no bypass flag | 2026-08-03 | BuildV5 §G2c |
 | Trial deferred as a later experiment with a settled design (no card, one per GitHub org, ~15-review grant) | 2026-08-03 | BuildV5 §G2c |
 | Stack: Next.js on Vercel | — | CHECKPOINT |
@@ -1622,6 +1623,9 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 | **One paid tier at $59/mo**, no ladder, no lite tier; packs need a live subscription | 2026-08-05 | CLAUDE.md, `migrations/007` |
 | `/pitch` and `/admin` use **separate passwords** — the pitch phrase is expected to leak | 2026-08-10 | §4c, `web/lib/gate.ts` |
 | **The nightly backup schedule is deferred to the first paying organization**, not blocked. Hand backups cover the waitlist until then | 2026-08-15 | `PATHWAYS.md` Pathway 1 item 10 |
+| **`plan` is the commercial tier (`free \| team`); `subscription_status` owns the lifecycle.** Entitlement is both: an entitled tier and a status that permits work. `past_due` and `none` do not block — grace is not a lockout | 2026-08-15 | `migrations/019`, `src/plans.ts` |
+| **Quota values are launch assumptions pending traffic data**, deployed deliberately. They live in a table so changing one is an UPDATE | 2026-08-15 | `migrations/016` seed, `migrations/019` comment |
+| **Credits stay at 5 per analysis / 8 deep.** Lowering them needs either a validated cheaper model or a deliberate margin decision; 3 credits on Sonnet 5 is 26% at worst case, under the 50% floor | 2026-08-15 | FUTURENORMA §3, `providerBudget.ts` |
 | **Local, staging and production are separate.** `web/.env.local` holds no production credential; production lives in Vercel; staging is a Neon branch behind Preview deploys | 2026-08-15 | `scripts/schema-drift.mjs`, `scripts/seed-dev.mjs` |
 | **The `/r/` CSP uses a per-request nonce.** `'unsafe-inline'` is refused permanently — that tree renders model output; hashes are impossible because the flight payload is per-request | 2026-08-15 | §3m, `web/middleware.ts` |
 | **Credit prices are derived, never chosen.** Analysis 5, deep 8, from worst-case model cost with a 50% margin floor. Any figure shown to a customer is rendered from that derivation, never typed | 2026-08-10 | FUTURENORMA §3, §3m |
@@ -1651,8 +1655,9 @@ this section and are deliberately absent.
 | The R2 leg has never carried a real artifact | **Open.** The whole upload pipeline is proven against the filesystem driver only. Step 5 requires the G suite re-run against real R2 — §3l |
 | `sweep-uploads.mjs` is built and unscheduled | **Open.** Without it an abandoned declaration holds a byte reservation nothing else releases. Must run before customers upload — §3l |
 | `style-src` still allows `'unsafe-inline'` on the report tree | **Open, and measured.** Removing it leaves the page unstyled: twelve elements carry inline `style` attributes. Closes when Phase H rebuilds that page with classes — §3m |
-| `plan` and `subscription_status` can both say `lapsed` | **Open.** Two columns for one fact since migration 016. Resolve before any code branches on either |
+| ~~`plan` and `subscription_status` can both say `lapsed`~~ | **Closed 2026-08-15** (migration 019). `plan` is the tier, `subscription_status` the lifecycle. Closing it also fixed a live gap: nothing outside `webhooks.ts` read `subscription_status`, so a lapsed organization kept uploading |
 | 500 included credits buy 100 analyses, not 500 | **Open — needs Harsha's decision.** A consequence of the 2026-08-10 derived pricing. The lever is the model, and §8's substitution process governs any cutover |
+| Per-plan quota values are unbacked by any authoritative doc | **Open — needs Harsha's decision.** `plan_limits` is seeded with 200 runs/day, 600 artifacts/run, 250 MB per run, 50 GB stored, taken from `BuildV5.md` §G2c — implementation detail, not authority. PATHWAYS settles the *dimensions* and FUTURENORMA §3 owns the plan contract; neither states these values. They are a table row, changeable with an UPDATE |
 | API keys can be withdrawn but not rotated | **Open.** `/admin/keys` revokes with an actor and a reason; issuing a replacement is still a script |
 | Retention sweep unbuilt | **Closed** (§3j). Run, repo and org deletion remove objects as well as rows; the 90-day sweep runs dry by default; deletion is claimed, batched and resumable, proven across 20 separate processes |
 | Deleting an org deletes its books | **Open — needs a decision, not code.** `usage_events`, `credit_grants` and `subscription_periods` cascade from `orgs`, so an erasure rewrites the reconciliation history for every month that customer traded in. The receipt now keeps the aggregate totals (§3j); whether anonymised per-event records must also be retained for the accounting period is Harsha's call |

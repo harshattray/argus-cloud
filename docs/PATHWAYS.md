@@ -1243,7 +1243,7 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **594 checks on PGlite, 622 against a real Postgres server**, across
+green: **598 checks on PGlite, 626 against a real Postgres server**, across
 twenty suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
@@ -1279,7 +1279,7 @@ post-crop COGS.
 Migrations 015-018, `artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`,
 `/api/blob`, both upload endpoints, `/admin/keys`, and `norma-scope upload` in
 Argus (branch `feat/cloud-upload`, `norma-scope@0.8.0`, 107 checks). Cloud side:
-**594 checks on PGlite, 622 against a real Postgres server**.
+**598 checks on PGlite, 626 against a real Postgres server**.
 
 **Proven against a real run, not only against fixtures.** The portfolio capture
 in `norma-bridge-usecase/` — three frames, 2.1 MB of genuine screenshots — was
@@ -1290,9 +1290,19 @@ stored, not re-sent), a failed transfer left its reservation held until the
 sweeper reclaimed all 300,866 bytes, and `deleteOrg` afterwards removed 9
 objects and 1,083,850 bytes and left a receipt.
 
-Real payload sizes, for the quota conversation: **0.30 MB** for the default
-`flagged` mode and **0.78 MB** for all three frames, against a 250 MB per-run
-limit.
+Real payload sizes, measured: **0.30 MB** for the default `flagged` mode and
+**0.78 MB** for all three frames.
+
+**The per-plan quota numbers are not settled and this document does not set
+them.** `plan_limits` is seeded with 200 runs/day, 600 artifacts/run, 250 MB
+per run and 50 GB stored — figures taken from `BuildV5.md` §G2c, which is
+implementation detail and not authority. Neither FUTURENORMA nor this document
+states them. The dimensions are settled here ("runs, artifacts/run, bytes/run,
+total storage, and retention"; the service owns the policy); **the values are
+owed to FUTURENORMA §3's plan contract and are Harsha's call**, alongside the
+open question of what 500 credits should buy. Until then they are configuration
+that can be changed with an UPDATE, which is the point of holding them in a
+table.
 
 Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
 path, and the post-crop calibration.
@@ -1372,7 +1382,7 @@ one of them sat where no test could see it, which is the point worth keeping:
 | # | Item | Why it matters |
 |---|---|---|
 | 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
-| 2 | `plan` and `subscription_status` can both say `lapsed` | Migration 016 followed G2c literally; 012 already tracks lapse. Two columns for one fact. Resolve before any code branches on either — most likely by letting `plan` mean only the tier. |
+| 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
 | 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
 | 5 | The R2 leg has never carried a real artifact | Step 5 requires the G suite re-run against real R2. |
@@ -2262,9 +2272,21 @@ covering upload, hosted reports, hosted explain, active repositories, daily
 runs, artifacts/run, bytes/run, total storage, and retention. Each route asks
 the service for an entitlement; the service owns the policy.
 
-The launch policy remains `free|team|lapsed` until a plan ladder is approved.
-Keep Growth/Team pricing as configuration and documentation, not a half-built
-billing branch.
+The launch policy is `free|team` until a plan ladder is approved. Keep
+Growth/Team pricing as configuration and documentation, not a half-built billing
+branch.
+
+> **Changed 2026-08-15 (migration 019), by decision.** This read
+> `free|team|lapsed`. `lapsed` moved to `subscription_status`, where the
+> payment-failure section above already models it alongside `past_due` and
+> `refunded` — neither of which a three-valued tier column could express.
+> `plan` now means only what the organization bought; the status means what
+> happened to it. Entitlement asks both.
+>
+> The duplicate was also doing no work: the `lapsed` row in `plan_limits`
+> differed from `free` on one column that is read only after a gate both plans
+> fail. And removing it closed a live gap — `subscription_status` was written by
+> the webhook and read by nothing, so a lapsed organization kept uploading.
 
 #### 5C. Add customer account and deletion UI
 

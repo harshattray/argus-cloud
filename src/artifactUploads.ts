@@ -114,6 +114,23 @@ async function limitsFor(db: Db, orgId: string): Promise<PlanLimits> {
   }
 }
 
+/**
+ * Why an organization may not upload, in words that name the actual fix.
+ *
+ * The plan and the subscription fail for different reasons and the customer's
+ * next action differs: one subscribes, the other updates a card. A single
+ * message covering both would send half of them to the wrong place.
+ */
+function refusalFor(limits: PlanLimits): string {
+  if (limits.subscriptionStatus === "lapsed") {
+    return `this organization's subscription has lapsed, so new uploads are paused. Existing reports and history stay readable; renewing restores uploads.`;
+  }
+  if (limits.subscriptionStatus === "refunded") {
+    return `this organization's subscription was refunded, so uploads are closed. Existing reports and history stay readable.`;
+  }
+  return `the ${limits.plan} plan cannot upload. The CLI stays fully local on this plan; subscribe to Normascope Cloud to keep history and hosted reports.`;
+}
+
 // ---------------------------------------------------------------------------
 // Byte accounting — the only writers of org_storage
 // ---------------------------------------------------------------------------
@@ -294,12 +311,12 @@ export async function declareUpload(
     const limits = await limitsFor(tx, orgId);
 
     // Entitlement first, and never inferred from a number being zero.
-    if (!limits.canUpload) {
-      throw new UploadRefused(
-        "not_entitled",
-        `the ${limits.plan} plan cannot upload. The CLI stays fully local on this plan; ` +
-          `subscribe to Normascope Cloud to keep history and hosted reports.`
-      );
+    if (!limits.uploadAllowed) {
+      // Two different refusals, because they send a customer to two different
+      // places: a free plan needs a subscription, a lapsed one needs a card
+      // fixed. Collapsing them into "not entitled" would tell a paying customer
+      // whose payment failed to go and buy the thing they already bought.
+      throw new UploadRefused("not_entitled", refusalFor(limits));
     }
 
     validate(artifacts, limits);
@@ -562,11 +579,10 @@ export async function commitUpload(
   // `sweepAbandonedUploads`, which releases the reservation on its own schedule
   // — a refusal is not a verification failure and must not behave like one.
   const limits = await limitsFor(db, orgId);
-  if (!limits.canUpload) {
+  if (!limits.uploadAllowed) {
     throw new UploadRefused(
       "not_entitled",
-      `the ${limits.plan} plan cannot publish new runs. This upload was started on a plan that could; ` +
-        `everything already uploaded stays readable.`
+      `${refusalFor(limits)} This upload was started when it was allowed; everything already uploaded stays readable.`
     );
   }
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Fill a local database with enough to look at — an organization on each plan,
+// Fill a local database with enough to look at — an organization on each plan
+// and one whose subscription has lapsed,
 // an upload key, a repository, and a couple of runs.
 //
 //   npm run seed:dev                                   # PGlite, the dev default
@@ -36,7 +37,7 @@ const { createApiKey } = await import(path.join(DIST, "apiKeys.js"));
 const db = await createDb();
 await migrate(db);
 
-const plans = ["team", "free", "lapsed"];
+const plans = ["team", "free"];
 const made = [];
 
 for (const plan of plans) {
@@ -67,14 +68,26 @@ if (keyCount.rows[0].n === 0) {
   console.log(`\n${team.name} already has ${keyCount.rows[0].n} key(s) — /admin/keys lists them.`);
 }
 
-for (const plan of ["free", "lapsed"]) {
-  const org = made.find((o) => o.plan === plan);
-  try {
-    await createApiKey(db, org.id, { kind: "upload", label: "should-not-exist" });
-    console.log(`  ⚠ ${org.name} was issued an upload key — entitlement is not being enforced`);
-  } catch {
-    console.log(`  ${org.name}: refused an upload key, as expected`);
-  }
+const free = made.find((o) => o.plan === "free");
+try {
+  await createApiKey(db, free.id, { kind: "upload", label: "should-not-exist" });
+  console.log(`  ⚠ ${free.name} was issued an upload key — entitlement is not being enforced`);
+} catch {
+  console.log(`  ${free.name}: refused an upload key, as expected`);
+}
+
+// A lapsed subscription is a *status*, not a plan (migration 019). The
+// organization keeps the tier it bought; the lapse is what happened to the
+// subscription. Seeded so the difference is visible locally: dev-lapsed holds a
+// team plan and still cannot upload.
+const lapsedId = randomUUID();
+const lapsedExists = await db.query("SELECT id FROM orgs WHERE name = $1", ["dev-lapsed"]);
+if (lapsedExists.rows.length === 0) {
+  await db.query(
+    "INSERT INTO orgs (id, name, plan, subscription_status, subscription_status_at) VALUES ($1, 'dev-lapsed', 'team', 'lapsed', now())",
+    [lapsedId]
+  );
+  console.log("  dev-lapsed  : team plan, subscription lapsed — uploads refused, data readable");
 }
 
 const repoId = randomUUID();
