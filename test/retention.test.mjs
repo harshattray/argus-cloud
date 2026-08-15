@@ -633,6 +633,86 @@ if (REAL_PG) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// T10 — deletion gives the organization its storage quota back
+// ---------------------------------------------------------------------------
+//
+// `org_storage.bytes_stored` is what the upload path checks a new run against.
+// Before this, it only ever rose: deleting a run freed the objects and not the
+// quota, so an organization that deleted everything still read as full and
+// would eventually be refused an upload into an empty account.
+{
+  const orgId = await makeOrg();
+  const repoId = await makeRepo(orgId);
+  const runId = await makeRun(orgId, repoId);
+
+  const contents = ["T10 one", "T10 two"];
+  const expected = contents.reduce((n, c) => n + bytes(c).byteLength, 0);
+  for (const c of contents) {
+    await putArtifact(orgId, runId, c);
+  }
+  // The counters the upload path would have written when these committed.
+  await db.query("INSERT INTO org_storage (org_id, bytes_stored) VALUES ($1, $2)", [orgId, expected]);
+
+  await deleteRun(db, storage, runId);
+  const after = await db.query("SELECT bytes_stored FROM org_storage WHERE org_id = $1", [orgId]);
+  check(
+    "T10.1",
+    Number(after.rows[0].bytes_stored) === 0,
+    `deleting the run returned all ${expected} bytes to the organization's quota (${after.rows[0].bytes_stored} left)`
+  );
+}
+
+// T10.2 — a deduplicated object is released once, when the last row goes.
+//
+// This is the subtlety the release has to get right. `bytes_stored` counts
+// objects, not rows: a second run declaring a hash the organization already
+// holds reserves and settles nothing. Releasing per row would subtract bytes
+// that were never added, and an unchanged baseline shared across runs would
+// drive the count to zero while the object is still there.
+{
+  const orgId = await makeOrg();
+  const repoId = await makeRepo(orgId);
+  const runA = await makeRun(orgId, repoId);
+  const runB = await makeRun(orgId, repoId);
+
+  const shared = "T10 unchanged baseline";
+  const size = bytes(shared).byteLength;
+  await putArtifact(orgId, runA, shared);
+  await putArtifact(orgId, runB, shared);
+  // One object, so the upload path counted it once.
+  await db.query("INSERT INTO org_storage (org_id, bytes_stored) VALUES ($1, $2)", [orgId, size]);
+
+  await deleteRun(db, storage, runA);
+  const mid = Number(
+    (await db.query("SELECT bytes_stored FROM org_storage WHERE org_id = $1", [orgId])).rows[0].bytes_stored
+  );
+  await deleteRun(db, storage, runB);
+  const end = Number(
+    (await db.query("SELECT bytes_stored FROM org_storage WHERE org_id = $1", [orgId])).rows[0].bytes_stored
+  );
+
+  check("T10.2", mid === size, `the first run's deletion releases nothing — the object is still shared (${mid})`);
+  check("T10.3", end === 0, `the last run's deletion releases it once (${end})`);
+}
+
+// T10.4 — a dry run reports and changes nothing, quota included.
+{
+  const orgId = await makeOrg();
+  const repoId = await makeRepo(orgId);
+  const runId = await makeRun(orgId, repoId);
+  const size = bytes("T10 dry").byteLength;
+  await putArtifact(orgId, runId, "T10 dry");
+  await db.query("INSERT INTO org_storage (org_id, bytes_stored) VALUES ($1, $2)", [orgId, size]);
+
+  const jobId = await enqueueDeletion(db, { scope: "run", targetId: runId, orgId, actor: "T10", dryRun: true });
+  await runDeletionJob(db, storage, jobId);
+  const after = Number(
+    (await db.query("SELECT bytes_stored FROM org_storage WHERE org_id = $1", [orgId])).rows[0].bytes_stored
+  );
+  check("T10.4", after === size, `a dry run leaves the quota alone (${after} of ${size})`);
+}
+
 await rm(STORAGE_ROOT, { recursive: true, force: true });
 await db.close();
 

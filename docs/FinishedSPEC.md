@@ -1079,8 +1079,8 @@ run: scheduling is **deferred to the first paying organization** (decision
 backups cover it. That is a decision, not a blocker — `PATHWAYS.md` Pathway 1
 item 10 carries the switch-on checklist.
 
-**Suite:** 532 checks green on PGlite, **560 against a real Postgres server**,
-across eighteen suites — run 2026-08-15.
+**Suite:** 575 checks green on PGlite, **603 against a real Postgres server**,
+across nineteen suites — run 2026-08-15.
 
 ---
 

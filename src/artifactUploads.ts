@@ -261,7 +261,7 @@ function validate(artifacts: DeclaredArtifact[], limits: PlanLimits): void {
     if (!Number.isInteger(a.bytes) || a.bytes <= 0) {
       throw new UploadRefused("malformed", `artifact ${a.frame}/${a.kind}: bytes must be a positive integer`);
     }
-    const key = `${a.frame} ${a.kind}`;
+    const key = `${a.frame}\0${a.kind}`;
     if (seen.has(key)) {
       throw new UploadRefused("malformed", `artifact ${a.frame}/${a.kind} declared twice in one run`);
     }

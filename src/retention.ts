@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import type { Storage } from "./storage.js";
 import { orgPrefix } from "./storage/keys.js";
+import { forgetStoredBytes } from "./artifactUploads.js";
 
 /**
  * Retention and deletion (PATHWAYS.md Pathway 1 item 9 / §10.3 "1D" second
@@ -345,6 +346,26 @@ async function deleteRunArtifacts(
         }
         ctx.counts.objects += 1;
         ctx.counts.bytes += Number(artifact.bytes);
+
+        // Rule 5, and the note that used to sit at the bottom of this loop:
+        // give the organization its quota back.
+        //
+        // **Only in this branch, and that is the whole subtlety.**
+        // `org_storage.bytes_stored` counts *objects*, not rows: a declaration
+        // whose hash the organization already holds is committed without
+        // reserving or settling anything, so it never added to the total.
+        // Releasing per row would therefore subtract bytes that were never
+        // added, and an organization that uploaded one baseline across fifty
+        // runs would end up at zero — or, with the floor, simply wrong.
+        // Releasing when the object goes matches how it arrived.
+        //
+        // Without this, `bytes_stored` only ever rises. Deleting a run frees
+        // the objects and not the quota, and an organization that deleted
+        // everything would still read as full and eventually be unable to
+        // upload into an empty account.
+        if (!job.dry_run) {
+          await forgetStoredBytes(db, artifact.org_id, Number(artifact.bytes));
+        }
       }
       if (!job.dry_run) {
         await db.query("DELETE FROM run_artifacts WHERE id = $1", [artifact.id]);
@@ -352,8 +373,6 @@ async function deleteRunArtifacts(
       }
       at = artifact.id;
       used += 1;
-      // Pathway 2 note: when `org_storage` byte accounting lands, the release
-      // belongs here, in the same statement path that removes the row.
     }
   }
 }
@@ -386,7 +405,7 @@ async function deleteRunWork(
 
 /**
  * Walks a repo's runs oldest first, deleting each completely before starting
- * the next. The cursor is `{runId} {artifactId}` — a run half-finished
+ * the next. The cursor is `{runId}\0{artifactId}` — a run half-finished
  * when the budget ran out resumes inside itself rather than from its first
  * artifact, which on a retry loop would mean never finishing a large run.
  */
@@ -397,7 +416,7 @@ async function deleteRunsOf(
   ctx: WorkContext,
   nextRun: (afterRunId: string) => Promise<string | null>
 ): Promise<{ done: boolean; cursor: string }> {
-  const [startRun = "", startArtifact = ""] = ctx.cursor.split(" ");
+  const [startRun = "", startArtifact = ""] = ctx.cursor.split("\0");
   let runId: string | null = startRun || (await nextRun(""));
   let artifactCursor = startArtifact;
   let used = 0;
@@ -414,7 +433,7 @@ async function deleteRunsOf(
     );
     used += progress.used;
     if (progress.remaining) {
-      return { done: false, cursor: `${runId} ${progress.cursor}` };
+      return { done: false, cursor: `${runId}\0${progress.cursor}` };
     }
     if (!job.dry_run) {
       const gone = await db.query<{ id: string }>("DELETE FROM runs WHERE id = $1 RETURNING id", [runId]);
@@ -426,7 +445,7 @@ async function deleteRunsOf(
     // this one" has to mean by id, not "the first one left".
     runId = await nextRun(finishedRun);
     if (used >= ctx.batchSize && runId) {
-      return { done: false, cursor: `${runId} ` };
+      return { done: false, cursor: `${runId}\0` };
     }
   }
   return { done: true, cursor: "" };

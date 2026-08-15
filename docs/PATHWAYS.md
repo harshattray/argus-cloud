@@ -1243,8 +1243,8 @@ reconciliation fixtures, restore.
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
 
 **Gate state — 2026-08-15.** All ten items are implemented and their suites are
-green: **532 checks on PGlite, 560 against a real Postgres server**, across
-eighteen suites, plus `npm run verify` (types for both packages, the web build,
+green: **575 checks on PGlite, 603 against a real Postgres server**, across
+nineteen suites, plus `npm run verify` (types for both packages, the web build,
 the dependency audit). Three things remain, and none is a logic gap:
 
 - the **Paddle sandbox loop** (item 8) — `Blocked` on an account, and Phase 7's
@@ -1275,11 +1275,29 @@ abandoned uploads, duplicate artifacts, crop grounding, secret scanning, COGS.
 **Gate:** findings reference actual image regions and all pricing uses measured
 post-crop COGS.
 
-**Progress — 2026-08-15. The schema this pathway needs is in; no code yet.**
-Migrations 015 and 016, 21 checks across two new suites (`artifactUploads`,
-`planLimits`). Nothing uploads anything, and `norma-scope` still has no `upload`
-command, so the goal above is untouched — a paying customer's images have still
-never left their machine.
+**Progress — 2026-08-15. Items 1-6 are built end to end.** Migrations 015-017,
+`artifactUploads.ts`, `plans.ts`, `uploadHttp.ts`, both endpoints, and
+`norma-scope upload` in Argus (branch `feat/cloud-upload`, 20 checks). Cloud
+side: **575 checks on PGlite, 603 against a real Postgres server**.
+
+Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
+path, and the post-crop calibration.
+
+**Not yet true in production:** nothing has been deployed and the R2 leg has
+never carried a real artifact. The pipeline is proven against the filesystem
+driver only.
+
+**Two things must be scheduled before uploads are enabled for customers.** Both
+are built and neither runs:
+
+1. **`scripts/sweep-uploads.mjs`** — an abandoned declaration holds a byte
+   reservation nothing else releases. Without this on a schedule the quota only
+   ever tightens: a CI job killed mid-upload costs that organization capacity
+   permanently, and a hostile one can declare its whole allowance, transfer
+   nothing, and repeat. It is also what clears a commit refused on plan grounds,
+   which deliberately deletes nothing at the time.
+2. **The backup schedule** (Pathway 1 item 10) — already deferred by decision,
+   and uploads are the point at which customer data starts existing.
 
 What landed, and why each was a prerequisite rather than the work itself:
 
@@ -1294,6 +1312,21 @@ What landed, and why each was a prerequisite rather than the work itself:
 - **`plan_limits`** is the config row `retention.ts:54` has described as absent
   since it was written, and `orgs.plan` finally lost the trial state abolished
   on 2026-08-03.
+
+**Two gaps found by tracing the new work against what already existed, rather
+than by testing the new work alone.** Both were "built the piece, never wired
+it", and both are now closed:
+
+- **Entitlement was checked at declare and not at commit.** An organization that
+  declared while paying and downgraded before committing published a run on a
+  plan not entitled to it. The module header claimed entitlement was re-checked
+  on every request; it was not. Any protocol whose phases are separated in time
+  crosses state that can change in between — check at each phase, not the first.
+- **`bytes_stored` only ever rose.** Deleting a run freed the objects and not the
+  quota, so an organization that deleted everything still read as full and would
+  eventually be refused an upload into an empty account. The release now happens
+  in the branch that deletes the object, not the one that deletes the row —
+  `bytes_stored` counts objects, and a deduplicated artifact never added to it.
 
 **Carried forward: `plan` and `subscription_status` can both say `lapsed`.**
 Migration 016 followed `BuildV5.md` G2c's `free | team | lapsed` literally, but

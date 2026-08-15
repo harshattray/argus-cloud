@@ -23,7 +23,8 @@
     "rehearse-restore": "npm run build && node scripts/restore-rehearsal.mjs",
     "ops-check": "npm run build && node scripts/ops-check.mjs",
     "build:web": "npm run build && npm run build --workspace web",
-    "dev:web": "npm run build && npm run dev --workspace web"
+    "dev:web": "npm run build && npm run dev --workspace web",
+    "sweep-uploads": "npm run build && node scripts/sweep-uploads.mjs"
   },
   "repository": {
     "type": "git",

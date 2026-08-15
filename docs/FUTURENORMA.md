@@ -286,12 +286,12 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**532 checks green** on PGlite, **560** against real Postgres, across eighteen
+**575 checks green** on PGlite, **603** against real Postgres, across nineteen
 suites — `artifactUploads`, `backup`, `budgetAlerts`, `cibatch`, `enrichment`,
 `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
-`rateLimit`, `reconcile`, `retention`, `storage`, `waitlist`,
+`rateLimit`, `reconcile`, `retention`, `storage`, `uploadPipeline`, `waitlist`,
 `waitlistConfirmationEmail`, `webhooks` —
-run 2026-08-14. Migrations are now `001`–`014`.
+run 2026-08-15. Migrations are now `001`–`017`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
