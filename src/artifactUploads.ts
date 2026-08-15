@@ -28,6 +28,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
+import { planLimitsFor, PlanConfigError, type PlanLimits } from "./plans.js";
 import type { Storage } from "./storage.js";
 import { blobKey } from "./storage.js";
 
@@ -56,16 +57,6 @@ export interface DeclaredArtifact {
   sha256: string;
   bytes: number;
   contentType?: string;
-}
-
-export interface PlanLimits {
-  plan: string;
-  canUpload: boolean;
-  runsPerDay: number;
-  artifactsPerRun: number;
-  bytesPerRun: number;
-  bytesStoredMax: number;
-  retentionDays: number;
 }
 
 /**
@@ -105,44 +96,22 @@ export class UploadRejected extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * Reads the limits for an organization's plan.
+ * Reads the limits for an organization's plan, in this path's own error type.
  *
- * Two lookups rather than a join because the failure modes differ and both must
- * be loud: an organization with no row is a bug in provisioning, and a plan with
- * no limits row is a bug in migration seeding. Neither may quietly become
- * "unlimited", which is what a LEFT JOIN and a `?? Infinity` would produce.
+ * `plans.ts` owns the lookup; this only re-labels its failure. A missing
+ * organization or a plan with no limits row is a provisioning bug either way,
+ * and the upload path's contract is that everything it refuses is an
+ * `UploadRefused` the caller can branch on.
  */
-export async function planLimitsFor(db: Db, orgId: string): Promise<PlanLimits> {
-  const org = await db.query<{ plan: string }>("SELECT plan FROM orgs WHERE id = $1", [orgId]);
-  if (org.rows.length === 0) {
-    throw new UploadRefused("malformed", `no such organization: ${orgId}`);
+async function limitsFor(db: Db, orgId: string): Promise<PlanLimits> {
+  try {
+    return await planLimitsFor(db, orgId);
+  } catch (err) {
+    if (err instanceof PlanConfigError) {
+      throw new UploadRefused("malformed", err.message);
+    }
+    throw err;
   }
-  const plan = org.rows[0].plan;
-  const limits = await db.query<{
-    can_upload: boolean;
-    runs_per_day: number;
-    artifacts_per_run: number;
-    bytes_per_run: string;
-    bytes_stored_max: string;
-    retention_days: number;
-  }>(
-    `SELECT can_upload, runs_per_day, artifacts_per_run, bytes_per_run, bytes_stored_max, retention_days
-       FROM plan_limits WHERE plan = $1`,
-    [plan]
-  );
-  if (limits.rows.length === 0) {
-    throw new UploadRefused("malformed", `plan '${plan}' has no limits row — provisioning is incomplete`);
-  }
-  const r = limits.rows[0];
-  return {
-    plan,
-    canUpload: r.can_upload,
-    runsPerDay: r.runs_per_day,
-    artifactsPerRun: r.artifacts_per_run,
-    bytesPerRun: Number(r.bytes_per_run),
-    bytesStoredMax: Number(r.bytes_stored_max),
-    retentionDays: r.retention_days,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +291,7 @@ export async function declareUpload(
   const { orgId, repoName, artifacts } = request;
 
   const prepared = await db.transaction(async (tx) => {
-    const limits = await planLimitsFor(tx, orgId);
+    const limits = await limitsFor(tx, orgId);
 
     // Entitlement first, and never inferred from a number being zero.
     if (!limits.canUpload) {

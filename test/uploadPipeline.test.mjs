@@ -35,10 +35,11 @@ const {
   declareUpload,
   commitUpload,
   sweepAbandonedUploads,
-  planLimitsFor,
   UploadRefused,
   UploadRejected,
 } = await import(path.join(DIST, "artifactUploads.js"));
+const { planLimitsFor } = await import(path.join(DIST, "plans.js"));
+const { createApiKey, NotEntitled } = await import(path.join(DIST, "apiKeys.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -392,6 +393,43 @@ check(
   "U13b",
   u13b?.reason === "malformed" && /no limits row/.test(u13b.message),
   "a plan with no limits row refuses the upload instead of quietly becoming unlimited"
+);
+
+// ---------------------------------------------------------------------------
+// U14 — the credential does not exist to be leaked
+// ---------------------------------------------------------------------------
+//
+// G2c's first line of defence, and the one that is easy to argue away: the key
+// would be refused on every request anyway, so why refuse to mint it? Because a
+// key that was never minted cannot sit in a GitHub Actions secret after a plan
+// lapses, cannot be copied into a laptop dotfile, and cannot turn up in a log a
+// year from now. Refusing at creation removes the object, not just its power.
+const u14 = await refusal(() => createApiKey(db, freeOrg, { kind: "upload", label: "U14" }));
+check(
+  "U14",
+  u14 instanceof NotEntitled && u14.plan === "free",
+  `a free organization cannot be issued an upload key at all — "${u14?.message?.slice(0, 55)}…"`
+);
+
+// U14b — and nothing was written. A refusal that left the row behind would be
+// worse than no check, because the key would exist with no plaintext ever shown.
+const u14b = await db.query("SELECT count(*)::int AS n FROM api_keys WHERE org_id = $1", [freeOrg]);
+check("U14b", u14b.rows[0].n === 0, "the refused key left no row behind");
+
+// U14c — an entitled organization still gets one.
+const issued = await createApiKey(db, org, { kind: "upload", label: "U14c" });
+check("U14c", issued.plaintext.startsWith("nsk_"), "a team organization is issued an upload key as before");
+
+// U14d — the two checks are independent. A key minted while entitled stops
+// working the moment the plan changes, which is why the request path asks
+// again rather than trusting the key's existence.
+await db.query("UPDATE orgs SET plan = 'lapsed' WHERE id = $1", [org]);
+const u14d = await refusal(() => declareOne(org, "U14d after lapse"));
+await db.query("UPDATE orgs SET plan = 'team' WHERE id = $1", [org]);
+check(
+  "U14d",
+  u14d instanceof UploadRefused && u14d.reason === "not_entitled",
+  "a key minted while entitled is refused once the plan lapses — key existence is never authorization"
 );
 
 await rm(ROOT, { recursive: true, force: true });

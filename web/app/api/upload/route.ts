@@ -1,12 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../../lib/db";
+import { getStorage } from "../../../lib/storage";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
+import { declareUpload, UploadRefused, type DeclaredArtifact } from "argus-cloud/artifactUploads.js";
 
 /**
- * Upload API (Stage 4 item 2, minimal viable): summary.json v2 + run
- * metadata, key-gated, size-capped, schema-version tolerant. Artifacts
- * (report HTML, screenshots) land with the R2 integration; the summary is
- * what trends, reports, and Phase D enrichment run on.
+ * Upload API. Two shapes through one endpoint, decided by whether the body
+ * carries `artifacts`.
+ *
+ * **Without `artifacts`** — the original summary-only upload (Stage 4 item 2):
+ * summary.json v2 plus run metadata, key-gated, size-capped, schema-version
+ * tolerant. Still supported because a CLI that predates the artifact pipeline
+ * must keep working; a client that has nothing to transfer has nothing to wait
+ * for, and its run is complete on arrival.
+ *
+ * **With `artifacts`** — phase 1 of the three-phase upload (BuildV5 G2): the
+ * client declares each file's size and hash, and gets back presigned PUTs plus
+ * a run id to commit against. Nothing is visible until
+ * `POST /api/upload/{runId}/commit` verifies what actually arrived.
+ *
+ * One endpoint rather than two because the client's question is the same —
+ * "here is a run, take it" — and a second path would be a second place for the
+ * entitlement check to be forgotten.
  */
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -15,6 +30,7 @@ interface UploadBody {
   repo?: string;
   commitSha?: string;
   branch?: string;
+  artifacts?: DeclaredArtifact[];
   summary?: {
     schemaVersion?: number;
     threshold?: number;
@@ -29,6 +45,31 @@ interface UploadBody {
       flagged?: boolean;
     }[];
   };
+}
+
+/**
+ * Turns a refusal into a response.
+ *
+ * **Every one of these is a refusal the CLI prints and exits 0 on.** The
+ * standing rule (BuildV3.5 item 6) is that an upload which cannot happen never
+ * reddens a build — so the body always names the plan state and the fix, and
+ * `reason` is a stable string the client branches on rather than a status code
+ * it has to interpret.
+ *
+ * Statuses are chosen to be honest to an ordinary HTTP client that knows
+ * nothing about us: 402 for "this plan does not include it", 413 for "too
+ * large", 429 for "too often", 400 for "malformed".
+ */
+function refusal(err: UploadRefused): Response {
+  const status =
+    err.reason === "not_entitled"
+      ? 402
+      : err.reason === "runs_per_day"
+        ? 429
+        : err.reason === "malformed"
+          ? 400
+          : 413;
+  return Response.json({ error: err.message, code: err.reason }, { status });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -59,11 +100,43 @@ export async function POST(request: Request): Promise<Response> {
   if (!repoName || typeof summary !== "object" || summary === null) {
     return Response.json({ error: "repo and summary are required" }, { status: 400 });
   }
+  const orgId = key.org_id;
+
+  // The declare path. Entitlement, quota and reservation all happen inside
+  // `declareUpload` — deliberately not re-implemented here, because a second
+  // copy of that order is how the two paths drift.
+  if (Array.isArray(body.artifacts) && body.artifacts.length > 0) {
+    try {
+      const declared = await declareUpload(db, await getStorage(), {
+        orgId,
+        repoName,
+        commitSha: body.commitSha,
+        branch: body.branch,
+        summary,
+        artifacts: body.artifacts,
+      });
+      return Response.json(
+        {
+          runId: declared.runId,
+          uploads: declared.uploads,
+          deduplicated: declared.deduplicated,
+          bytesReserved: declared.bytesReserved,
+          commit: `/api/upload/${declared.runId}/commit`,
+        },
+        { status: 201 }
+      );
+    } catch (err) {
+      if (err instanceof UploadRefused) {
+        return refusal(err);
+      }
+      throw err;
+    }
+  }
+
   // Schema-version tolerant: v2 is what we understand; newer majors are
   // accepted and stored verbatim, but frames we can't read produce no stats.
   const frames = Array.isArray(summary.frames) ? summary.frames : [];
 
-  const orgId = key.org_id;
   const runId = randomUUID();
   await db.transaction(async (tx) => {
     const repoRow = await tx.query<{ id: string }>(
