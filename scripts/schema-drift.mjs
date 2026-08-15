@@ -16,9 +16,10 @@
 // either database, which is what makes it safe to point at production.
 //
 // Exit codes:
-//   0  the target is equal to or cleanly ahead of the source
-//   1  drift that needs a decision — the source has something the target does
-//      not, or the two have diverged rather than one leading
+//   0  level, cleanly ahead, or empty — an empty target is a database nobody
+//      has migrated yet, which needs a request rather than a decision
+//   1  genuine drift — the target has applied some migrations and is missing
+//      others the source has, so it is no longer a rehearsal of it
 //   2  could not run
 
 import path from "node:path";
@@ -88,10 +89,30 @@ if (unshipped.length > 0) {
   for (const m of unshipped) console.log(`  · ${m}`);
 }
 
-// The bad case, and the reason this exits non-zero. If production has a
-// migration staging has never applied, staging is no longer a rehearsal of
-// production — it is a different database, and anything proven on it proves
-// nothing. Re-branch staging from production rather than trying to reconcile.
+// An empty target is not drift — it is a database nobody has migrated yet.
+//
+// **Worth its own case because the advice differs completely.** A diverged
+// branch has to be re-created; an empty one only needs a request, since
+// `migrate()` applies everything on first use. Telling someone to re-branch a
+// perfectly good fresh branch is advice that destroys the thing it is meant to
+// protect — and this script gave exactly that advice for a Neon branch created
+// schema-only, which starts with no `schema_migrations` at all.
+//
+// Exit 0: nothing is wrong. There is simply nothing there yet.
+if (to.length === 0) {
+  console.log(`\n${toName} is empty — no migrations applied yet, which is not drift.`);
+  console.log(
+    `A fresh branch starts with no \`schema_migrations\`; the first database request applies all ${from.length}.`
+  );
+  console.log(`Open a deployment pointed at ${toName}, then run this again. Do not re-branch — there is nothing to fix.`);
+  process.exit(0);
+}
+
+// The bad case, and the reason this exits non-zero. If the source has a
+// migration the target has never applied *while the target has applied others*,
+// the two have genuinely diverged: the target is no longer a rehearsal of the
+// source, and anything proven on it proves nothing. Re-branch rather than
+// reconcile by hand.
 if (behind.length > 0) {
   console.log(`\n⚠️  ${fromName} has ${behind.length} migration(s) ${toName} has never applied:`);
   for (const m of behind) console.log(`  - ${m}`);
