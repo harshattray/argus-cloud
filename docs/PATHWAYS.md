@@ -1510,6 +1510,23 @@ Implement:
 - repository and seat list;
 - internal admin view for margin, storage, spend, and breaker status.
 
+**Redesign the operator surfaces as one pass, before launch.** The pages under
+`/admin` were each built beside the control they expose — rate limits and spend
+with the breaker, waitlist with its export, API keys with revocation — which is
+why every one of them works and none of them was designed. They share no shell,
+no navigation beyond hand-written links between three routes, and no consistent
+way of showing a control that is currently irrelevant. The breaker reset is the
+clearest symptom: its form is correct to hide when nothing is tripped, and the
+result is a page where a control simply is not there, with nothing saying why.
+
+This is deliberately *not* work to do now. They are internal, gated, and used by
+one person, so the cost of them being plain is close to zero until there is a
+second operator or an incident someone has to work through under pressure.
+Do it as part of this pathway's shared shell rather than as a separate effort —
+the same shell, navigation, role matrix and page-ownership map named above.
+Scope when it comes: `/admin/limits`, `/admin/waitlist`, `/admin/keys`, and
+whatever Pathway 5 adds beside them.
+
 **Gate:** session-layer tenant probes pass; a designer can read a report without
 GitHub; an admin can explain every credit movement without support.
 
@@ -1762,7 +1779,12 @@ Cloud is not ready to charge until:
   item 10 for the switch-on checklist;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
-- [ ] a real demo uses real historical Normascope data.
+- [ ] a real demo uses real historical Normascope data;
+- [ ] the operator surfaces have had a design pass — one shell and one
+  navigation across `/admin/*`, and a control that is currently irrelevant says
+  so rather than vanishing. Built beside their controls rather than designed;
+  cheap to leave until there is a second operator or an incident to work
+  through. See Pathway 5.
 - [ ] provider dollars are reserved before calls and settled idempotently;
 - [ ] hard maximum COGS per model/pass is below its credit revenue floor;
 - [ ] global, organization, and agent-key budget races are tested;
