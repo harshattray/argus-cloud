@@ -5,7 +5,7 @@
 // Run against a real server:
 //   DATABASE_URL="$(scripts/test-db.sh start)" node test/uploadPipeline.test.mjs
 //
-// Checks are U1-U15, H1-H9 and V1-V3. The thing under test is a protocol where the application
+// Checks are U1-U15, H1-H9 and V1-V4. The thing under test is a protocol where the application
 // is deliberately not in the byte path: after `declare` hands out a presigned
 // URL, the client uploads straight to storage and we see nothing until
 // `commit`. Every check here is therefore about what can be proven *afterwards*
@@ -711,8 +711,53 @@ check(
     `deep ${deep} (${(100 * margin(deep, "deep")).toFixed(1)}%) — both clear the ${100 * MARGIN_FLOOR}% floor`
 );
 
+// ---------------------------------------------------------------------------
+// V4 — an uploaded run is actually readable
+// ---------------------------------------------------------------------------
+//
+// Everything downstream reads `frame_stats`, not the summary blob: the report
+// page lists frames from it, and `enrichment.ts` derives the first-drift commit
+// and the recurrence count from it — the history that is the entire argument
+// for the paid tier.
+//
+// The declare path did not write it. Only the older summary-only route did. So
+// every run that came through the artifact pipeline arrived committed, with its
+// images, and rendered as "no compared frames" — contributing nothing to any
+// trend. Found by uploading a real run and opening it, not by a test.
+const statsOrg = await makeOrg("team");
+const statsSummary = {
+  frames: [
+    { label: "Home", screenshot: "home.png", mode: "baseline", source: "baseline", status: "compared", flagged: true, alignedMismatchPercent: 0.55, structuralSimilarity: 99.3 },
+    { label: "Lab", screenshot: "lab.png", mode: "baseline", source: "baseline", status: "compared", flagged: false, alignedMismatchPercent: 0 },
+    { label: "Skipped", screenshot: "gone.png", status: "skipped", skipReason: "no screenshot" },
+  ],
+};
+const framesRun = await declareUpload(db, storage, {
+  orgId: statsOrg,
+  repoName: "portfolio",
+  summary: statsSummary,
+  artifacts: [artifactFor("V4 content", "home.png")],
+});
+const statsRows = await db.query(
+  "SELECT frame, flagged, aligned_mismatch_percent FROM frame_stats WHERE run_id = $1 ORDER BY frame",
+  [framesRun.runId]
+);
+check(
+  "V4",
+  statsRows.rows.length === 2 && statsRows.rows.map((r) => r.frame).join(",") === "home.png,lab.png",
+  `a declared run records one frame_stats row per compared frame (${statsRows.rows.length} rows)`
+);
+
+// V4b — a skipped frame is not recorded. It has no numbers, and counting it
+// would make "seen 4 times" include runs where nothing was looked at.
+check(
+  "V4b",
+  !statsRows.rows.some((r) => r.frame === "gone.png"),
+  "a skipped frame contributes no row, so it cannot pollute a trend"
+);
+
 await rm(ROOT, { recursive: true, force: true });
-for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg]) {
+for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg, statsOrg]) {
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();
