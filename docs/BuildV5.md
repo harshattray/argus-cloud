@@ -261,6 +261,13 @@ re-litigated:
 - **And it makes G2c absolute** — with no unpaid party holding an upload key,
   the free-plans-cannot-upload rule has no exception carved out of it.
 
+> ⚠️ **Superseded 2026-08-15 — `plan` is `free | team`.** `lapsed` moved to
+> `subscription_status` (migration 019), which is also where `past_due` and
+> `refunded` live. **PATHWAYS is the reference point; this file is
+> implementation detail and not authority.** The quota values below —
+> 200 runs/day, 600 artifacts/run, 250 MB, 50 GB — appear in no authoritative
+> document and are launch assumptions pending traffic data, not decisions.
+
 Consequences to carry: `plan` becomes `free | team | lapsed` and
 `migrations/001`'s `DEFAULT 'trial'` becomes `'free'` (new migration, do not
 edit 001); signup is Paddle checkout → webhook provisions the org → magic link,
@@ -351,7 +358,7 @@ creates the Paddle catalog — not after.
 | G2.8d | Plan lapses mid-CI-run, between declare and commit | Commit rejected, objects swept, CI green, prior runs intact and readable |
 | G2.8e | Grep every presigned-URL issuer for an entitlement check | Every path checks; **no env var or flag disables it in any environment** |
 | G2.8f | Every plan in config, `upload` toggled | Entitlement follows config with no code change — the switch a future trial would use |
-| G2.8g | Org enum accepts only `free \| team \| lapsed`; no row defaults to `trial` | Migration applied; no `trial` rows exist |
+| G2.8g | Org enum accepts only `free \| team` (**revised 2026-08-15** — `lapsed` is a subscription status); no row defaults to `trial` | Migrations 016 and 019 applied; no `trial` rows exist |
 | G2.9 | Same key, 200 uploads in one minute against `rate_per_minute` | Limited; the counter is correct under 20 concurrent requests (C1 pattern) |
 | G2.10 | Re-upload an unchanged baseline across 3 runs | One blob stored; 3 `run_artifacts` rows; second and third uploads get no presigned URL |
 | G2.11 | Simulated daily ingest-budget breach | Uploads pause, alert fires, reports/diffs/explain unaffected, message honest (C6 shape) |

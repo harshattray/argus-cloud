@@ -1613,7 +1613,8 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 | Licence: **Apache-2.0** for the client (CLI, MCP, Action); `argus-cloud` stays closed | 2026-07-29 | FUTURENORMA §5 item 11 |
 | Brand: **Normascope** for both tiers; paid tier is **Normascope Cloud**, never a second brand | — | RebrandV1 |
 | Payments: **merchant of record**, not Stripe (India constraint). **Paddle chosen** | 2026-08-03 | — |
-| **No trial.** `plan` is `free \| team \| lapsed`; the free CLI is the trial; risk reversal is a 30-day money-back guarantee | 2026-08-03 | BuildV5 §G2c |
+| **No trial.** The free CLI is the trial; risk reversal is a 30-day money-back guarantee | 2026-08-03 | PATHWAYS §2 |
+| **`plan` is `free \| team`** — the commercial tier. `lapsed` was moved to `subscription_status` on 2026-08-15; see the row below | 2026-08-15 | `migrations/019` |
 | **Free plans cannot upload anything** — no key, no presigned URL, no bypass flag | 2026-08-03 | BuildV5 §G2c |
 | Trial deferred as a later experiment with a settled design (no card, one per GitHub org, ~15-review grant) | 2026-08-03 | BuildV5 §G2c |
 | Stack: Next.js on Vercel | — | CHECKPOINT |

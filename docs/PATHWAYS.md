@@ -2272,9 +2272,21 @@ covering upload, hosted reports, hosted explain, active repositories, daily
 runs, artifacts/run, bytes/run, total storage, and retention. Each route asks
 the service for an entitlement; the service owns the policy.
 
-The launch policy remains `free|team|lapsed` until a plan ladder is approved.
-Keep Growth/Team pricing as configuration and documentation, not a half-built
-billing branch.
+The launch policy is `free|team` until a plan ladder is approved. Keep
+Growth/Team pricing as configuration and documentation, not a half-built billing
+branch.
+
+> **Changed 2026-08-15 (migration 019), by decision.** This read
+> `free|team|lapsed`. `lapsed` moved to `subscription_status`, where the
+> payment-failure section above already models it alongside `past_due` and
+> `refunded` — neither of which a three-valued tier column could express.
+> `plan` now means only what the organization bought; the status means what
+> happened to it. Entitlement asks both.
+>
+> The duplicate was also doing no work: the `lapsed` row in `plan_limits`
+> differed from `free` on one column that is read only after a gate both plans
+> fail. And removing it closed a live gap — `subscription_status` was written by
+> the webhook and read by nothing, so a lapsed organization kept uploading.
 
 #### 5C. Add customer account and deletion UI
 

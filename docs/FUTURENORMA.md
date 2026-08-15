@@ -1314,8 +1314,9 @@ attempting org A's run, share, and batch — all denied).
    > **No such migration exists** — checked across `001`–`009`; the column still
    > reads `plan TEXT NOT NULL DEFAULT 'trial'` and nothing alters it. So a
    > directly-inserted org lands on a plan value the product no longer has. It
-   > is harmless today because every org is created by hand, and it is owed as
-   > part of BuildV5 §G2c (plan enum → `free | team | lapsed`) at Step 6.
+   > is harmless today because every org is created by hand. **Closed
+   > 2026-08-15:** migration 016 removed the `trial` default, and 019 settled the
+   > enum at `free | team` — `lapsed` is a `subscription_status`, not a tier.
 
    Direct `INSERT INTO orgs` remains the manual path until the admin UI exists.
 2. **Grant credits.** A `plan_allotment` grant for the paid plan's included
@@ -1382,9 +1383,11 @@ that has not been probed is an open risk, not an assumed pass.
   hard-code a repository or seat number here or in the code. Unlimited seats is
   settled; the repository figure is not (§3, Open Decisions #2). Any future
   ladder runs on **repos**, never on seats. (Partly
-  settled: BuildV5 §G2c fixes the plan enum to `free | team | lapsed` and
-  specifies the upload, storage and quota dimensions. **No ladder is published
-  at launch** — the pricing page at §4 Step 8 ships the single $59 plan.)
+  settled: the plan enum is `free | team` as of migration 019 — `lapsed` is a
+  subscription status, not a tier — and PATHWAYS specifies the upload, storage
+  and quota dimensions. **The quota *values* are launch assumptions pending
+  traffic data, not decided here.** **No ladder is published at launch** — the
+  pricing page at §4 Step 8 ships the single $59 plan.)
 - **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
   nothing deleted; 14-day grace. (No trial — BuildV5 §G2c. Risk reversal is a
   30-day money-back guarantee.)
