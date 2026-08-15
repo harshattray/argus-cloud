@@ -101,6 +101,9 @@ export default async function WaitlistPage() {
               Unique signups. Interest, not willingness to pay. All times UTC.{" "}
               <a href="/admin/limits" className="underline decoration-black/20 underline-offset-2 hover:text-clay">
                 Rate limits
+              </a>{" "}
+              <a href="/admin/keys" className="underline decoration-black/20 underline-offset-2 hover:text-clay">
+                API keys
               </a>
             </p>
           </div>
