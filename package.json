@@ -19,6 +19,9 @@
     "typecheck:web": "npm run build && npm run typecheck --workspace web",
     "audit": "node scripts/audit-check.mjs",
     "verify": "npm run build && npm run typecheck:web && npm test && npm run build --workspace web && npm run audit",
+    "backup": "npm run build && node scripts/backup.mjs",
+    "rehearse-restore": "npm run build && node scripts/restore-rehearsal.mjs",
+    "ops-check": "npm run build && node scripts/ops-check.mjs",
     "build:web": "npm run build && npm run build --workspace web",
     "dev:web": "npm run build && npm run dev --workspace web"
   },

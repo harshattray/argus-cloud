@@ -2,6 +2,7 @@ import { getDb } from "../../../lib/db";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { makeProvider, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { hostedExplain } from "argus-cloud/explainService.js";
+import { alert } from "../../../lib/alerts";
 
 /**
  * Interactive hosted explain (Build 4.0 D1): one frame, one decrement, wired
@@ -71,7 +72,7 @@ export async function POST(request: Request): Promise<Response> {
     {
       provider: makeProvider(evidence),
       dailyBudgetMicrodollars: DAILY_BUDGET_MICRODOLLARS,
-      alert: (message: string) => console.error(`[breaker-alert] ${message}`),
+      alert,
     },
     {
       orgId: key.org_id,

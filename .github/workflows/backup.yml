@@ -1,0 +1,123 @@
+name: Backup
+
+# Nightly encrypted backup, a monthly restore rehearsal, and the operational
+# check — PATHWAYS Pathway 1 item 10.
+#
+# **This file is the schedule; the secrets are what make it run.** With
+# `BACKUP_DATABASE_URL` unset every job prints what is missing and exits 0,
+# because a nightly red cross that nobody can fix is noise, and noise is how a
+# real failure gets missed. Set these repository secrets to turn it on:
+#
+#   BACKUP_DATABASE_URL     the production database, direct (not pooled) —
+#                           pg_dump needs a session it can hold open, and the
+#                           rehearsal needs CREATE DATABASE
+#   NORMA_BACKUP_KEY        32 bytes, hex. Losing this loses every backup;
+#                           store it somewhere that is not this database
+#   NORMA_STORAGE_*         the R2 bucket the dumps go to (see src/storage.ts)
+#   NORMA_ALERT_WEBHOOK_URL where a failure is announced
+#   REHEARSAL_TARGET_URL    optional: an empty database to restore into. Without
+#                           it the rehearsal creates one beside the source
+#
+# The dump never leaves this runner unencrypted: `scripts/backup.mjs` seals it
+# with AES-256-GCM before the storage port sees it.
+
+on:
+  schedule:
+    # 03:00 UTC daily. The staleness alert allows 26 hours, so one missed night
+    # is a warning rather than a page.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      rehearse:
+        description: "Also rehearse a restore of the newest backup"
+        type: boolean
+        default: false
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump, rehearse, check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Check the secrets are set
+        id: secrets
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          NORMA_BACKUP_KEY: ${{ secrets.NORMA_BACKUP_KEY }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$NORMA_BACKUP_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Backups are not configured yet — set BACKUP_DATABASE_URL and NORMA_BACKUP_KEY. Nothing was backed up."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The runner ships the Postgres 16 client; the production database is 17,
+      # and pg_dump refuses to dump a server newer than itself.
+      - name: Install the Postgres 17 client
+        if: steps.secrets.outputs.configured == 'true'
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
+
+      - run: npm ci
+        if: steps.secrets.outputs.configured == 'true'
+      - run: npm run build
+        if: steps.secrets.outputs.configured == 'true'
+
+      - name: Take the backup
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          NORMA_BACKUP_KEY: ${{ secrets.NORMA_BACKUP_KEY }}
+          NORMA_STORAGE_BUCKET: ${{ secrets.NORMA_STORAGE_BUCKET }}
+          NORMA_STORAGE_REGION: ${{ secrets.NORMA_STORAGE_REGION }}
+          NORMA_STORAGE_ENDPOINT: ${{ secrets.NORMA_STORAGE_ENDPOINT }}
+          NORMA_STORAGE_ACCESS_KEY_ID: ${{ secrets.NORMA_STORAGE_ACCESS_KEY_ID }}
+          NORMA_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.NORMA_STORAGE_SECRET_ACCESS_KEY }}
+        run: node scripts/backup.mjs --actor "github-actions nightly"
+
+      # Monthly, or on demand. A rehearsal restores the whole database, so it is
+      # not a nightly job — but an unrehearsed backup is a belief, and
+      # `rehearsal-stale` starts alerting at 30 days.
+      - name: Rehearse a restore
+        if: steps.secrets.outputs.configured == 'true' && (github.event.inputs.rehearse == 'true' || startsWith(github.event.schedule, '0 3 1 '))
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          NORMA_BACKUP_KEY: ${{ secrets.NORMA_BACKUP_KEY }}
+          NORMA_STORAGE_BUCKET: ${{ secrets.NORMA_STORAGE_BUCKET }}
+          NORMA_STORAGE_REGION: ${{ secrets.NORMA_STORAGE_REGION }}
+          NORMA_STORAGE_ENDPOINT: ${{ secrets.NORMA_STORAGE_ENDPOINT }}
+          NORMA_STORAGE_ACCESS_KEY_ID: ${{ secrets.NORMA_STORAGE_ACCESS_KEY_ID }}
+          NORMA_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.NORMA_STORAGE_SECRET_ACCESS_KEY }}
+          REHEARSAL_TARGET_URL: ${{ secrets.REHEARSAL_TARGET_URL }}
+        run: |
+          if [ -n "$REHEARSAL_TARGET_URL" ]; then
+            node scripts/restore-rehearsal.mjs --actor "github-actions monthly" --target-url "$REHEARSAL_TARGET_URL"
+          else
+            node scripts/restore-rehearsal.mjs --actor "github-actions monthly"
+          fi
+
+      # Runs whether or not the backup step succeeded: a failed dump is exactly
+      # what the check should announce, and `if: always()` is what makes the
+      # alert independent of the thing it is watching.
+      - name: Operational check
+        if: always() && steps.secrets.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          NORMA_ALERT_WEBHOOK_URL: ${{ secrets.NORMA_ALERT_WEBHOOK_URL }}
+          NORMA_ALERT_EMAIL: ${{ secrets.NORMA_ALERT_EMAIL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: node scripts/ops-check.mjs

@@ -485,8 +485,16 @@ No paid Cloud launch is verified until the relevant pathways have evidence for:
 - [ ] SSRF, redirect, DNS-rebinding, and capture containment suites;
 - [ ] rate-limit, quota, concurrency, replay, and abuse tests;
 - [ ] webhook signature, session, CSRF, and key-revocation tests;
-- [ ] backup restore, retention, deletion, and incident-drill evidence;
-- [ ] redacted audit logs and working operator alerts/kill switches;
+- [ ] backup restore, retention, deletion, and incident-drill evidence —
+  **three of four.** Retention and deletion are proven (`FinishedSPEC.md` §3j),
+  and a real backup was restored and compared table by table on 2026-08-14
+  (§3k). **No incident drill has been run**, and backups are not yet scheduled
+  against the production database;
+- [ ] redacted audit logs and working operator alerts/kill switches —
+  **alerts only.** Spend and operational alerts reach a configured webhook or
+  mailbox, and an alert claimed but never delivered is itself an alert (§3k).
+  The breaker is the one kill switch that exists; the scoped pauses and the
+  redacted audit log are Phase 6 work;
 - [ ] an external security review or penetration test before scaling beyond
   the first controlled customers.
 
@@ -1183,7 +1191,42 @@ each item, and nothing lives only there:
    `subscription_periods`, which rewrites past reconciliation months. The
    receipt keeps the aggregate; whether anonymised per-event records must be
    retained is a policy call, not an implementation gap.
-10. ⬅️ **next.** Add backups, restore rehearsal, and operational alerts.
+10. ✅ Add backups, restore rehearsal, and operational alerts. —
+    `FinishedSPEC.md` §3k. Encrypted `pg_dump` through the storage port with a
+    manifest taken inside the dump's own snapshot; a rehearsal that restores into
+    a scratch database and compares every table's row count; eight operational
+    signals delivered once per period through a real webhook/email channel. A
+    real backup was restored and compared on 2026-08-14, and both failure paths
+    were watched. **The schedule is deferred, not blocked — Harsha's decision,
+    2026-08-15.** With no paying customer yet, the only data at risk is the
+    waitlist, and a hand backup covers it. `npm run backup` is the interim
+    control. `.github/workflows/backup.yml` is written and inert: with no
+    secrets set it prints a notice and exits 0.
+
+    **Trigger: turn the schedule on when the first organization pays.** The
+    deferred work, in full, so none of it has to be worked out again:
+
+    1. **A separate R2 bucket for backups.** Not `normascope-test` — that
+       bucket's token lives in `.env.r2` and gets sourced into test runs, so a
+       test could overwrite or sweep a production backup.
+    2. **The repository secrets.** `BACKUP_DATABASE_URL` must be the *direct*
+       Neon endpoint (the pooled URL with `-pooler` removed) — `pg_dump` reads a
+       snapshot exported by a second connection, and a pooler does not guarantee
+       both land on the same backend. Then `NORMA_BACKUP_KEY` and the five
+       `NORMA_STORAGE_*` values for the new bucket.
+    3. **Alerts.** `RESEND_API_KEY` already exists in the Vercel production
+       environment; add `NORMA_ALERT_EMAIL` beside it. A webhook is the
+       alternative. With neither, `ops-check` is log-only and says so.
+    4. **A lifecycle rule on the bucket** so backups expire — 30 or 90 days.
+       Nothing in the product deletes them, so the bill grows forever otherwise.
+    5. **One manual run with `rehearse: true`** before trusting the schedule.
+       That exercises dump → encrypt → store → restore → row-count compare in a
+       single run, instead of finding out at 03:00.
+
+    **The key is unrecoverable.** `NORMA_BACKUP_KEY` is in Harsha's password
+    manager and nowhere else. Nothing here stores it or a hash of it, so a wrong
+    key is only discovered when a restore is attempted — which is why item 5
+    above is a step and not a nicety.
 
 > Items 4–6 were previously described **only** in §10.3 and were missing from
 > this list. That is not a formatting detail: an agent working from the list
@@ -1198,6 +1241,19 @@ settlement/refund, margin-floor assertion, alert/breaker, Paddle signatures,
 reconciliation fixtures, restore.
 
 **Gate:** no known payment, tenant, storage, retention, or accounting blocker.
+
+**Gate state — 2026-08-14.** All ten items are implemented and their suites are
+green: **511 checks on PGlite, 539 against a real Postgres server**, across
+sixteen suites, plus `npm run verify` (types for both packages, the web build,
+the dependency audit). Three things remain, and none is a logic gap:
+
+- the **Paddle sandbox loop** (item 8) — `Blocked` on an account, and Phase 7's
+  gate rather than this one;
+- the **backup schedule** (item 10) — **deferred to the first paying
+  organization** by decision on 2026-08-15, not blocked. Hand backups cover the
+  waitlist meanwhile; item 10 above lists everything the switch-on needs;
+- the **org-deletion policy question** (item 9) — a decision for Harsha, not
+  code.
 
 ### Pathway 2 — Build the artifact pipeline
 
@@ -1578,7 +1634,14 @@ Cloud is not ready to charge until:
 - [ ] included-credit reconciliation is correct;
 - [ ] tenant, storage, deletion, and hosted injection suites pass;
 - [ ] provider retention posture is documented;
-- [ ] backup restore is rehearsed;
+- [x] backup restore is rehearsed — 2026-08-14, a real encrypted dump restored
+  into a scratch database and compared table by table (`FinishedSPEC.md` §3k).
+  **This is rehearsed, not scheduled:** the nightly schedule is deferred to the
+  first paying organization (2026-08-15). Until then production is covered by
+  hand backups — `npm run backup`, which needs the direct Neon URL and the
+  backup key. **This box does not go green on the rehearsal alone.** Launch
+  means paying customers, and by then the schedule must be on: see Pathway 1
+  item 10 for the switch-on checklist;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
 - [ ] a real demo uses real historical Normascope data.

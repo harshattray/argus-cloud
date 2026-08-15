@@ -3,6 +3,8 @@ import { rateLimitTotals, rateLimitBySubject, MAX_SUBJECT_ROWS } from "argus-clo
 import { globalDayStatus, thresholdCrossed } from "argus-cloud/providerBudget.js";
 import { isTripped, breakerHistory } from "argus-cloud/breaker.js";
 import { recentAlerts, providerBalanceStatus, undeliveredAlertCount } from "argus-cloud/budgetAlerts.js";
+import { recoveryHealth } from "argus-cloud/backup.js";
+import { collectOpsSignals } from "argus-cloud/opsAlerts.js";
 import { getDb } from "../../../lib/db";
 import { resetBreakerAction } from "./actions";
 
@@ -102,16 +104,21 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
 
 export default async function LimitsPage() {
   const db = await getDb();
-  const [totals, subjects, budget, paused, alerts, undelivered, balance, breaker] = await Promise.all([
-    rateLimitTotals(db, WINDOW_MINUTES),
-    rateLimitBySubject(db, WINDOW_MINUTES),
-    globalDayStatus(db, DAILY_BUDGET_MICRODOLLARS),
-    isTripped(db),
-    recentAlerts(db, 12),
-    undeliveredAlertCount(db),
-    providerBalanceStatus(db),
-    breakerHistory(db, 8),
-  ]);
+  const [totals, subjects, budget, paused, alerts, undelivered, balance, breaker, recovery, opsSignals] =
+    await Promise.all([
+      rateLimitTotals(db, WINDOW_MINUTES),
+      rateLimitBySubject(db, WINDOW_MINUTES),
+      globalDayStatus(db, DAILY_BUDGET_MICRODOLLARS),
+      isTripped(db),
+      recentAlerts(db, 12),
+      undeliveredAlertCount(db),
+      providerBalanceStatus(db),
+      breakerHistory(db, 8),
+      recoveryHealth(db),
+      // The live list, not the delivered-alert history: the page must answer
+      // "what is wrong now?" even when the push channel never worked.
+      collectOpsSignals(db),
+    ]);
   const crossed = thresholdCrossed(budget.usedPercent);
 
   const timeFormat = new Intl.DateTimeFormat("en-GB", {
@@ -310,6 +317,77 @@ export default async function LimitsPage() {
                   {a.deliveredAt === null && (
                     <span className="font-semibold text-clay">undelivered{a.lastError ? ` — ${a.lastError}` : ""}</span>
                   )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Recovery and operations — PATHWAYS Pathway 1 item 10.
+
+            This is the pull half of the alert story. An alert channel can be
+            down, and `deliveredAt` only means the message was handed to it, so
+            the operator page shows the live state rather than the history of
+            what was sent. Everything here reads a table something else writes:
+            no derived guesses. */}
+        <section className="mb-6 rounded-xl border border-black/10 bg-white px-4 py-3.5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="eyebrow text-text/45">Recovery and operations</h2>
+            <p className={`text-[12px] ${opsSignals.length > 0 ? "font-semibold text-clay" : "text-text/35"}`}>
+              {opsSignals.length > 0 ? `${opsSignals.length} open` : "nothing wrong"}
+            </p>
+          </div>
+
+          <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-black/8 px-3 py-2.5">
+              <p className="eyebrow text-text/45">Last good backup</p>
+              <p className={`mt-1 text-[13.5px] ${recovery.backupStale ? "font-semibold text-clay" : "text-text/70"}`}>
+                {recovery.lastGoodBackup
+                  ? `${timeFormat.format(new Date(recovery.lastGoodBackup.finishedAt as string))} · ${(
+                      recovery.lastGoodBackup.bytes / 1e6
+                    ).toFixed(1)} MB encrypted`
+                  : "never — nothing can be restored"}
+              </p>
+              {recovery.lastGoodBackup && (
+                <p className="numeric mt-1 text-[12px] text-text/40">{recovery.lastGoodBackup.id}</p>
+              )}
+            </div>
+            <div className="rounded-lg border border-black/8 px-3 py-2.5">
+              <p className="eyebrow text-text/45">Last passed restore rehearsal</p>
+              <p className={`mt-1 text-[13.5px] ${recovery.rehearsalStale ? "font-semibold text-clay" : "text-text/70"}`}>
+                {recovery.lastPassedRehearsal
+                  ? `${timeFormat.format(new Date(recovery.lastPassedRehearsal.finishedAt as string))} · ${
+                      recovery.lastPassedRehearsal.tablesChecked
+                    } tables, ${recovery.lastPassedRehearsal.rowsChecked.toLocaleString("en-US")} rows`
+                  : "never — the backups are unproven"}
+              </p>
+              {recovery.lastPassedRehearsal && (
+                <p className="numeric mt-1 text-[12px] text-text/40">
+                  {recovery.lastPassedRehearsal.actor}
+                  {recovery.lastPassedRehearsal.restoreSeconds != null
+                    ? ` · ${recovery.lastPassedRehearsal.restoreSeconds}s`
+                    : ""}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {opsSignals.length === 0 ? (
+            <p className="text-[13.5px] text-text/40">
+              No failed backups, rehearsals, deletions or reservations, and no undelivered alerts.
+            </p>
+          ) : (
+            <ul className="space-y-1.5 text-[13px]">
+              {opsSignals.map((s) => (
+                <li
+                  key={`${s.kind}:${s.subjectId}:${s.period}`}
+                  className="flex flex-wrap gap-x-2 border-t border-black/6 pt-1.5 first:border-0 first:pt-0"
+                >
+                  <span className={s.severity === "critical" ? "font-semibold text-clay" : "font-semibold text-text/60"}>
+                    {s.severity}
+                  </span>
+                  <span className="text-text/60">{s.kind}</span>
+                  <span className="text-text/60">{s.detail}</span>
                 </li>
               ))}
             </ul>

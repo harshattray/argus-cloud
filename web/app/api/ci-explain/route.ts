@@ -2,6 +2,7 @@ import { getDb } from "../../../lib/db";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { makeBatchSubmit, makeBatchFetch, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { enqueueCiBatch, collectCiBatch, summarizeForPr } from "argus-cloud/ciBatch.js";
+import { alert } from "../../../lib/alerts";
 
 /**
  * CI auto-explain (Build 4.0 D2), two-step because Message Batches finish
@@ -21,7 +22,7 @@ const deps = (evidenceByFrame: Map<string, FrameEvidence>) => ({
   submit: makeBatchSubmit(evidenceByFrame),
   fetch: makeBatchFetch(),
   dailyBudgetMicrodollars: DAILY_BUDGET_MICRODOLLARS,
-  alert: (message: string) => console.error(`[breaker-alert] ${message}`),
+  alert,
 });
 
 export async function POST(request: Request): Promise<Response> {

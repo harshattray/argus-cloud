@@ -183,6 +183,7 @@ maintainer machine. Both manifests now declare `>=0.112.3`.
 | Provider-dollar reservation before every call, idempotent settlement | ✅ | 54 checks incl. 20 separate processes sharing one budget on real Postgres — §3d |
 | Credit prices derived from worst-case cost, 50% margin floor enforced | ✅ | Asserted every run: no operation can be sold below cost — §3e |
 | Retention sweep + run/repo/org deletion of rows **and** objects | ✅ | 55 checks incl. 20 separate processes contending for one deletion job — §3j |
+| Encrypted backups + a rehearsed restore + operational alerts | ✅ logic, ❌ **not scheduled in production** | 91 checks; a real dump restored into a scratch database and compared table by table on 2026-08-14 — §3k |
 | CI batch service — Batches API, 50% rate, reserve→refund, escaped PR line | 🟡 | 18 checks (D2), **fixture-level only** |
 | MoR webhook handling — HMAC, idempotent | 🟡 ⚠️ | C5 fixture-level, **and unreachable** — §7 #4 |
 | Monthly reconciliation + <50% margin alert | 🟡 ⚠️ | C8 — **unreachable, and carries a bug** — §7 #7 |
@@ -970,6 +971,102 @@ across twelve suites — run 2026-08-13.
 
 ---
 
+### 3k. Backups, a rehearsed restore, and alerts that are not about money — Pathway 1, item 10 ✅
+
+Everything items 1–9 built assumes the database is still there. Nothing had ever
+backed it up, nobody had restored anything, and **every alert in the product was
+about spend** — a failed deletion job, a breaker left tripped over a weekend, or
+an alert channel that was itself broken were all silent.
+
+**What shipped:**
+
+| File | What it does |
+|---|---|
+| `migrations/014_backups.sql` | `backups` (one row per dump attempt, with its manifest), `restore_rehearsals` (the evidence a restore worked), `ops_alerts` (once-per-period claim, same shape as `budget_alerts`) |
+| `src/backup.ts` | The manifest, the comparison, AES-256-GCM sealing, and the bookkeeping — plus `recoveryHealth`, which is what "are we covered?" reads |
+| `src/opsAlerts.ts` | Eight operational signals, each reading a table something else already writes |
+| `src/alertChannel.ts` | Where an alert actually goes: webhook and/or email, and the honest account of what `delivered_at` means |
+| `scripts/backup.mjs` | `pg_dump` → seal → storage port → record |
+| `scripts/restore-rehearsal.mjs` | Fetch → verify hash → decrypt → `pg_restore` into a scratch database → **compare every table's row count against the manifest** |
+| `scripts/ops-check.mjs` | The scheduled check. Exits non-zero when something is wrong *or* when a send failed |
+| `.github/workflows/backup.yml` | Nightly dump, monthly rehearsal, ops check. Skips with a notice until the secrets exist |
+| `web/app/admin/limits/page.tsx` | The pull surface: last good backup, last passed rehearsal, and the live signal list |
+| `web/lib/alerts.ts` | The two explain routes now alert through the real channel instead of `console.error` |
+
+**Four decisions worth keeping:**
+
+1. **The manifest is taken inside the dump's own snapshot.** The backup session
+   opens a `REPEATABLE READ` transaction, exports the snapshot, hands its id to
+   `pg_dump --snapshot`, and counts rows in that same transaction. Counting
+   before or after would disagree with the dump by whatever traffic happened in
+   between — and a rehearsal that false-alarms on ordinary traffic is an alert
+   an operator learns to ignore.
+2. **A rehearsal proves the data, not the exit code.** `pg_restore` returning 0
+   says the file parsed. The verdict is the per-table comparison, stored as the
+   list of tables that disagreed rather than a boolean, so a failure is
+   diagnosable a month later. The database enforces it: `restore_rehearsals`
+   cannot hold `passed` over a non-empty mismatch list (K4.5 watches that fail).
+3. **Encryption happens before the storage port sees the bytes.** A bucket
+   misconfiguration should expose ciphertext. A wrong key, a flipped bit or a
+   truncated object all refuse rather than restoring quietly (K1.3–K1.6).
+4. **`delivered_at` means handed to the channel, not received by a human** —
+   `Alert` is synchronous and sits on a paid request path, so the send is
+   deferred via `after()`. Three things close that gap and none is optional: the
+   ops check awaits its sends and exits non-zero, the operator page shows live
+   state rather than delivery history, and `alert-channel-broken` fires on any
+   alert claimed but never delivered.
+
+**The eight signals**, each from a real row: `backup-missing` (over 26h, or
+never), `backup-failed`, `rehearsal-stale` (over 30 days, or never),
+`rehearsal-failed`, `deletion-failed`, `breaker-unreset` (tripped over 12h),
+`alert-channel-broken`, `reservation-leak`.
+
+**Tests** — `test/backup.test.mjs` (44) and `test/opsAlerts.test.mjs` (43 on
+PGlite, **47 against real Postgres**).
+
+| Check | What it proves |
+|---|---|
+| K1 | Sealed dumps: right key opens, wrong key/flipped bit/truncation/foreign object all refuse. |
+| K2 | The manifest compares both ways — a changed count *and* a table that did not come back. |
+| **K6** | The obvious "walk the restored tables" comparison calls a lost table a pass. K2.5 has teeth. |
+| K3, K4 | No `done` without bytes, no `passed` over mismatches, no rehearsal without a name — all refused by the database. |
+| K5 | Never having backed up reads as stale, not unknown; the two clocks run independently. |
+| P2 | Each of the eight signals fires on its own condition, with the numbers in the message. |
+| **P3r** | *(real Postgres)* 20 separate processes notice one problem; **exactly one pages a human**. |
+| **P3b** | *(real Postgres)* The check-then-send version pages **20 times** for the same problem. |
+| P4 | A send that throws re-arms the row immediately and the next check retries. |
+| P5 | The channel posts to a webhook and to Resend, and never throws into the request path when it cannot. |
+
+**The rehearsal was actually run** — 2026-08-14, against a real Postgres 17.10
+server (`scripts/test-db.sh`), not a fixture:
+
+```
+backup bk_20260814T213818_6f761c02 — snapshot 0000005F-0000000D-1,
+  85,714 bytes encrypted, manifest 32 tables / 795 rows
+rehearsal rh_20260814T213824_486e8436 — restored into a scratch database,
+  32 tables, 795 rows compared, 0.9s — PASSED
+```
+
+Both failure paths were watched, not assumed. Flipping one byte of the stored
+object stopped the rehearsal before it restored anything (`stored object hashes
+to 25acdf83…, backup recorded 971ef6c5…`); overstating one table in the manifest
+produced `orgs: manifest 9999, restored 46` and exit code 1. The webhook path was
+proven against a real HTTP listener, which received the alert body verbatim.
+
+**What is not proven, and is not claimed:** the schedule. `.github/workflows/backup.yml`
+exists and is correct as written, but it needs `BACKUP_DATABASE_URL`,
+`NORMA_BACKUP_KEY`, the R2 credentials and an alert webhook — secrets only Harsha
+can set — so **no backup of the production Neon database has been taken**, and
+the R2 leg of the storage port is untested for objects this size. Until those
+secrets exist the workflow deliberately exits 0 with a notice rather than failing
+nightly. Item 10's logic is Verified; its deployment is `Blocked` on the same
+account access as Step 5.
+
+**Suite:** 511 checks green on PGlite, **539 against a real Postgres server**,
+across sixteen suites — run 2026-08-14.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -1464,6 +1561,8 @@ this section and are deliberately absent.
 | No provider-dollar reservation before calls | **Closed** (§3d). Reserved before every call, settled idempotently, proven across 20 separate processes |
 | ~~Worst-case cost exceeds credit revenue~~ | **Closed** (§3e). Credits are derived from the hard maximum with a 50% margin floor, enforced by the suite. **Consequence needs a decision:** the 500 included credits now buy 100 analyses, not 500; analysis on Haiku 4.5 would make it 250, gated on a calibration run |
 | Budget alerts at 50/75/90% | **Closed** (§3f). All four thresholds deliver, once per period, proven across 20 separate processes. The breaker reset is audited |
+| No backups, and no restore ever rehearsed | **Closed for the logic** (§3k). A real dump was restored into a scratch database and compared table by table; both failure paths were watched. **Open for the deployment:** the nightly workflow needs secrets only Harsha can set, so the production Neon database has never been backed up |
+| Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
 | 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.22 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe |
