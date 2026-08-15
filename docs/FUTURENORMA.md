@@ -272,7 +272,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Credits derived from each operation's hard maximum (Pathway 1 item 5, §10.3 1B.2) | ✅ | Suite fails if any operation earns below the margin floor — §3e |
 | Budget alerts at 50/75/90/100% + audited manual reset (Pathway 1 item 6) | ✅ | 20 separate processes page a human once; unattributed reset impossible — §3f |
 | Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
-| **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ❌ **not scheduled** | 91 checks; a real dump restored into a scratch database and compared table by table on 2026-08-14, both failure paths watched — §3k. The nightly workflow exists and waits on production secrets |
+| **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ❌ **not scheduled** | 91 checks; a real dump restored into a scratch database and compared table by table on 2026-08-14, both failure paths watched — §3k. The nightly workflow exists and is inert; scheduling is **deferred to the first paying organization** (2026-08-15), with hand backups covering the waitlist meanwhile. Switch-on checklist: `PATHWAYS.md` Pathway 1 item 10 |
 | **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
@@ -294,8 +294,9 @@ run 2026-08-14. Migrations are now `001`–`014`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
-(item 10, `Blocked` on production secrets), and the **org-deletion policy
-question** (item 9 — Harsha's call, not code).
+(item 10, deferred by decision to the first paying organization, 2026-08-15 —
+not blocked), and the **org-deletion policy question** (item 9 — Harsha's call,
+not code).
 
 > The real-Postgres number moved by more than the new suite adds. Running the
 > existing suites against one shared server exposed four `budgetAlerts` checks
