@@ -11,14 +11,14 @@ export interface PublicRoute {
 }
 
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { route: "/", lastModified: "2026-08-14T23:13:29+05:30" },
-  { route: "/agents", lastModified: "2026-08-14T16:09:19+05:30" },
+  { route: "/", lastModified: "2026-08-16T14:00:04+05:30" },
+  { route: "/agents", lastModified: "2026-08-16T14:00:04+05:30" },
   { route: "/cloud", lastModified: "2026-08-14T23:13:29+05:30" },
-  { route: "/commands", lastModified: "2026-08-14T16:09:19+05:30" },
-  { route: "/guide", lastModified: "2026-08-14T23:13:29+05:30" },
-  { route: "/how-it-works", lastModified: "2026-08-14T23:13:29+05:30" },
+  { route: "/commands", lastModified: "2026-08-16T14:00:04+05:30" },
+  { route: "/guide", lastModified: "2026-08-16T14:00:04+05:30" },
+  { route: "/how-it-works", lastModified: "2026-08-16T14:00:04+05:30" },
   { route: "/legal", lastModified: "2026-08-14T23:13:29+05:30" },
-  { route: "/report", lastModified: "2026-08-14T16:09:19+05:30" },
+  { route: "/report", lastModified: "2026-08-16T14:00:04+05:30" },
   { route: "/legal/ai-disclosure", lastModified: "2026-08-13T14:10:24+05:30" },
   { route: "/legal/cookies", lastModified: "2026-08-16T12:27:21+05:30" },
   { route: "/legal/privacy", lastModified: "2026-08-16T12:27:21+05:30" },
