@@ -368,6 +368,26 @@
   }
 }
 
+/* The empty frame is turned towards you, held there a beat, and lowered.
+   The hold is what the gesture needs: a frame that tips and immediately
+   returns reads as a wobble, and the whole point of this one is that you get
+   long enough to see there is nothing in it. Pivot is the bottom edge, set in
+   `twins.tsx`. */
+@keyframes tw-empty {
+  0%,
+  58%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70%,
+  84% {
+    transform: rotate(-7deg);
+  }
+  94% {
+    transform: rotate(0deg);
+  }
+}
+
 /* Shoulders up, shoulders down. The shadow stays put — see `twins.tsx`. */
 @keyframes tw-shrug {
   0%,
@@ -415,6 +435,9 @@
 }
 .tw-shrug {
   animation: tw-shrug 4.8s ease-in-out infinite;
+}
+.tw-empty {
+  animation: tw-empty 5.8s ease-in-out infinite;
 }
 
 /*
