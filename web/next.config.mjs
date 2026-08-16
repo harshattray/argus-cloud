@@ -30,14 +30,25 @@ const nextConfig = {
 
   // Native/WASM database drivers must not be bundled by webpack/turbopack.
   serverExternalPackages: ["@electric-sql/pglite", "pg", "argus-cloud"],
+
+  // Next advertises itself in `X-Powered-By` on every response. It tells an
+  // attacker which framework's advisories to read against us and tells a
+  // visitor nothing, so it is turned off.
+  poweredByHeader: false,
+
   async headers() {
     return [
-      // The report tree's CSP is issued per request in `middleware.ts`, not
-      // here. It carries a nonce, and a nonce cannot exist in a static header —
-      // which is why the policy that used to sit here rendered /r/ blank in
-      // production: it blocked the inline scripts the App Router streams page
-      // content through. Two sources for one policy would be worse than either,
-      // so this deliberately has none.
+      // **No `Content-Security-Policy` here, deliberately.** Every policy this
+      // site serves is issued in `middleware.ts`, because the strict one
+      // carries a per-request nonce and a nonce cannot exist in a static
+      // header — that is what rendered /r/ blank in production. A second policy
+      // set here would not replace the one from middleware; a browser given two
+      // CSP headers enforces both at once, and the intersection is a policy
+      // nobody wrote or tested. One source, and it is the middleware.
+      //
+      // The headers below are all constants, so they belong in a static
+      // config — and unlike the middleware matcher this reaches every response
+      // including static assets.
       {
         source: "/:path*",
         headers: [
@@ -45,6 +56,15 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          // Nothing on this site uses a camera, a microphone, or a location,
+          // and nothing is expected to. Denying them outright means an injected
+          // tag or a compromised dependency cannot prompt a visitor for a
+          // permission we would never ask for — a prompt that carries our
+          // domain name and so our credibility.
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+          },
         ],
       },
     ];

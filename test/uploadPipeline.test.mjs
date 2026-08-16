@@ -777,27 +777,97 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-// V5 — the report tree's CSP carries a nonce and lives in exactly one place
+// V5 — the strict CSP carries a nonce, covers the trees that need it, and is
+//      still the only policy for them
 // ---------------------------------------------------------------------------
 //
 // `/r/` rendered blank in production for as long as the policy was static:
 // `script-src 'self'` blocks the inline scripts the App Router streams page
 // content through, so the body arrived empty. A nonce fixes that without
-// weakening anything, but only while three things stay true — and none of them
-// is visible to a test that does not render a page, which is why this reads the
-// source.
+// weakening anything, but only while the things below stay true — and none of
+// them is visible to a test that does not render a page, which is why this
+// reads the source.
 //
 // The tempting wrong fix is `'unsafe-inline'`. It would make the page render
 // and delete the reason the policy is strict: these pages display model output
 // and uploaded frame labels.
+//
+// **Why this check was rewritten.** It used to scan the whole of
+// `middleware.ts` for a `script-src` containing `'unsafe-inline'`. That was
+// exact while the file held one policy. The file now holds two — the strict
+// nonce policy for `/r/` and `/admin`, and a separate one for the statically
+// prerendered marketing pages, which *must* allow inline scripts because a
+// nonce cannot exist in a page rendered once at build time. A file-wide scan
+// cannot tell those apart, so it is now scoped to the strict policy's own
+// function body, and the assertions the old version could not make are added:
+// that the strict policy actually reaches `/admin`, and that the rest of the
+// site is not left with no policy at all, which is the state this whole change
+// was fixing.
 const middleware = await readFile(path.resolve(HERE, "..", "web/middleware.ts"), "utf-8");
 const nextConfig = await readFile(path.resolve(HERE, "..", "web/next.config.mjs"), "utf-8");
+
+// Scoped extraction. If either regex stops matching, the body is empty and
+// every check below fails — a rename must not make this suite vacuously green.
+const strictCsp = /function strictCsp\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middleware)?.[1] ?? "";
+const siteCsp = /const SITE_CSP = \[([\s\S]*?)\]\.join/.exec(middleware)?.[1] ?? "";
+const needsNonce = /function needsNonce\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middleware)?.[1] ?? "";
+
 const cspIssues = [];
-if (!/nonce-\$\{nonce\}/.test(middleware)) cspIssues.push("middleware does not issue a nonce");
-if (!/font-src 'self'/.test(middleware)) cspIssues.push("font-src missing — self-hosted fonts blocked");
-if (/script-src[^;`]*'unsafe-inline'/.test(middleware)) cspIssues.push("script-src allows unsafe-inline");
+if (strictCsp.length === 0) cspIssues.push("strictCsp() not found — this check can no longer see the policy");
+if (siteCsp.length === 0) cspIssues.push("SITE_CSP not found — this check can no longer see the policy");
+if (needsNonce.length === 0) cspIssues.push("needsNonce() not found — cannot tell which tree gets which policy");
+
+// The strict policy: a nonce, no inline escape hatch, and the directives whose
+// absence silently blocked fonts and page content the first time round.
+if (!/nonce-\$\{nonce\}/.test(strictCsp)) cspIssues.push("strict policy does not issue a nonce");
+if (!/default-src 'none'/.test(strictCsp)) cspIssues.push("strict policy has no default-src 'none'");
+if (!/font-src 'self'/.test(strictCsp)) cspIssues.push("font-src missing — self-hosted fonts blocked");
+if (/script-src[^;`]*'unsafe-inline'/.test(strictCsp)) cspIssues.push("strict script-src allows unsafe-inline");
+
+// It has to actually reach the two trees that render untrusted content. `/r/`
+// is model output; `/admin` is other people's email addresses.
+if (!/\/r\//.test(needsNonce)) cspIssues.push("/r/ no longer gets the strict policy");
+if (!/\/admin/.test(needsNonce)) cspIssues.push("/admin no longer gets the strict policy");
+
+// And the rest of the site must still have *a* policy. Between the day the
+// static header was removed and the day this was written, every page except
+// `/r/` had none at all — including `/admin`. An empty SITE_CSP is that state
+// returning, so the directives that still bite under `'unsafe-inline'` are
+// named explicitly.
+if (!/base-uri 'none'/.test(siteCsp)) cspIssues.push("site policy lets an injected <base> retarget every relative URL");
+if (!/form-action 'self'/.test(siteCsp)) cspIssues.push("site policy lets a form be retargeted off-origin");
+if (!/connect-src 'self'/.test(siteCsp)) cspIssues.push("site policy allows exfiltration to any origin");
+
+// One source for the policy. Two CSP headers are not a replacement — a browser
+// enforces both at once, and the intersection is something nobody tested.
 if (/source: "\/r\/:path\*"/.test(nextConfig)) cspIssues.push("a second, static /r/ policy is back in next.config");
-check("V5", cspIssues.length === 0, `the /r/ policy is nonce-based, complete, and singular (${cspIssues.join("; ") || "all four hold"})`);
+if (/key:\s*"[Cc]ontent-[Ss]ecurity-[Pp]olicy"/.test(nextConfig)) cspIssues.push("next.config sets a CSP header again");
+
+// `next dev` needs `'unsafe-eval'` and Vercel's debug-script origin, and a
+// deployed build must have neither. Both live in one constant behind a
+// NODE_ENV check; these assert the check is still there and still the only way
+// they enter a policy.
+//
+// This exists because the first version of the policy had no such gate and no
+// `'unsafe-eval'` at all, which broke hydration across the entire site in
+// development — every tab, form and slider dead, on pages that still rendered
+// perfectly. Nothing failed loudly. The reverse mistake, letting either source
+// into production, fails even more quietly: it would simply weaken the policy
+// while every page kept working.
+const devSources = /const DEV_SCRIPT_SRC\s*=\s*([\s\S]*?);/.exec(middleware)?.[1] ?? "";
+if (devSources.length === 0) cspIssues.push("DEV_SCRIPT_SRC not found — cannot tell dev sources from production ones");
+if (!/NODE_ENV\s*===\s*"development"/.test(devSources)) cspIssues.push("dev-only script sources are no longer gated on NODE_ENV");
+if (!/'unsafe-eval'/.test(devSources)) cspIssues.push("'unsafe-eval' missing — next dev cannot hydrate any page");
+for (const [name, policy] of [["strict", strictCsp], ["site", siteCsp]]) {
+  if (/'unsafe-eval'/.test(policy)) cspIssues.push(`${name} policy hard-codes 'unsafe-eval' outside the NODE_ENV gate`);
+  if (/https:\/\//.test(policy)) cspIssues.push(`${name} policy hard-codes an external origin outside the NODE_ENV gate`);
+}
+
+check(
+  "V5",
+  cspIssues.length === 0,
+  `the strict CSP is nonce-based, reaches /r/ and /admin, and is the only policy (${cspIssues.join("; ") || "all of them hold"})`
+);
 
 await rm(ROOT, { recursive: true, force: true });
 for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg, statsOrg]) {
