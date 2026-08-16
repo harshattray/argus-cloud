@@ -48,6 +48,7 @@ export type TwinPose =
   | "measure"
   | "magnify"
   | "stack"
+  | "empty"
   | "offer";
 export type TwinTone = "ink" | "cream";
 
@@ -154,6 +155,19 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
       [152, 210],
     ],
   },
+  /* Both arms out to the edges of a frame held up at chest height. Wider than
+     `camera`, which is the point — the two are the only poses gripping a
+     rectangle in both hands, and a silhouette is recognised before a limb is.
+     The frame is 108 units across against the camera's 88, and it is open
+     rather than solid. */
+  empty: {
+    left: "M46 176 C 34 180 30 188 40 193",
+    right: "M154 176 C 166 180 170 188 160 193",
+    hands: [
+      [40, 197],
+      [160, 197],
+    ],
+  },
   /* Holding a cloud up. The only pose allowed to repeat, because it is the one
      the whole set is walking towards — see the note at the top of the file.
      The arm reaches higher than `wave`'s, and that is geometry rather than
@@ -243,6 +257,33 @@ const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
         </>
       );
 
+    /* An empty frame, held up and turned towards you.
+       The whole set is two figures each reading their own copy of the same
+       page. This is the one holding a copy with nothing on it, which is the
+       only joke a 404 needs — and it is the drawing, not the caption, that
+       makes it.
+       A frame rather than a blank sheet: a plain rectangle of paper reads as a
+       card, and `reading` and `stack` already hold paper. The inner rule is
+       what turns it into a frame, and a frame with nothing in it is legible at
+       `w-28` where a subtler idea would not be. */
+    case "empty":
+      return (
+        <>
+          <rect x="46" y="152" width="108" height="66" rx="6" fill={c.paper} stroke={c.line} strokeWidth="6" />
+          <rect
+            x="58"
+            y="163"
+            width="84"
+            height="44"
+            rx="3"
+            fill="none"
+            stroke={c.line}
+            strokeWidth="3"
+            opacity="0.38"
+          />
+        </>
+      );
+
     /* The cloud, held up. Drawn as one outline rather than the lockup's three
        circles over a bar: the mark is filled shapes with no stroke, and three
        stroked circles overlapping a stroked bar show every seam.
@@ -321,6 +362,10 @@ const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string
   magnify: { scope: "arm", origin: "154px 172px" },
   /* The sheets are tapped square. */
   stack: { scope: "prop", origin: "100px 214px" },
+  /* The frame is turned towards you and back — showing you there is nothing in
+     it. Pivoting on the bottom edge rather than the centre is what makes it
+     read as *shown* rather than as a picture swinging on a nail. */
+  empty: { scope: "prop", origin: "100px 218px" },
   /* The cloud drifts. See the note above about why this one never rests. */
   offer: { scope: "arm" },
 };

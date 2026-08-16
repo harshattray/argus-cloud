@@ -991,6 +991,28 @@ rate" here means signups over visits for a period, not a tracked conversion
 per visitor. Both are deliberate, and both mean the number stays directional
 under the rule below.
 
+**Search visibility — the demand test has no traffic to measure yet.** Checked
+2026-08-16: `normascope.com` is not in Google's index at all. That is not a
+technical fault. Titles, descriptions, canonicals, `robots.txt`, `sitemap.xml`,
+the social card and `SoftwareApplication` JSON-LD were all already correct; the
+domain was three days old with no inbound links and nobody had told Google it
+exists. On-page work was tightened anyway (see `FinishedSPEC.md` §4j and
+`normascopeWeb.md` §12), and the sitemap now discovers routes from the
+filesystem rather than the navigation menu, which was silently dropping pages
+in both directions.
+
+**The blocking step is not code and is not done.** Verifying the domain in
+Google Search Console and Bing Webmaster Tools, and submitting the sitemap
+there, requires Harsha's accounts. Until that happens the analytics above will
+measure a site almost nobody can find, and any read of "demand" from the
+waitlist is a read of direct and referral traffic only. Do not treat a low
+signup count as evidence about the product before this is done — it is
+currently evidence about distribution.
+
+The first inbound links are the other free lever: the npm package page and the
+GitHub repository already carry some authority with Google and neither links to
+`normascope.com` today.
+
 ### Adoption measurement and product observability
 
 The free CLI is currently local-first and does not identify its users. That is

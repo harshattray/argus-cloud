@@ -239,7 +239,7 @@ page. Traced from a frame of Harsha's own generated footage — the still is not
 in the repo. `web/app/(site)/_components/twins.tsx`, one character, nine poses,
 two tones (charcoal line on paper, cream line on ink).
 
-They are not general decoration. **Eight placements, eight poses, no pose twice
+They are not general decoration. **Nine placements, nine poses, no pose twice
 on the site**, and the count is a ceiling: a new placement takes a new pose or
 an existing placement's slot.
 
@@ -253,6 +253,26 @@ an existing placement's slot.
 | `/agents` | "Two ways in" | shrug |
 | `/cloud` | the waitlist | wave (cream) |
 | `/legal` | the document index | stack |
+| 404 | "Nothing here to compare" | empty |
+
+**`empty` was added 2026-08-16 with the 404 page**, and it is the rule working
+rather than an exception to it: a new placement took a new pose. `shrug` was
+the obvious shortcut and already belongs to `/agents`, and reusing it would
+have made the same drawing appear twice for two different reasons.
+
+The pose holds a frame up with nothing in it, and turns it towards you once per
+cycle. A frame rather than a blank sheet because `reading` and `stack` already
+hold paper and a plain rectangle of it reads as a card; the inner rule is what
+makes it a frame, and a frame with nothing in it stays legible at `w-28`. The
+whole set is two figures each reading their own copy of the same page — this is
+the one whose copy is blank, which is the only joke a 404 needs and is carried
+by the drawing rather than the caption.
+
+**The 404's twin is the one placement with no sticker and no link.** Every
+other figure goes to `/cloud`. Selling the paid tier to someone who has just
+hit a dead end competes with the single thing that page owes them, which is a
+way back — so it is a plain `Twin`, and the page's own list of every route does
+the work instead.
 
 **The ninth pose is the exception, and it is the point of the set.** `offer`
 holds a clay-coloured cloud up. It lives in `CloudBand` (`_components/ui.tsx`)
@@ -782,8 +802,62 @@ change without a code edit. Per-page title and description via Next's Metadata
 API. Open Graph and Twitter cards with generated images — the portfolio's
 `api/og/norma.tsx` is the reference. `SoftwareApplication` JSON-LD carrying the
 npm package as `downloadUrl` and price 0, as the portfolio page already does.
-`sitemap.ts` and `robots.ts` covering the public routes only; everything under
-`/normascope-cloud` and `/r/` is `noindex` and disallowed.
+`sitemap.ts` and `robots.ts` covering the public routes only; `/r/`, `/api/`
+and `/admin/` are disallowed and the private trees carry `noindex`.
+
+### The route list is discovered, not written down (2026-08-16)
+
+**Adding a page is enough. Nothing else needs editing.**
+`scripts/public-routes.mjs` walks `app/(site)` and that is the answer to "what
+public pages exist"; `scripts/embed-page-dates.mjs` bakes the result in at
+build time and `sitemap.ts` reads it.
+
+This replaced deriving the list from `NAV_LINKS`, which is the **menu**, not
+the set of pages. The gap was silent in both directions and both were
+reproduced before the change: a public page added without a nav entry got no
+sitemap entry, no `lastmod` and none of the metadata checks, and shipped live
+and unfindable with every suite green; a page dropped from the nav while its
+file stayed put vanished from the sitemap while remaining reachable.
+
+Rules that follow:
+
+- **`lastmod` comes from git, never from the build clock.** It used to be
+  `new Date()`, so every deploy claimed all seven pages had changed at once.
+  Search engines discount a `lastmod` they can see is untrue, which loses the
+  signal on the pages where it is real. Where git cannot supply a date the
+  field is omitted rather than invented.
+- **A new dynamic route throws at build** until an expansion rule is added.
+  `/legal/[slug]` is the only one, expanded from the legal manifest. A dynamic
+  route silently producing no sitemap entries is the bug this exists to stop.
+- **Leaving a page out of the sitemap does not stop it being indexed.**
+  `SITEMAP_EXCLUDED` is empty and should stay empty; anything added to it needs
+  `robots: { index: false }` on the page as well.
+- **`/pitch` is deliberately not in `robots.txt`.** It is `noindex` on every
+  page in the tree. Disallowing it would stop crawlers fetching those pages and
+  therefore reading the `noindex`, which is how a gated URL ends up listed with
+  no snippet. Noindex is the stronger control; robots.txt would weaken it.
+
+**Titles are written against the template, not in isolation.** The site layout
+carries `template: "%s — Normascope"`, applied to child segments only — so `/`
+keeps its title verbatim and every other page gets the suffix. A page title
+must therefore be short and must not contain the brand: `/guide` rendered
+"Normascope User Guide — Normascope" until this was noticed. Budget is about
+47 characters, since Google shows roughly 60. Descriptions get about 155.
+
+`test/seo.test.mjs` enforces all of the above, including the add and remove
+cases, and fails on a canonical that points at another route — the copy-paste
+mistake that tells Google to index a different page and looks like nothing on
+screen.
+
+### Search Console is a person's job, not the code's
+
+Ownership verification reads `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` and
+`NEXT_PUBLIC_BING_SITE_VERIFICATION` and emits a meta tag only when a token is
+set. The tokens are per-property, so one committed here would be silently wrong
+on every preview deploy. **Verifying and submitting the sitemap inside each
+console is the step that actually gets pages indexed**, and no amount of
+on-page work substitutes for it — as of 2026-08-16 the domain was not in
+Google's index at all.
 
 ---
 

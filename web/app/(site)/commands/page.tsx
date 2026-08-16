@@ -22,9 +22,12 @@ import { TwinAside } from "../_components/twins";
  */
 
 export const metadata: Metadata = {
-  title: "Commands",
+  // Was "Commands". Naming the surface it belongs to is what makes it findable
+  // by someone searching for a CLI reference rather than a menu label.
+  title: "CLI commands and flags",
   description:
-    "Every Normascope command and flag — init, doctor, auto, compare, check, baseline, snapshot, comment, explain and clean — plus a builder that writes your config for you.",
+    // Trimmed from 172 characters to fit what a search result actually shows.
+    "Every Normascope command and flag — init, doctor, auto, compare, check, baseline, snapshot, comment, explain and clean — plus a config builder.",
   alternates: { canonical: "/commands" },
 };
 
