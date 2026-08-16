@@ -44,8 +44,37 @@ const yuticWordmark = DM_Mono({
 // default literal from `lib/site.ts`; two copies of one fact is how a domain
 // change lands in the sitemap and the canonical tags but not in the Open Graph
 // URLs, with nothing failing.
+/**
+ * Search-engine ownership proof, supplied by environment variable.
+ *
+ * Google Search Console and Bing Webmaster Tools each hand you a token and ask
+ * you to serve it from the site before they will show you index coverage or
+ * accept a sitemap submission. Both accept a `<meta>` tag; this renders one
+ * when the token exists and nothing when it does not, so an unconfigured
+ * deploy carries no empty tag.
+ *
+ * **Why env vars rather than the literal strings.** They are per-property, not
+ * per-codebase: a preview deploy, a staging domain, or a second property would
+ * each need a different one, and a token hard-coded here would be silently
+ * wrong on all of them. The values are not secret — they are public in the
+ * page source by design — so `NEXT_PUBLIC_` is correct and there is nothing to
+ * leak.
+ *
+ * Verification is one half. The half that actually gets pages indexed is
+ * submitting `sitemap.xml` inside each console, which is a person's job once.
+ */
+const verification = {
+  ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : {}),
+  ...(process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION
+    ? { other: { "msvalidate.01": process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION } }
+    : {}),
+};
+
 export const metadata = {
   metadataBase: new URL(SITE_URL),
+  ...(Object.keys(verification).length > 0 ? { verification } : {}),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
