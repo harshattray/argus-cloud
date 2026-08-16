@@ -14,7 +14,11 @@ import { ThresholdSlider } from "../../(pitch)/pitch/_components/ThresholdSlider
 import { TwinAside } from "../_components/twins";
 
 export const metadata: Metadata = {
-  title: "How Normascope works",
+  // "How Normascope works" only finds people who already know the name. This
+  // describes the subject, so it can also reach people looking for the thing
+  // rather than the brand. Kept broad on purpose: the page covers comparison
+  // against a design, a baseline and another environment, not one of them.
+  title: "How visual comparison works",
   description:
     "Learn how Normascope captures your UI, compares it with a design or approved build, and turns the result into a report you can trust.",
   alternates: { canonical: "/how-it-works" },

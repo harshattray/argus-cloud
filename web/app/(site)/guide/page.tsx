@@ -12,7 +12,10 @@ import {
 } from "./flows";
 
 export const metadata: Metadata = {
-  title: "Normascope User Guide",
+  // The layout already appends " — Normascope", so the old title rendered the
+  // brand twice. The three words after the colon are what people actually
+  // search for when they are stuck.
+  title: "User guide: setup, commands, troubleshooting",
   description:
     "What each command does, what must happen before and after it, which workflow to choose, and what to check when a run does not behave as expected.",
   alternates: { canonical: "/guide" },

@@ -21,9 +21,15 @@ import { MCP_PACKAGE } from "../../../lib/site";
  */
 
 export const metadata: Metadata = {
-  title: "Coding agents",
+  // "MCP server" is what someone actually searches for when looking to give an
+  // agent this capability; "Coding agents" alone was the audience, not the
+  // thing.
+  title: "MCP server for coding agents",
   description:
-    "Normascope's MCP server gives coding agents five tools — list_frames, capture, compare, get_summary and explain — so an agent can measure its own UI work instead of declaring it done.",
+    // Trimmed from 192 characters. The five tool names were the part that got
+    // cut, and they mean nothing to someone who has not arrived yet — the page
+    // itself is the right place for them.
+    "An MCP server that gives coding agents five tools to capture, compare and explain UI, so an agent can measure its own work instead of declaring it done.",
   alternates: { canonical: "/agents" },
 };
 

@@ -33,7 +33,29 @@ export function Hero() {
 
             <h1 className="mb-7">
               <Wordmark size="xl" />
-              <span className="sr-only">Normascope</span>
+              {/*
+                The h1's actual text. The wordmark above it is an image, so
+                this line is the whole heading as far as a screen reader or a
+                crawler is concerned — and it used to be the single word
+                "Normascope", which told both of them nothing.
+
+                A page's h1 is the strongest on-page statement of what the page
+                is about. Spending it on the brand name repeats what the title,
+                the logo and the domain already say three times over. This says
+                what the product does instead, in the same words the rest of
+                the site uses.
+
+                "any reference" is deliberate and load-bearing: the engine
+                compares against a design, a set of images, another URL, or an
+                approved baseline (`migrations/001_foundation.sql`, `source`).
+                Naming one of the four here would shrink the product to that
+                one in the place search engines weight most.
+
+                Nothing changes visually — `sr-only` keeps it off screen.
+              */}
+              <span className="sr-only">
+                Normascope — compare your running UI to any reference
+              </span>
             </h1>
 
             <p className="max-w-lg text-xl leading-snug text-text/75 md:text-2xl">

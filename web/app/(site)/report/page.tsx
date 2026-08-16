@@ -23,9 +23,14 @@ import { TwinAside } from "../_components/twins";
  */
 
 export const metadata: Metadata = {
-  title: "The report",
+  // Was "The report", which competes with every page on the internet called
+  // that and says nothing about the subject. The layout appends
+  // " — Normascope", so the brand is not repeated here.
+  title: "The visual diff report explained",
   description:
-    "Every section of a Normascope report and every metric in it, in plain language — aligned difference, SSIM, drifted sections, significant regions — plus the four shapes the report takes depending on what you're checking.",
+    // Trimmed from 228 characters: Google shows about 155, so the old ending
+    // was never read by anyone who found this page in a search result.
+    "Every metric in a Normascope report in plain language — aligned difference, SSIM, drifted sections and significant regions — and the four shapes it takes.",
   alternates: { canonical: "/report" },
 };
 

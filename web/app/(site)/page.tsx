@@ -8,10 +8,27 @@ import { PrComment } from "../(pitch)/pitch/_components/PrComment";
 import { AgentLoop } from "../(pitch)/pitch/_components/AgentLoop";
 import { TwinAside } from "./_components/twins";
 
+/**
+ * The title is the site's own voice and stays that way. The description is
+ * where the search terms go.
+ *
+ * **Why they are split.** Nobody searches "see what changed before your users
+ * do" — it says what the product *means*, which is the right job for the line
+ * a visitor reads after they have already arrived. The words people actually
+ * type are the category ones: visual regression testing, design QA. Putting
+ * those in the description reaches the query without the title having to sound
+ * like a keyword list.
+ *
+ * Both facts here are load-bearing and checked against the product, not
+ * chosen for search volume: the comparison really does run on the developer's
+ * machine, and the two named categories are the two things the engine does
+ * (`fidelity` against a design, `baseline` against an approved capture — see
+ * `migrations/001_foundation.sql`, `source`).
+ */
 export const metadata: Metadata = {
   title: "Normascope — see what changed before your users do",
   description:
-    "Normascope photographs your running UI and tells you exactly what moved — against your design, or against yesterday's build. Free, and it runs entirely on your machine.",
+    "Visual regression testing and design QA that run on your machine. Normascope photographs your running UI and tells you exactly what moved.",
   alternates: { canonical: "/" },
 };
 
