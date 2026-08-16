@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Screenshot } from "../../_components/Screenshot";
 
 /**
  * A screenshot with numbered callout pins keyed to a list beside it.
@@ -41,8 +42,7 @@ export const Annotated = ({
           dark ? "border-white/10 bg-ink" : "border-black/8 bg-white"
         }`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} className="w-full" loading="lazy" />
+        <Screenshot src={src} alt={alt} />
         {pins.map((pin, i) => (
           <span
             key={pin.label}
