@@ -16,9 +16,10 @@
 // either database, which is what makes it safe to point at production.
 //
 // Exit codes:
-//   0  the target is equal to or cleanly ahead of the source
-//   1  drift that needs a decision — the source has something the target does
-//      not, or the two have diverged rather than one leading
+//   0  level, cleanly ahead, or empty — an empty target is a database nobody
+//      has migrated yet, which needs a request rather than a decision
+//   1  genuine drift — the target has applied some migrations and is missing
+//      others the source has, so it is no longer a rehearsal of it
 //   2  could not run
 
 import path from "node:path";
@@ -54,17 +55,25 @@ async function applied(url, label) {
     process.exit(2);
   }
   try {
-    const res = await client.query("SELECT name FROM schema_migrations ORDER BY name");
-    return res.rows.map((r) => r.name);
-  } catch {
-    // No schema_migrations at all is a legitimate answer: an empty database.
-    return [];
+    const tables = await client.query(
+      "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'"
+    );
+    let names = [];
+    try {
+      const res = await client.query("SELECT name FROM schema_migrations ORDER BY name");
+      names = res.rows.map((r) => r.name);
+    } catch {
+      // No schema_migrations table at all — a genuinely untouched database.
+    }
+    return { names, tableCount: tables.rows[0].n };
   } finally {
     await client.end();
   }
 }
 
-const [from, to] = await Promise.all([applied(fromUrl, fromName), applied(toUrl, toName)]);
+const [fromInfo, toInfo] = await Promise.all([applied(fromUrl, fromName), applied(toUrl, toName)]);
+const from = fromInfo.names;
+const to = toInfo.names;
 const fromSet = new Set(from);
 const toSet = new Set(to);
 
@@ -88,10 +97,54 @@ if (unshipped.length > 0) {
   for (const m of unshipped) console.log(`  · ${m}`);
 }
 
-// The bad case, and the reason this exits non-zero. If production has a
-// migration staging has never applied, staging is no longer a rehearsal of
-// production — it is a different database, and anything proven on it proves
-// nothing. Re-branch staging from production rather than trying to reconcile.
+// An empty target is not drift — it is a database nobody has migrated yet.
+//
+// **Worth its own case because the advice differs completely.** A diverged
+// branch has to be re-created; an empty one only needs a request, since
+// `migrate()` applies everything on first use. Telling someone to re-branch a
+// perfectly good fresh branch is advice that destroys the thing it is meant to
+// protect — and this script gave exactly that advice for a Neon branch created
+// schema-only, which starts with no `schema_migrations` at all.
+//
+// Exit 0: nothing is wrong. There is simply nothing there yet.
+if (to.length === 0) {
+  // Two very different databases look identical from the migration log alone,
+  // and the advice is opposite. The tables tell them apart.
+  //
+  // **Schema without bookkeeping is the trap.** A Neon "schema only" branch
+  // copies table structures and no rows — and `schema_migrations` is a table
+  // whose *rows* are the record. The branch arrives with every table its parent
+  // has and a log claiming nothing was applied, so `migrate()` tries to run
+  // `001` and dies on `relation "orgs" already exists`. Telling someone to
+  // "open a deployment and it will apply them" sends them at a crash.
+  if (toInfo.tableCount > 1) {
+    console.log(`\n⚠️  ${toName} has ${toInfo.tableCount} tables but no migration record.`);
+    console.log(
+      "That is a schema copied without its bookkeeping — a Neon \"schema only\" branch does this, " +
+        "because schema_migrations holds its record in rows, and rows are not copied."
+    );
+    console.log(
+      `\n${toName} will not migrate itself: migrate() reads an empty log, starts at the first ` +
+        `migration, and fails with: relation "orgs" already exists`
+    );
+    console.log(`\n  node scripts/adopt-schema.mjs --url "<${toName} url>"`);
+    console.log("\nThat records the migrations the schema already reflects. Do not re-branch.");
+    process.exit(1);
+  }
+
+  console.log(`\n${toName} is empty — no migrations applied yet, which is not drift.`);
+  console.log(
+    `A fresh, empty database migrates cleanly; the first database request applies all ${from.length}.`
+  );
+  console.log(`Open a deployment pointed at ${toName}, then run this again. Do not re-branch — there is nothing to fix.`);
+  process.exit(0);
+}
+
+// The bad case, and the reason this exits non-zero. If the source has a
+// migration the target has never applied *while the target has applied others*,
+// the two have genuinely diverged: the target is no longer a rehearsal of the
+// source, and anything proven on it proves nothing. Re-branch rather than
+// reconcile by hand.
 if (behind.length > 0) {
   console.log(`\n⚠️  ${fromName} has ${behind.length} migration(s) ${toName} has never applied:`);
   for (const m of behind) console.log(`  - ${m}`);

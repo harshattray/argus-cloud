@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Effective date:** 13 August 2026  
-**Last updated:** 13 August 2026
+**Last updated:** 16 August 2026
 
 Normascope is operated by **Yutic, a sole proprietorship of Harsha Attray**
 (“Yutic”, “we”, “us”, or “our”). This Privacy Policy explains how we handle
@@ -25,13 +25,22 @@ to build a cross-site advertising profile.
 We do not ask for screenshots, source code, DOM content, repository names,
 prompts, API keys, or AI responses through the public waitlist.
 
+We also count visits to the public pages using Vercel Web Analytics. It sets
+no cookies and stores nothing on your device. For each page view it records
+the page address, the referring site, campaign parameters in the link you
+followed, and general technical details such as browser, operating system,
+device type, and country. Visitors are counted using a value recalculated each
+day, so it cannot be used to identify you, follow you across other websites,
+or connect a page view to a waitlist signup. Our
+[Cookie Notice](./COOKIE-NOTICE.md) describes this in full.
+
 ## Why we use this information
 
 We use waitlist information to:
 
 1. record and manage early-access interest;
 2. contact you about Normascope Cloud if you have asked to hear from us;
-3. measure signup sources and demand at an aggregate level;
+3. measure signup sources, page traffic, and demand at an aggregate level;
 4. prevent duplicate, fraudulent, or abusive submissions; and
 5. operate, secure, and troubleshoot the website.
 
@@ -51,6 +60,10 @@ transactional email provider may receive the email address and signup details
 needed to notify the site operator of a new signup. Providers may process data
 in countries different from where you live. We require providers to handle the
 information for the stated service and to apply appropriate safeguards.
+
+The website is hosted by Vercel Inc., which also provides the audience
+measurement described above. Vercel does not receive waitlist email addresses
+through that measurement.
 
 The paid Cloud product will have a fuller data-flow and subprocessors notice
 before customer uploads or hosted AI are enabled.

@@ -26,7 +26,8 @@
     "dev:web": "npm run build && npm run dev --workspace web",
     "sweep-uploads": "npm run build && node scripts/sweep-uploads.mjs",
     "seed:dev": "npm run build && node scripts/seed-dev.mjs",
-    "schema-drift": "npm run build && node scripts/schema-drift.mjs"
+    "schema-drift": "npm run build && node scripts/schema-drift.mjs",
+    "adopt-schema": "npm run build && node scripts/adopt-schema.mjs"
   },
   "repository": {
     "type": "git",

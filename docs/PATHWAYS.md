@@ -974,6 +974,23 @@ not raw form submissions. Review the signal weekly before changing Cloud
 priorities or pricing doctrine. The waitlist can justify advancing the next
 Cloud pathway; it does not by itself prove willingness to pay.
 
+**Signup rate became computable on 2026-08-16.** Until then only the numerator
+existed — `/admin/waitlist` counts signups, and nothing counted visits, so the
+rate asked for above could not be worked out. Vercel Web Analytics now runs on
+the public pages and supplies the denominator. It is mounted in the public
+site layout only, so `/pitch`, `/admin` and `/r/{runId}` stay unmeasured. It
+sets no cookies and stores nothing on the visitor's device;
+`docs/legal/COOKIE-NOTICE.md` and `docs/legal/PRIVACY.md` describe it, and
+`test/siteAnalytics.test.mjs` fails if a tracker is added without updating
+them.
+
+Two limits on what this can be claimed to show. Visitors are counted by a hash
+that is recomputed daily, so a returning visitor counts twice — the figure is
+visits, not people. And nothing links a page view to a signup row, so "signup
+rate" here means signups over visits for a period, not a tracked conversion
+per visitor. Both are deliberate, and both mean the number stays directional
+under the rule below.
+
 ### Adoption measurement and product observability
 
 The free CLI is currently local-first and does not identify its users. That is
@@ -1007,9 +1024,14 @@ disable switch, and document retention and deletion. The CLI must remain fully
 useful with telemetry disabled.
 
 Until opt-in telemetry exists, use only aggregate signals such as npm download
-counts, GitHub Action usage where available, documentation traffic, and the
+counts, GitHub Action usage where available, website traffic, and the
 waitlist. These are directional and must not be presented as unique-user
 counts.
+
+Website traffic is measured as of 2026-08-16 (see the demand gate above);
+npm downloads and GitHub Action usage still are not. Website traffic counts
+visits, not people, so it is subject to the same rule as the rest — it is a
+direction, not a user count.
 
 #### Normascope Cloud: authenticated and robust
 
@@ -1510,6 +1532,49 @@ Implement:
 - repository and seat list;
 - internal admin view for margin, storage, spend, and breaker status.
 
+#### Re-branching staging — the step that is not obvious
+
+A Neon **schema only** branch copies table structures and **no rows**. That
+includes `schema_migrations`, whose rows *are* the record of what has been
+applied. So a fresh schema-only branch arrives with every table its parent has
+and a log claiming nothing was ever applied.
+
+`migrate()` then reads an empty log, starts at `001`, and fails:
+
+    error: relation "orgs" already exists
+
+The database is not broken and must not be re-created. The record is missing,
+not the schema. Sequence:
+
+1. Delete and re-create the branch from production, schema-only.
+2. Point Vercel's **Preview** `DATABASE_URL` at the new connection string.
+3. `node scripts/adopt-schema.mjs --url "<staging url>"` — records the
+   migrations the schema already reflects. It refuses unless every table the
+   build creates is present, so it cannot mask a database that genuinely needs
+   migrating.
+4. `node scripts/schema-drift.mjs --from "$PROD_URL" --to "$STAGING_URL"` —
+   expect *level*.
+
+`schema-drift` recognises this state and says so; it used to advise re-branching,
+which would have produced another branch with the identical problem.
+
+**Redesign the operator surfaces as one pass, before launch.** The pages under
+`/admin` were each built beside the control they expose — rate limits and spend
+with the breaker, waitlist with its export, API keys with revocation — which is
+why every one of them works and none of them was designed. They share no shell,
+no navigation beyond hand-written links between three routes, and no consistent
+way of showing a control that is currently irrelevant. The breaker reset is the
+clearest symptom: its form is correct to hide when nothing is tripped, and the
+result is a page where a control simply is not there, with nothing saying why.
+
+This is deliberately *not* work to do now. They are internal, gated, and used by
+one person, so the cost of them being plain is close to zero until there is a
+second operator or an incident someone has to work through under pressure.
+Do it as part of this pathway's shared shell rather than as a separate effort —
+the same shell, navigation, role matrix and page-ownership map named above.
+Scope when it comes: `/admin/limits`, `/admin/waitlist`, `/admin/keys`, and
+whatever Pathway 5 adds beside them.
+
 **Gate:** session-layer tenant probes pass; a designer can read a report without
 GitHub; an admin can explain every credit movement without support.
 
@@ -1762,7 +1827,12 @@ Cloud is not ready to charge until:
   item 10 for the switch-on checklist;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
-- [ ] a real demo uses real historical Normascope data.
+- [ ] a real demo uses real historical Normascope data;
+- [ ] the operator surfaces have had a design pass — one shell and one
+  navigation across `/admin/*`, and a control that is currently irrelevant says
+  so rather than vanishing. Built beside their controls rather than designed;
+  cheap to leave until there is a second operator or an incident to work
+  through. See Pathway 5.
 - [ ] provider dollars are reserved before calls and settled idempotently;
 - [ ] hard maximum COGS per model/pass is below its credit revenue floor;
 - [ ] global, organization, and agent-key budget races are tested;
