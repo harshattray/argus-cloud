@@ -1482,6 +1482,124 @@ rules *and its wording*, so the message cannot differ depending on whether
 JavaScript ran. Twelve cases pass; there is **no automated regression test**,
 because `web/lib/` is not compiled into `dist/` where `test/*.mjs` imports from.
 
+### 4i. Audience measurement — 2026-08-16 ✅
+
+**Vercel Web Analytics runs on the public pages and nowhere else.** It is
+mounted in `web/app/(site)/layout.tsx`, not the root layout — the root wraps
+`/pitch`, `/admin` and `/r/{runId}` as well, and measuring those would mean
+recording paths and referrers for investor material, for other people's email
+addresses, and for customers' own reports. `/r/*` would refuse the script
+anyway under its nonce CSP, but that is a backstop, not the control.
+
+**What it closes.** PATHWAYS asks for "unique signups and signup rate by
+source". `/admin/waitlist` supplied the signups; nothing supplied a visitor
+count, so the *rate* had never been computable. Two limits on the figure, both
+deliberate: visitors are counted by a hash recomputed daily, so a returning
+visitor counts twice — it is visits, not people; and nothing links a page view
+to a signup row, so the rate is signups over visits for a period, not a tracked
+conversion.
+
+**The legal copy shipped in the same commit, because the Cookie Notice
+required it.** It already promised that any analytics would be documented
+*before* activation. `docs/legal/COOKIE-NOTICE.md` gained an "Audience
+measurement" section and `PRIVACY.md` names Vercel Inc. as the provider.
+Verified in a real browser: no cookie is set and `localStorage` stays empty.
+`test/siteAnalytics.test.mjs` (12 checks) fails if a tracker is mounted without
+the documents naming it, or outside `app/(site)/`.
+
+**Open:** analytics must still be enabled once in the Vercel project; until
+then the script 404s and nothing is collected. And **no consent banner was
+added** — the reasoning is that consent under ePrivacy attaches to storing or
+reading data on the device and this stores nothing, but GDPR still governs the
+processing and some EU regulators read cookieless analytics more strictly. That
+is a decision for Harsha, recorded here rather than assumed settled.
+
+### 4j. Search visibility — 2026-08-16
+
+**normascope.com was not in Google's index at all.** Checked 2026-08-16: a
+`site:` query returned nothing from the domain. Not a technical fault — titles,
+descriptions, canonicals, `robots.txt`, `sitemap.xml`, the social card and
+`SoftwareApplication` JSON-LD were all already in place. The domain was three
+days old with no inbound links, and nobody had told Google it exists.
+
+**The one action that matters is not code.** Google Search Console and Bing
+Webmaster Tools need a person with the account to verify ownership and submit
+the sitemap. `web/app/layout.tsx` reads `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`
+and `NEXT_PUBLIC_BING_SITE_VERIFICATION` and emits the meta tag only when a
+token exists; the tokens are per-property, so hard-coding one would be silently
+wrong on every preview deploy.
+
+**Four defects found and fixed.**
+
+1. **The sitemap lied about dates.** `lastModified: new Date()` stamped build
+   time on every route, so each deploy claimed all seven pages changed at once.
+   Crawlers discount a `lastmod` they can see is untrue, which cost the signal
+   on pages where it was real. `scripts/embed-page-dates.mjs` now reads each
+   page's last commit from git and omits the date where git cannot say, rather
+   than substituting the build time.
+2. **The legal pages were missing from the sitemap** despite being public and
+   linked from every footer.
+3. **`robots.txt` disallowed `/normascope-cloud`**, a path this domain has
+   never served — it is the legacy preview in the portfolio repo. A Disallow
+   for a path the site does not serve protects nothing while reading as though
+   it does. Removed. `/pitch` remains deliberately *absent* from the disallow
+   list: blocking it would stop crawlers fetching those pages and therefore
+   reading their `noindex`, which is the stronger control.
+4. **Titles and descriptions were being truncated.** `/guide` rendered
+   "Normascope User Guide — Normascope" because the layout template appends the
+   brand; three descriptions ran past the ~155 characters Google displays, the
+   longest at 228.
+
+**The route list keyed off the navigation menu, and that was the real bug.**
+The sitemap, the date generator and the SEO suite all answered "what pages does
+this site have?" from `NAV_LINKS` — which is the menu, not the set of pages.
+Both directions failed silently and both were reproduced before the fix: a
+public page added without a nav entry got no sitemap entry, no date and none of
+the metadata checks while every suite stayed green; a page dropped from the nav
+while its file stayed put vanished from the sitemap while remaining reachable.
+`scripts/public-routes.mjs` now walks `app/(site)` — the filesystem cannot
+disagree with itself about which pages exist — and a new dynamic route without
+an expansion rule throws at build rather than producing an empty section.
+
+`test/seo.test.mjs` (24 checks) covers all of it, including both add/remove
+cases, rendered title length against the template, and description length.
+
+**Copy changed, with Harsha choosing the option.** The home description now
+carries the category terms ("visual regression testing and design QA") while
+the title keeps the site's own voice; five page titles were replaced ("The
+report" → "The visual diff report explained"); and the home `h1`, which was the
+wordmark image plus screen-reader text reading only "Normascope", now reads
+"Normascope — compare your running UI to any reference". Nothing moved on
+screen.
+
+**Figma was considered and deliberately rejected as the lead.** It is a real
+first-class source (`migrations/001_foundation.sql`: `figma | images | url |
+baseline`) and unmentioned on the public site, and "compare Figma to live
+website" is a busy query. Harsha's call was that leading with it would
+misrepresent a product where all four sources are equal. Recorded because the
+search-volume argument will come back.
+
+### 4k. The 404 page — 2026-08-16 ✅
+
+`web/app/not-found.tsx`, at the root so it catches URLs matching no route at
+all, rendering the real `SiteLayout` around itself so the header, footer, Cloud
+lockup and analytics mount all arrive from one source. Returns a genuine 404
+status and carries its own title; before this a mistyped URL got the
+framework's bare default with no navigation and no way onward.
+
+It is **counted like any other page** — a spike of 404s is how a wrong link
+gets found, and a 404 page that excludes itself from measurement is a broken
+link nobody reports.
+
+**The twin is a new pose, `empty`.** The set's rule is eight placements, eight
+poses, no pose twice, and a new placement takes a new pose rather than
+borrowing one (`normascopeWeb.md` §5). `shrug` was the tempting shortcut and
+belongs to `/agents`. `empty` holds up a frame with nothing in it: the set is
+two figures each reading their own copy of the same page, and this is the one
+whose copy is blank. It carries no `get cloud` sticker and is not a link —
+selling the paid tier to someone who has just hit a dead end competes with the
+one thing the page owes them, which is a way back.
+
 ---
 
 ## 5. The preview — temporary, in the portfolio repo
