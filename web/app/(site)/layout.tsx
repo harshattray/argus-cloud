@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/next";
 import { SITE_URL, TAGLINE, NAV_LINKS, NPM_URL } from "../../lib/site";
 import { Wordmark, CloudMark } from "./_components/ui";
 import { WaitlistForm } from "./_components/WaitlistForm";
@@ -166,6 +167,54 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </footer>
+
+      {/*
+        Audience measurement — and the reason it is *here* rather than in the
+        root layout.
+
+        The root layout wraps four trees: this public site, `/pitch` (investor
+        material behind a password), `/admin` (other people's email addresses)
+        and `/r/{runId}` (a customer's own report). Mounting analytics there
+        would measure all four. Only this one is a public marketing surface
+        where the question "how many people saw this, and how many signed up?"
+        is ours to ask; the other three would mean recording paths and
+        referrers for private and customer pages, which nothing in the privacy
+        notice covers and nothing in the plan needs.
+
+        `/r/*` would in fact refuse it — `middleware.ts` serves that tree
+        `default-src 'none'` with a per-request nonce, so a script it does not
+        know about does not run. That is a backstop, not the control. The
+        control is this file, and `test/siteAnalytics.test.mjs` is what keeps
+        it true.
+
+        **What this closes.** PATHWAYS' demand section asks for "unique signups
+        and signup rate by source". `/admin/waitlist` supplies the numerator —
+        the signups. Nothing supplied the denominator, so the rate has never
+        been computable, only the count. The `source` values recorded by
+        `api/waitlist/route.ts` (`home`, `cloud`, `footer`, `nav`, …) are
+        placements on these pages, so page views measured here are the matching
+        bottom of the same funnel.
+
+        **Vercel Web Analytics, chosen for what it does not do.** It sets no
+        cookie and writes nothing to the visitor's device, so there is no
+        consent banner to add and nothing to opt out of at the browser. It is
+        served first-party from `/_vercel/insights/*` on our own origin, so it
+        adds no third-party host to the page. Visitors are counted by a hash
+        that is recomputed daily, which is what makes it audience measurement
+        rather than tracking: the same person on two days is two visitors, by
+        design. `docs/legal/COOKIE-NOTICE.md` promised this document-first
+        order before any analytics was switched on; the legal copy changed in
+        the same commit as this line, and the suite fails if it ever doesn't.
+
+        Two things that surprise people locally. `next dev` loads a *debug*
+        build of the script from `va.vercel-scripts.com` and sends nothing
+        anywhere — it only logs the event to the console. The first-party
+        `/_vercel/insights/script.js` above is the production path, which is
+        what the Cookie Notice describes. And this has to be switched on once
+        in the Vercel project; until it is, the script 404s, no data is
+        collected, and the page is otherwise unharmed.
+      */}
+      <Analytics />
     </div>
   );
 }

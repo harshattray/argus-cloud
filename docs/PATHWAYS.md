@@ -974,6 +974,23 @@ not raw form submissions. Review the signal weekly before changing Cloud
 priorities or pricing doctrine. The waitlist can justify advancing the next
 Cloud pathway; it does not by itself prove willingness to pay.
 
+**Signup rate became computable on 2026-08-16.** Until then only the numerator
+existed — `/admin/waitlist` counts signups, and nothing counted visits, so the
+rate asked for above could not be worked out. Vercel Web Analytics now runs on
+the public pages and supplies the denominator. It is mounted in the public
+site layout only, so `/pitch`, `/admin` and `/r/{runId}` stay unmeasured. It
+sets no cookies and stores nothing on the visitor's device;
+`docs/legal/COOKIE-NOTICE.md` and `docs/legal/PRIVACY.md` describe it, and
+`test/siteAnalytics.test.mjs` fails if a tracker is added without updating
+them.
+
+Two limits on what this can be claimed to show. Visitors are counted by a hash
+that is recomputed daily, so a returning visitor counts twice — the figure is
+visits, not people. And nothing links a page view to a signup row, so "signup
+rate" here means signups over visits for a period, not a tracked conversion
+per visitor. Both are deliberate, and both mean the number stays directional
+under the rule below.
+
 ### Adoption measurement and product observability
 
 The free CLI is currently local-first and does not identify its users. That is
@@ -1007,9 +1024,14 @@ disable switch, and document retention and deletion. The CLI must remain fully
 useful with telemetry disabled.
 
 Until opt-in telemetry exists, use only aggregate signals such as npm download
-counts, GitHub Action usage where available, documentation traffic, and the
+counts, GitHub Action usage where available, website traffic, and the
 waitlist. These are directional and must not be presented as unique-user
 counts.
+
+Website traffic is measured as of 2026-08-16 (see the demand gate above);
+npm downloads and GitHub Action usage still are not. Website traffic counts
+visits, not people, so it is subject to the same rule as the rest — it is a
+direction, not a user count.
 
 #### Normascope Cloud: authenticated and robust
 
