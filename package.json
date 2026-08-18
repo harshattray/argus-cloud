@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "test": "npm run build && node scripts/run-tests.mjs",
-    "build": "node scripts/embed-migrations.mjs && node scripts/embed-legal.mjs && node scripts/embed-page-dates.mjs && tsc",
+    "build": "node scripts/embed-migrations.mjs && node scripts/embed-legal.mjs && node scripts/embed-page-dates.mjs && node scripts/embed-image-sizes.mjs && tsc",
+    "optimise-screenshots": "node scripts/optimise-screenshots.mjs",
     "typecheck:web": "npm run build && npm run typecheck --workspace web",
     "audit": "node scripts/audit-check.mjs",
     "verify": "npm run build && npm run typecheck:web && npm test && npm run build --workspace web && npm run audit",

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Screenshot } from "../../../_components/Screenshot";
 
 /**
  * Editorial layout primitives.
@@ -182,13 +183,7 @@ export const Figure = ({
         dark ? "border-white/10 bg-ink" : "border-black/8 bg-white"
       } ${tall ? "max-h-[26rem]" : ""}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        className={`w-full ${tall ? "object-cover object-top h-[26rem]" : ""}`}
-        loading="lazy"
-      />
+      <Screenshot src={src} alt={alt} className={tall ? "object-cover object-top h-[26rem]" : ""} />
     </div>
     {caption && (
       <figcaption
@@ -235,8 +230,7 @@ export const Annotated = ({
           dark ? "border-white/10 bg-ink" : "border-black/8 bg-white"
         }`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} className="w-full" loading="lazy" />
+        <Screenshot src={src} alt={alt} />
         {pins.map((pin, i) => (
           <span
             key={pin.label}

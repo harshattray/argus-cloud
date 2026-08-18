@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Screenshot } from "../../_components/Screenshot";
 import { WaitlistForm } from "./WaitlistForm";
 import { WordmarkSVG, CloudLockupSVG, IconSVG } from "./marks";
 import { TwinAside } from "./twins";
@@ -126,8 +127,7 @@ export const Shot = ({
 }) => (
   <figure className={className}>
     <div className="overflow-hidden rounded-xl border border-black/8 bg-white shadow-[0_1px_2px_rgba(28,27,26,0.04),0_14px_38px_rgba(28,27,26,0.09)]">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="w-full" loading="lazy" />
+      <Screenshot src={src} alt={alt} />
     </div>
     {caption && (
       <figcaption className="mt-3 text-[13px] leading-relaxed text-text/50">{caption}</figcaption>

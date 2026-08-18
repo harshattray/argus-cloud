@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Screenshot } from "../../../_components/Screenshot";
 
 /**
  * The four shapes a report takes.
@@ -176,14 +177,11 @@ export function ReportVariants({
             report into another while decoding. */}
         <figure className="lg:col-span-12 min-w-0">
           <div className="overflow-hidden rounded-xl border border-black/8 bg-white shadow-[0_1px_2px_rgba(28,27,26,0.04),0_14px_38px_rgba(28,27,26,0.09)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              key={variant.id}
-              src={variant.shot.src}
-              alt={variant.shot.alt}
-              className="w-full"
-              loading="lazy"
-            />
+            {/* The key moves to the wrapper rather than the `<img>`: `Screenshot`
+                renders a `<picture>`, and keying the inner element would let
+                React keep one `<picture>` while swapping its child, which is the
+                cross-fade this key exists to prevent. */}
+            <Screenshot key={variant.id} src={variant.shot.src} alt={variant.shot.alt} />
           </div>
           <figcaption className="mt-3 text-[13px] leading-relaxed text-text/50">
             A real {variant.name.toLowerCase()}, from our own runs

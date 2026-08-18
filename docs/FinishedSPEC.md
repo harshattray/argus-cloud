@@ -1153,6 +1153,192 @@ and a devtools evaluation is one.
 and leaves the page unstyled — twelve elements carry inline `style` attributes.
 Phase H rebuilds that page; move it to classes and the directive can go.
 
+**What this fix left behind, found 2026-08-16:** moving the policy out of
+`next.config.mjs` removed it for *every* path, not just `/r/`. See §3n.
+
+---
+
+### 3n. The rest of the site had no CSP at all — closed 2026-08-16
+
+**The gap.** §3m moved the report policy into `middleware.ts` and deleted the
+static header from `next.config.mjs`. The deletion was correct for `/r/` and
+too broad for everything else: from that day until 2026-08-16, **`/r/` was the
+only path on the site with a Content-Security-Policy.** The public marketing
+pages had none, `/pitch` had none, and `/admin` — the one tree that renders
+other people's email addresses — had none either.
+
+Nothing failed, which is why it survived. A missing policy has no symptom.
+
+**What it looks like now.** One file issues every policy, so the "two sources"
+failure §3m warns about cannot come back. Two policies, chosen by path:
+
+| Tree | Policy | Why |
+|---|---|---|
+| `/r/`, `/admin` | nonce + `strict-dynamic`, no `'unsafe-inline'` | Renders untrusted content: model output, upload-supplied frame labels, waitlist addresses |
+| Everything else | `'unsafe-inline'`, no nonce | Statically prerendered — see below |
+
+**Why the marketing pages get `'unsafe-inline'`.** They are prerendered, which
+is what lets them serve from the CDN with a year-long `s-maxage`. A nonce is
+generated per request and cannot exist in a page rendered once at build time —
+put one on a prerendered route and every script is blocked, which is §3m's blank
+page again. The real choice is not "nonce or `'unsafe-inline'`"; it is
+`'unsafe-inline'` or per-request rendering for every marketing page. That is a
+poor trade for pages that render nothing but our own committed copy.
+
+It is still worth having. `'unsafe-inline'` concedes the injected *inline*
+script and keeps everything else: `script-src 'self'` refuses a script from
+another origin, `connect-src 'self'` refuses an exfiltration fetch to one,
+`base-uri 'none'` refuses a `<base>` tag that would retarget every relative URL
+on the page, and `form-action 'self'` refuses a form pointed at someone else's
+server. Those are the moves a compromised dependency makes.
+
+**`'unsafe-eval'` in development, and the afternoon it cost.** The first version
+of this policy had no `'unsafe-eval'`. `next dev` hands modules to the browser
+to be run through `eval()` — that is how hot reload works — so React never
+hydrated and **every button, tab, slider and form on every page went dead in
+development**, on pages that rendered perfectly. The page looks *finished*. The
+only evidence is an `EvalError` in the console.
+
+The same hole was in the original `/r/` policy and had simply never been hit,
+because `/r/` is rarely opened locally. That is what "verified against a
+production build" quietly meant.
+
+Both dev-only sources — `'unsafe-eval'` and the
+`https://va.vercel-scripts.com` origin `@vercel/analytics` uses for its debug
+script — now sit in one `NODE_ENV`-gated constant. Production carries neither,
+and V5 asserts the gate rather than trusting the comment. Confirmed against a
+real production build: no `unsafe-eval` and no external origin in either policy.
+
+Analytics is unaffected in production. `@vercel/analytics` only reaches
+`va.vercel-scripts.com` when `isDevelopment()`; a deployed build loads
+`/_vercel/insights/script.js` and beacons `/_vercel/insights/event`, both
+first-party and both covered by `'self'`.
+
+**Verified by rendering, not by reading headers.** §3m's lesson was that a
+policy can be perfect in a header and fatal on the page. Ten pages were loaded
+from a production build with zero CSP violations; `/admin/waitlist` returned
+68 KB with 30 script tags and 30 nonces, so nothing was left unnonced; the
+report page's tabs were clicked through `0→2→1→3→0` and followed exactly; the
+command explorer's twelve buttons all responded; the threshold slider responded.
+
+**Also closed here:** `X-Powered-By` no longer advertises the framework, and a
+deny-all `Permissions-Policy` covers camera, microphone, geolocation, payment
+and USB — none of which the site uses or will ask for.
+
+---
+
+### 3o. The unlock routes had no rate limit — closed 2026-08-16
+
+`ADMIN_PASSWORD` is the single credential in front of the waitlist, and until
+2026-08-16 it could be guessed as fast as an attacker could open connections.
+Nothing counted attempts. `/api/pitch-unlock` was the same.
+
+A shared phrase typed into other people's laptops is exactly the credential that
+needs a ceiling on guesses: it cannot be rotated per person, and nobody watches
+a login log for it.
+
+Ten attempts per five minutes per address, per gate. Deliberately generous —
+the value is not in the limit being tight but in there being one at all, which
+takes a single address from thousands of guesses a second to 120 an hour.
+
+**A refusal is indistinguishable from a wrong phrase**: same redirect, same
+`error=1`, same sentence. Telling an attacker they have hit a limiter tells them
+to slow down or change address. The cost is an operator who fumbles ten times
+reading "that phrase didn't work" when the phrase was right.
+
+Proven end to end: the correct phrase is accepted, ten wrong guesses are
+refused, and the **correct** phrase is then refused identically — while the
+other gate's budget is untouched, so a pitch guesser cannot lock an operator out
+of `/admin`.
+
+**The same fix corrected a limiter that never limited.** The waitlist keyed its
+per-IP bucket on `x-forwarded-for.split(",")[0]` — the leftmost entry, which the
+*caller* supplies on any proxy chain that appends. Rotating one header bought a
+fresh bucket every request. Both callers now share `web/lib/clientRate.ts`,
+which prefers `x-vercel-forwarded-for` and `x-real-ip` — stamped by Vercel's own
+proxy and unforgeable — and falls back to `x-forwarded-for` only where there is
+no trusted proxy in front, which is local development.
+
+Proven: seven requests from one client rotating `x-forwarded-for` on every
+request are cut off at the fifth, and a genuinely different client still passes.
+
+**Honest limit, unchanged:** the bucket is a `Map` in one process. On serverless
+that is per instance, not global. It raises the cost of abuse and is not a
+durable limiter; the durable one is `argus-cloud/rateLimit.js`, which these two
+surfaces cannot use because they are reached without an API key.
+
+---
+
+### 3p. Screenshots were served as raw retina PNGs — closed 2026-08-16
+
+`/how-it-works` shipped 2.5 MB of PNG, roughly **ninety times** the JavaScript
+for the same page. Every `<img>` on the site was also written without `width` or
+`height`, so each screenshot landed by shoving the text below it down the page.
+
+The JavaScript was never the problem. Measured on a production build: 102 kB
+shared, 117 kB on the heaviest page — essentially the React 19 + Next 15 floor.
+CSS is 88 kB + 12 kB before compression. There was nothing to win there and a
+great deal to win in the images.
+
+**Resolution was not reduced.** These are screenshots of a product UI with small
+text; downscaling is the one change a reader would notice. Re-encoding at full
+size already takes `report-fidelity-frame.png` from 1.33 MB to 111 KB. Halving
+the width saves a further 47 KB and costs legibility on every caption. The
+format change is where the win is, so it is the only change made.
+
+**Two encoders, smaller file wins.** A flat UI screenshot compresses better
+losslessly than lossy — `report-explain-findings.png` is 105 KB lossless against
+184 KB at q82 — while a shot containing photography goes the other way by a
+factor of eight. Encoding both and keeping the smaller means every flat
+screenshot is pixel-identical to its PNG *and* smaller than lossy would have
+been, with no per-file judgement and no table of exceptions.
+
+Result: **9.01 MB of PNG becomes 1.40 MB of WebP** across 24 images. On
+`/how-it-works`, 2.52 MB becomes 389 KB with identical pixel dimensions.
+
+**Not `next/image`, deliberately.** It would put `sharp` in the request path for
+every screenshot, and §9's allowlist accepts three high advisories in `sharp` on
+the recorded grounds that we do not serve images through the optimiser. Making
+that note false to save bytes a build-time re-encode saves anyway is not a trade
+worth taking, and it would bill per optimised image for screenshots that do not
+change between deploys.
+
+**The PNG is still the source of truth.** `<picture>` offers the WebP and falls
+back to the PNG, so nothing depends on WebP support. Deleting every `.webp` is
+safe and self-healing: `embed-image-sizes.mjs` reads the directory on each build
+and would simply record `webp: false`.
+
+**Dimensions are generated, never typed.** `embed-image-sizes.mjs` reads the
+real pixel size out of the PNG headers at build time, for the same reason
+`embed-page-dates.mjs` reads git — a wrong number becomes impossible rather than
+unlikely. `h-auto` alongside the attributes is load-bearing: without it the
+attributes distort every screenshot at any viewport but one. It is skipped when
+the caller sets its own height, because two height utilities on one element are
+resolved by stylesheet order rather than class order — the cropped `tall`
+figure on `/pitch/proof` would otherwise stretch instead of crop.
+
+**Five copies, not three.** The first pass found the raw `<img>` tags with a
+grep for `"<img "` — which requires the tag and a space on one line, and so
+silently skipped every multi-line JSX tag. Two more were sitting in
+`ReportVariants` and `editorial`'s `Figure`, between them rendering four
+screenshots including the 1.28 MB `report-target-frame.png`. They were found by
+the browser reporting an image with no `width` attribute, not by re-reading the
+code. The two remaining `<img>` tags are wordmark SVGs at fixed CSS sizes, which
+need neither treatment.
+
+**Two files left `public/`.** `twins.png` (736 KB) and `videos/N1.mp4` (2.5 MB)
+were referenced by nothing and served to anyone who guessed the path. They are
+source material for the traced vector twins and now live in `assets/twins/`,
+which is not served. `twins.tsx` had claimed the still was "deliberately not in
+the repo", which had stopped being true.
+
+**The core tool is untouched by all of this.** No `.png` changed by a byte;
+`src/` and `migrations/` have zero changes; the 31 compiled core modules are
+byte-for-byte identical to a clean `HEAD` build; `test-run/`, `public/run/` and
+the generated `cases/*/report.html` are unchanged. `public/run/` is deliberately
+excluded from the converter — that HTML references `.png` directly, so a sibling
+`.webp` would never be requested.
+
 ---
 
 ## 4. argus-cloud — the web surface
@@ -1746,6 +1932,10 @@ Recorded so they are not re-litigated. Each has its reasoning where cited.
 | **Credits stay at 5 per analysis / 8 deep.** Lowering them needs either a validated cheaper model or a deliberate margin decision; 3 credits on Sonnet 5 is 26% at worst case, under the 50% floor | 2026-08-15 | FUTURENORMA §3, `providerBudget.ts` |
 | **Local, staging and production are separate.** `web/.env.local` holds no production credential; production lives in Vercel; staging is a Neon branch behind Preview deploys | 2026-08-15 | `scripts/schema-drift.mjs`, `scripts/seed-dev.mjs` |
 | **The `/r/` CSP uses a per-request nonce.** `'unsafe-inline'` is refused permanently — that tree renders model output; hashes are impossible because the flight payload is per-request | 2026-08-15 | §3m, `web/middleware.ts` |
+| **Two CSPs, split by what a tree renders, both issued only in `middleware.ts`.** `/r/` and `/admin` get the nonce because they render untrusted content; the prerendered marketing pages get `'unsafe-inline'` because a nonce cannot exist in a page rendered once at build time, and forcing them dynamic would cost the CDN cache | 2026-08-16 | §3n, `web/middleware.ts` |
+| **`'unsafe-eval'` is allowed in development and gated on `NODE_ENV`.** `next dev` runs modules through `eval()`; without it nothing on the site hydrates. Production carries neither it nor any external origin, and the suite asserts the gate | 2026-08-16 | §3n, V5 in `test/uploadPipeline.test.mjs` |
+| **A throttled unlock is indistinguishable from a wrong phrase.** Same redirect, same message. Naming the limiter tells an attacker to slow down or rotate address | 2026-08-16 | §3o, `web/lib/gate.ts` |
+| **Screenshots are re-encoded at build time, not served through `next/image`.** The optimiser would put `sharp` in the request path and falsify §9's allowlist reasoning to save bytes a build-time encode saves anyway | 2026-08-16 | §3p, `web/app/_components/Screenshot.tsx` |
 | **Credit prices are derived, never chosen.** Analysis 5, deep 8, from worst-case model cost with a 50% margin floor. Any figure shown to a customer is rendered from that derivation, never typed | 2026-08-10 | FUTURENORMA §3, §3m |
 
 ---
@@ -1769,7 +1959,8 @@ this section and are deliberately absent.
 | A paying customer would pay twice (§7 #9) | **Open — launch blocker for the paid tier** |
 | `reconcile.ts` margin bug (§7 #7) | **Open**, and the module is unreachable. Fix before the first paying org |
 | `webhooks.ts` unreachable, Paddle adapter unwritten | **Open — launch blocker.** No revenue can be provisioned |
-| No rate limiting on any request path | **Closed for authenticated API paths** (§3c): per-key and per-org ceilings counted in the database, proven across 20 separate processes. **Still open in front of auth** — no IP or endpoint limit, so the unauthenticated surface is unprotected |
+| No rate limiting on any request path | **Closed for authenticated API paths** (§3c): per-key and per-org ceilings counted in the database, proven across 20 separate processes. **Closed for the two unauthenticated surfaces that had a credential or a table behind them** (§3o): both gate unlocks and the waitlist, on an unforgeable client address. **Still open in the honest sense** — those buckets are per process, not global, so they raise the cost of abuse rather than bounding it. A durable limiter in front of auth is still unbuilt |
+| The public site had no CSP at all | **Closed 2026-08-16** (§3n). From §3m until then, `/r/` was the only path with a policy — the marketing pages, `/pitch` and `/admin` had none. Nothing failed, which is why it survived a day short of a month |
 | The R2 leg has never carried a real artifact | **Open.** The whole upload pipeline is proven against the filesystem driver only. Step 5 requires the G suite re-run against real R2 — §3l |
 | `sweep-uploads.mjs` is built and unscheduled | **Open.** Without it an abandoned declaration holds a byte reservation nothing else releases. Must run before customers upload — §3l |
 | `style-src` still allows `'unsafe-inline'` on the report tree | **Open, and measured.** Removing it leaves the page unstyled: twelve elements carry inline `style` attributes. Closes when Phase H rebuilds that page with classes — §3m |
@@ -1786,7 +1977,8 @@ this section and are deliberately absent.
 | Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
-| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.22 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe |
+| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.23 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe. **The upgrade was trialled on 2026-08-16 — see below; it is a decision waiting on Harsha, not an unknown** |
+| The next 16 upgrade is untried | **Closed as an unknown 2026-08-16, still open as a decision.** Trialled in a throwaway worktree at `next@16.3.1` with the current work applied: `npm audit` goes to **0 vulnerabilities**, the suite is **635/635 green**, typecheck and build pass, every route keeps its rendering mode, and the nonce CSP still stamps every script with zero unnonced and zero violations. One cosmetic change: the build output renames "Middleware" to "Proxy". 15.5.23 is already the newest 15.x — it carries the `backport` dist-tag — so staying put means staying on a line that only receives backports. **Whether to take the major is Harsha's call**; the evidence says it is cheap now and gets more expensive after launch |
 | The economic path is implemented twice | **Closed** (§3g). One module, `economicPath.ts`; no other file may move money. The extraction found two live defects — see below |
 | Provider dollars held when credits run out | **Closed** (§3g, P9.9–P9.11). Was real and untested: an org refused for credits left its provider reservation held for the full TTL, quietly reducing the global ceiling for every other org |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |

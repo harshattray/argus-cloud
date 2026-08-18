@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "../../../lib/db";
+import { clientIp, overBudget, WAITLIST_BUDGET } from "../../../lib/clientRate";
 import { emailProblem, normaliseEmail, EMAIL_MESSAGE } from "../../../lib/waitlistEmail";
 import {
   WAITLIST_CONFIRMATION_SUBJECT,
@@ -18,10 +19,12 @@ import {
  *   - a per-IP token bucket, which slows down the rest
  *   - a UNIQUE constraint doing the actual deduplication
  *
- * The per-IP bucket is in-process. On serverless that means per instance, not
- * global — it raises the cost of abuse without pretending to be a real limiter.
- * A durable one belongs in the same place the API-key rate limit eventually
- * lands, not bolted onto one route.
+ * The bucket and the address it is keyed on now live in `lib/clientRate.ts`,
+ * shared with the gate unlocks. It used to be local to this file and keyed on
+ * the leftmost `x-forwarded-for` entry, which a caller supplies — so rotating
+ * one header handed out a fresh bucket every request and the limit never bound.
+ * That module also states plainly what an in-process limiter is and is not
+ * worth on serverless.
  *
  * Privacy: the address is never logged, never echoed in an error, and never
  * placed in a URL. Success and duplicate return the identical response, so the
@@ -38,7 +41,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MIN_FILL_MS = 1_500;
-const RATE_LIMIT = { windowMs: 60_000, max: 5 };
 
 const VALID_SOURCES = new Set([
   "home",
@@ -78,32 +80,6 @@ async function sendConfirmation(email: string): Promise<void> {
   if (!res.ok) throw new Error(`confirmation failed with ${res.status}`);
 }
 
-const buckets = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const bucket = buckets.get(ip);
-
-  if (!bucket || now > bucket.resetAt) {
-    buckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT.windowMs });
-    // Opportunistic sweep; the map is bounded by traffic to one instance.
-    if (buckets.size > 10_000) {
-      for (const [key, value] of buckets) {
-        if (now > value.resetAt) buckets.delete(key);
-      }
-    }
-    return false;
-  }
-
-  bucket.count += 1;
-  return bucket.count > RATE_LIMIT.max;
-}
-
-function clientIp(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  return forwarded?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
-}
-
 /**
  * Same body for every non-error outcome — accepted, duplicate, honeypot.
  *
@@ -114,7 +90,7 @@ function clientIp(req: Request): string {
 const accepted = () => NextResponse.json({ ok: true });
 
 export async function POST(req: Request) {
-  if (rateLimited(clientIp(req))) {
+  if (overBudget("waitlist", clientIp(req), WAITLIST_BUDGET)) {
     return NextResponse.json({ ok: false, error: "Too many requests. Try again shortly." }, { status: 429 });
   }
 

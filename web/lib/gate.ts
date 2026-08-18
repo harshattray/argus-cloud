@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { clientIp, overBudget, UNLOCK_BUDGET } from "./clientRate";
 
 /**
  * Shared-password gates for the two private trees on this site.
@@ -106,10 +107,27 @@ function timingSafeEqual(a: string, b: string): boolean {
  * Exchanges a gate's shared password for its access cookie.
  *
  * The response never distinguishes "wrong password" from "no password
- * configured", and never echoes what was submitted.
+ * configured" from "too many attempts", and never echoes what was submitted.
+ *
+ * **Attempts are rate limited.** Until this was added, `ADMIN_PASSWORD` — the
+ * one credential standing in front of other people's email addresses — could be
+ * guessed as fast as an attacker could open connections, and nothing anywhere
+ * counted. A shared phrase typed into laptops is exactly the credential that
+ * needs a ceiling on guesses, because it cannot be rotated per person and
+ * nobody is watching a login log for it. `lib/clientRate.ts` owns the budget
+ * and is honest about what an in-process limiter is worth.
+ *
+ * **A refusal looks identical to a wrong phrase.** Same redirect, same
+ * `error=1`, same sentence on the page. Telling an attacker they have hit a
+ * limiter tells them to slow down or change address, which is the one thing
+ * the limiter would rather they did not know. The cost is an operator who
+ * mistypes ten times in five minutes reading "that phrase didn't work" when
+ * the phrase was right — which is why {@link UNLOCK_BUDGET} is set well above
+ * anything human fumbling reaches.
  */
 export async function handleUnlock(request: NextRequest, gate: Gate): Promise<NextResponse> {
   const configured = process.env[gate.envVar];
+  const throttled = overBudget(`unlock:${gate.scope}`, clientIp(request), UNLOCK_BUDGET);
 
   let submitted = "";
   try {
@@ -129,14 +147,25 @@ export async function handleUnlock(request: NextRequest, gate: Gate): Promise<Ne
       ? nextParam
       : gate.prefix;
 
-  if (!configured || !timingSafeEqual(submitted, configured)) {
+  /** The one shape every refusal takes — wrong phrase, unset phrase, throttled. */
+  const refuse = () => {
     const url = request.nextUrl.clone();
     url.pathname = gate.unlockPath;
     url.search = "";
     url.searchParams.set("error", "1");
     if (nextParam) url.searchParams.set("next", destination);
     return NextResponse.redirect(url, { status: 303 });
-  }
+  };
+
+  // Falsy, not `undefined`: an env var set to the empty string must refuse
+  // everything rather than accept an empty box.
+  if (!configured) return refuse();
+
+  // Compared even when throttled, so a refused attempt costs the same time as a
+  // considered one and the throttle is not itself a timing signal for "this
+  // address is being watched".
+  const correct = timingSafeEqual(submitted, configured);
+  if (throttled || !correct) return refuse();
 
   const url = request.nextUrl.clone();
   url.pathname = destination.split("?")[0];

@@ -2,10 +2,15 @@
  * The twins.
  *
  * Two identical figures in dark glasses, each reading its own copy of the same
- * page. Traced from a frame of Harsha's own generated footage, which is
- * deliberately not in the repo — it is a 750 kB still, and everything below is
- * drawn from it rather than cropping it. Vector because these appear at half a
- * dozen sizes on light backgrounds and on ink, and a raster can do neither.
+ * page. Traced from a frame of Harsha's own generated footage. Everything below
+ * is drawn from that still rather than cropping it — vector, because these
+ * appear at half a dozen sizes on light backgrounds and on ink, and a raster
+ * can do neither.
+ *
+ * The still and the footage it came from are kept in `assets/twins/`, which is
+ * source material and not served. They were briefly in `web/public/` instead,
+ * where a 750 kB still and a 2.5 MB video sat on the public internet at a
+ * guessable path, referenced by nothing and downloaded by no one on purpose.
  *
  * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *

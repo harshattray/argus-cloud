@@ -182,6 +182,20 @@ the ink band. They were CSS lockups until now, which meant the logo could not be
 exported and every size needed its own row in a scale table; a size is now just
 a width.
 
+**The browser favicon is raster as well as SVG** (2026-08-18). `web/app/`
+carries `icon.svg`, `favicon.ico` (16/32/48) and `apple-icon.png` (180). The
+SVG alone was not enough: Next serves it at a cache-busted `/icon.svg?<hash>`,
+Google's favicon crawler wants `/favicon.ico` or an `apple-touch-icon`, and
+that URL returned a 404 page — so the search result showed the generic globe.
+
+The two rasters are **built, not drawn**: `scripts/build-favicons.py` traces the
+tile's `n` to a path with `outline_svg_text.py` and renders each size from the
+vector. Tracing first is the point — the tile is set in the system grotesque, so
+rasterising the `<text>` on a Linux box would bake in whatever face that box
+happened to have. Change `icon.svg` and rerun the script, or the rasters keep
+the old tile silently. Both need `rsvg-convert`, `pango-view` and Pillow, and
+neither runs during a build; the outputs are committed.
+
 Every word carries `textLength` + `lengthAdjust="spacing"`. The wordmark is set
 in the system grotesque, which is a **different typeface per platform** — SF on
 macOS, Arial on Windows — so without pinning, the mark would be a different
