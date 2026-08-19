@@ -44,6 +44,58 @@ const ARTIFACT_KINDS: readonly ArtifactKind[] = [
   "regions",
 ];
 
+/**
+ * What each kind is allowed to be, and what it is when the client says nothing.
+ * **The first entry is the default.**
+ *
+ * **This is an allowlist because `contentType` is client-supplied.** It arrives
+ * in the declare body, is signed into the presigned PUT, is stored on the
+ * object, and comes back as the `content-type` response header on every
+ * presigned GET. Until this map existed nothing checked it, so a caller holding
+ * a valid upload key could declare `text/html` for any artifact, upload a
+ * document, and be handed back a URL that a browser renders as markup on the
+ * storage origin. That is the stored-XSS probe PATHWAYS §3's security baseline
+ * asks for, reachable through the ordinary upload path.
+ *
+ * The narrow fix would have been to refuse `text/html` for images. The map is
+ * the right shape instead: a kind's content type is not a free field with a few
+ * bad values, it is one of a handful of known-good ones, and anything else is a
+ * client that has misunderstood the protocol.
+ *
+ * `thumbnail` is the only kind with a genuine choice. `makeThumbnail` in the CLI
+ * encodes JPEG when that is smaller — which for a screenshot is almost always —
+ * and returns the original PNG when it is not, so both are legitimate and the
+ * client must say which it sent.
+ */
+const CONTENT_TYPES: Record<ArtifactKind, readonly string[]> = {
+  build: ["image/png"],
+  reference: ["image/png"],
+  diff: ["image/png"],
+  thumbnail: ["image/jpeg", "image/png"],
+  summary: ["application/json"],
+  regions: ["application/json"],
+  report: ["text/html"],
+};
+
+/**
+ * The object key's extension, derived from the content type rather than the
+ * kind.
+ *
+ * **It used to be derived from the kind, and that was wrong the moment
+ * thumbnails became real.** `extensionFor("thumbnail")` returned `"png"`
+ * unconditionally, so a JPEG thumbnail — the common case — would have been
+ * stored at `…/blob/<sha256>.png` while its stored content type said
+ * `image/jpeg`. Nothing would have failed loudly; the key would simply have
+ * been a second, disagreeing source for the fact the content type already
+ * records, which is the failure the repo's first working rule names.
+ */
+const EXTENSION_FOR_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "application/json": "json",
+  "text/html": "html",
+};
+
 /** How long a presigned PUT lives. Long enough for a slow CI runner, short enough that a leaked URL is stale fast. */
 export const PUT_TTL_SECONDS = 120;
 
@@ -278,6 +330,11 @@ function validate(artifacts: DeclaredArtifact[], limits: PlanLimits): void {
     if (!Number.isInteger(a.bytes) || a.bytes <= 0) {
       throw new UploadRefused("malformed", `artifact ${a.frame}/${a.kind}: bytes must be a positive integer`);
     }
+    // Checked here with the other malformed-field rules, which is *before*
+    // anything is reserved or signed. Validating it at signing time would leave
+    // a reservation and a pending row behind for a request that was never going
+    // to be honoured.
+    contentTypeFor(a.kind, a.contentType);
     const key = `${a.frame}\0${a.kind}`;
     if (seen.has(key)) {
       throw new UploadRefused("malformed", `artifact ${a.frame}/${a.kind} declared twice in one run`);
@@ -389,7 +446,7 @@ export async function declareUpload(
         deduplicated.push({ frame: a.frame, kind: a.kind });
         continue;
       }
-      const key = blobKey(orgId, a.sha256, extensionFor(a.kind));
+      const key = blobKey(orgId, a.sha256, extensionFor(contentTypeFor(a.kind, a.contentType)));
       const nonce = randomUUID();
       await tx.query(
         `INSERT INTO run_artifacts (id, org_id, run_id, frame, kind, storage_key, sha256, bytes, declared_bytes, state, put_nonce, put_expires_at)
@@ -407,7 +464,7 @@ export async function declareUpload(
   for (const { artifact, key, nonce } of prepared.toSign) {
     const put = await storage.presignPut(key, {
       contentLength: artifact.bytes,
-      contentType: artifact.contentType ?? contentTypeFor(artifact.kind),
+      contentType: contentTypeFor(artifact.kind, artifact.contentType),
       ttlSeconds: PUT_TTL_SECONDS,
       nonce,
     });
@@ -494,16 +551,37 @@ async function upsertRepo(tx: Db, orgId: string, name: string): Promise<string> 
   return id;
 }
 
-function extensionFor(kind: ArtifactKind): string {
-  if (kind === "summary" || kind === "regions") return "json";
-  if (kind === "report") return "html";
-  return "png";
+/**
+ * The content type this artifact will be stored and served with.
+ *
+ * Throws {@link UploadRefused} rather than falling back to the default when the
+ * client names a type the kind does not allow. A silent fallback would store
+ * the object under a type the client did not ask for and report success, and
+ * the caller would find out when the image did not render — so a declaration
+ * that cannot be honoured is refused where every other malformed field is.
+ */
+function contentTypeFor(kind: ArtifactKind, declared?: string): string {
+  const allowed = CONTENT_TYPES[kind];
+  if (declared === undefined) {
+    return allowed[0]!;
+  }
+  // Compared case-insensitively and without parameters: `IMAGE/PNG` and
+  // `image/png; charset=binary` are the same declaration as `image/png`, and
+  // refusing them would be refusing a correct client over formatting.
+  const normalised = declared.split(";")[0]!.trim().toLowerCase();
+  if (!allowed.includes(normalised)) {
+    throw new UploadRefused(
+      "malformed",
+      `artifact kind '${kind}' cannot be ${declared} — allowed: ${allowed.join(", ")}`
+    );
+  }
+  return normalised;
 }
 
-function contentTypeFor(kind: ArtifactKind): string {
-  if (kind === "summary" || kind === "regions") return "application/json";
-  if (kind === "report") return "text/html";
-  return "image/png";
+function extensionFor(contentType: string): string {
+  // Every value reaching here has passed `contentTypeFor`, so it is one of the
+  // types in CONTENT_TYPES and the map covers all of them.
+  return EXTENSION_FOR_TYPE[contentType] ?? "bin";
 }
 
 // ---------------------------------------------------------------------------

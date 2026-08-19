@@ -313,6 +313,78 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+// U9b — the content type is an allowlist, not a free field
+// ---------------------------------------------------------------------------
+//
+// `contentType` arrives in the declare body, is signed into the presigned PUT,
+// is stored on the object, and comes back as the `content-type` response header
+// on every presigned GET. Nothing checked it until thumbnails needed it: a
+// caller holding a valid upload key could declare `text/html` for a build
+// screenshot, upload a document, and be handed a URL a browser renders as
+// markup on the storage origin — the stored-XSS probe PATHWAYS §3's security
+// baseline asks for, reachable through the ordinary upload path.
+const u9dHtml = await refusal(() =>
+  declareUpload(db, storage, {
+    orgId: org,
+    repoName: "web",
+    summary: {},
+    artifacts: [{ frame: "x", kind: "build", sha256: sha256("x"), bytes: 10, contentType: "text/html" }],
+  })
+);
+// A thumbnail may be JPEG or PNG and nothing else — not SVG, which is the other
+// image type a browser will execute script from.
+const u9dSvg = await refusal(() =>
+  declareUpload(db, storage, {
+    orgId: org,
+    repoName: "web",
+    summary: {},
+    artifacts: [
+      { frame: "y", kind: "thumbnail", sha256: sha256("y"), bytes: 10, contentType: "image/svg+xml" },
+    ],
+  })
+);
+check(
+  "U9b",
+  u9dHtml?.reason === "malformed" &&
+    /cannot be text\/html/.test(u9dHtml.message) &&
+    u9dSvg?.reason === "malformed",
+  "a build declared text/html and a thumbnail declared image/svg+xml are both refused"
+);
+
+// U9c — and the legitimate ones are accepted, with the object key following the
+// content type rather than the kind. A JPEG thumbnail stored at `<sha>.png`
+// would make the key a second, disagreeing source for what the object is.
+const jpegThumb = await declareUpload(db, storage, {
+  orgId: org,
+  repoName: "web",
+  summary: {},
+  artifacts: [
+    { frame: "thumbed.png", kind: "thumbnail", sha256: sha256("jpeg-thumb"), bytes: 64, contentType: "image/jpeg" },
+  ],
+});
+const thumbRow = await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [jpegThumb.runId]);
+check(
+  "U9c",
+  jpegThumb.uploads.length === 1 && /\.jpg$/.test(thumbRow.rows[0]?.storage_key ?? ""),
+  `a JPEG thumbnail is accepted and stored under a .jpg key (${thumbRow.rows[0]?.storage_key ?? "no row"})`
+);
+
+// U9d — a declaration that says nothing still gets the kind's default, so every
+// client written before this existed keeps working.
+const noType = await declareUpload(db, storage, {
+  orgId: org,
+  repoName: "web",
+  summary: {},
+  artifacts: [{ frame: "plain.png", kind: "build", sha256: sha256("plain"), bytes: 64 }],
+});
+const plainRow = await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [noType.runId]);
+check(
+  "U9d",
+  noType.uploads.length === 1 && /\.png$/.test(plainRow.rows[0]?.storage_key ?? ""),
+  "an omitted content type falls back to the kind's default and still stores under .png"
+);
+
+// ---------------------------------------------------------------------------
 // U10 — quotas
 // ---------------------------------------------------------------------------
 const tightOrg = await makeOrg("team");
