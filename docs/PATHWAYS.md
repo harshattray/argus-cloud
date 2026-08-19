@@ -1309,7 +1309,7 @@ the dependency audit). Three things remain, and none is a logic gap:
 4. Use direct presigned uploads; do not proxy large images through serverless.
 5. Enforce entitlement and quota server-side on every request.
 6. Deduplicate content-addressed artifacts within an organization.
-7. Upload full artifacts for flagged frames and thumbnails for clean frames.
+7. ✅ Upload full artifacts for flagged frames and thumbnails for clean frames.
 8. Secret-scan DOM and code context before provider submission.
 9. Recalibrate after crops ship and reprice packs before billing.
 
@@ -1348,8 +1348,43 @@ open question of what 500 credits should buy. Until then they are configuration
 that can be changed with an UPDATE, which is the point of holding them in a
 table.
 
-Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
-path, and the post-crop calibration.
+**Item 7 landed 2026-08-19.** The default upload no longer means "only flagged
+frames leave" — it means full artifacts for flagged frames and one downscaled
+JPEG for each clean one, so a run's history contains the frames that passed
+without three full-resolution PNGs apiece. `--all-artifacts` overrides it.
+BuildV5 G2.12's own example is the test: 2 flagged of 20 sends 6 full images and
+18 thumbnails; the override sends all 60. Argus `cloud` suite C5, C8, C14–C18
+(28 checks); cloud-side `uploadPipeline` U9b–U9d.
+
+Two things were found by tracing the feature against what already existed rather
+than by testing the feature alone, and both are closed:
+
+- **`contentType` was client-supplied and unvalidated.** It is signed into the
+  presigned PUT, stored on the object, and returned as the `content-type` header
+  on every presigned GET — so a caller with a valid upload key could declare
+  `text/html` for a screenshot and be handed a URL a browser renders as markup
+  on the storage origin. That is the stored-XSS probe §3's security baseline
+  asks for, reachable through the ordinary upload path. `CONTENT_TYPES` in
+  `artifactUploads.ts` is now an allowlist per kind, checked with the other
+  malformed-field rules so nothing is reserved or signed for a request that will
+  be refused.
+- **The object key's extension was derived from the kind, not the content.**
+  `extensionFor("thumbnail")` returned `png` unconditionally, so a JPEG
+  thumbnail — the common case — would have been stored at `<sha256>.png` while
+  its own content type said otherwise. Derived from the resolved content type
+  now.
+
+One correction to `makeThumbnail`'s behaviour lives in the upload path rather
+than in the shared function: it only considers keeping the original when it did
+*not* resize, so a downscaled frame always came back as JPEG even where the JPEG
+was larger. For a screenshot that is academic; for a large flat-colour frame it
+is not, and it would have made this feature *increase* what a clean frame costs
+the customer's quota. `thumbnailFor` never uploads a thumbnail larger than the
+image it stands in for. `report.ts` is the other caller and is deliberately left
+alone — it embeds thumbnails as data URIs and has its own reasons.
+
+Items 8 and 9 are open: the secret scan on the upload path, and the post-crop
+calibration.
 
 **Not yet true in production:** nothing has been deployed and **the R2 leg has
 never carried a real artifact**. Everything above is the filesystem driver.
@@ -1425,7 +1460,7 @@ one of them sat where no test could see it, which is the point worth keeping:
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
+| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15, confirmed on the live site 2026-08-19** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. Then confirmed against `normascope.com` itself — **27 scripts, 27 nonces**, hydrated, fonts loaded, no console errors, a different nonce on each of three requests. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
 | 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
 | 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
@@ -1433,7 +1468,9 @@ one of them sat where no test could see it, which is the point worth keeping:
 | 6 | `--target` produces no summary, so it cannot upload | The zero-config flow is outside the upload path entirely. Fine today; a decision if that flow should reach Cloud. |
 | 7 | `revokeApiKey` now has a surface, but no rotation | A leaked key can be withdrawn from `/admin/keys`. Issuing a replacement is still a script. |
 
-Next: Pathway 3 — the report page — which item 1 above blocks.
+Next: Pathway 3 — the report page. **It is no longer blocked** — item 1 above was
+fixed on 2026-08-15 and verified against the live site on 2026-08-19. Pathway 2's
+own items 8 and 9 come first under the canonical order.
 
 #### CLI-to-Cloud connection
 
@@ -1482,6 +1519,18 @@ pre-commit hook. The repository configuration may make the CI upload explicit:
 Supported upload modes should be `none`, `flagged`, `all`, and eventually
 `metadata-only`. The paid default is `flagged`; clean frames should not leave
 the machine unless the customer asks for them.
+
+> **This sentence and item 7 disagree, and the disagreement is Harsha's to
+> settle — flagged 2026-08-19, not decided.** Item 7 ships thumbnails for clean
+> frames *by default*, so on the paid default a downscaled JPEG of every clean
+> frame now leaves the machine. Item 7 and BuildV5 G2.12 are specific and agree
+> with each other; this line is older and more general. The implemented reading
+> is that "clean frames do not leave" meant their full-resolution artifacts, and
+> a thumbnail is the history record the hosted report and trends are built on —
+> but that is an interpretation of a privacy promise, not a settled decision.
+> `metadata-only` remains the mode that sends no pixels at all. If the promise
+> was meant literally, the fix is to default clean frames to no thumbnail and
+> put them behind an opt-in, which is a one-line change to `framesToSend`.
 
 The server must enforce entitlement on every request. Free organizations must
 not be able to mint upload keys, obtain presigned URLs, or bypass the rule with

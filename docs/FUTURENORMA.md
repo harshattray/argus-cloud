@@ -282,8 +282,8 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
 | **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ✅ **production backed up 2026-08-15**, ❌ not scheduled | 91 checks; both failure paths watched — §3k. **Production Neon was dumped, encrypted, restored and compared table by table on 2026-08-15** (32 tables). The nightly workflow exists and is inert; scheduling is **deferred to the first paying organization**, with hand backups covering the waitlist meanwhile. Switch-on checklist: `PATHWAYS.md` Pathway 1 item 10 |
 | **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
-| **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-6) | ✅ built and run end to end, ❌ never against R2 | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Filesystem driver only — `PATHWAYS.md` Pathway 2 |
-| **The hosted run report renders** | ❌ **blank in production** | The `/r/` CSP blocks the inline scripts Next uses to deliver page content. Proven against a real production build. Fix is a per-request nonce, not `unsafe-inline` — the strictness is deliberate, that page renders model output. **Blocks Pathway 3** |
+| **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-7) | ✅ built and run end to end, ❌ never against R2 | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Item 7 (2026-08-19) makes the default send full artifacts for flagged frames and a thumbnail for each clean one, and closed an unvalidated client-supplied `contentType` on the way — `PATHWAYS.md` Pathway 2. Filesystem driver only |
+| **The hosted run report renders** | ✅ **fixed 2026-08-15, verified in production 2026-08-19** | It rendered blank because the `/r/` CSP blocked the inline scripts Next uses to deliver page content. `middleware.ts` now issues a per-request nonce with `strict-dynamic` — not `unsafe-inline`; the strictness is deliberate on a page that renders model output. Checked against `normascope.com`: the page renders, **27 scripts and 27 nonces**, hydrated, fonts loaded, no console errors, and the nonce differs on every request. **No longer blocks Pathway 3** |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
 | **Missing `DATABASE_URL` on Vercel fails loudly** | ✅ | Refuses to boot rather than silently losing writes to in-process PGlite — §4f |
@@ -738,15 +738,20 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 **Steps 1–4 are roughly the whole of the remaining product work.** Steps 5–8
 are infrastructure, plumbing, and paperwork.
 
-**Where this stands on 2026-08-15.** Step 2's upload half is built and has been
+**Where this stands on 2026-08-19.** Step 2's upload half is built and has been
 run end to end against the real portfolio capture — declared, transferred
 through presigned URLs, committed after verification, read back in a browser.
-What remains in Step 2 is crop grounding and recalibration. Step 3 is blocked by
-something outside its own scope: **the run report is a blank page in
-production**, because the `/r/` CSP blocks the inline scripts Next uses to
-deliver content. Fixing that comes before building the page it would render.
-Details and the rest of the open list: `PATHWAYS.md` Pathway 2, "Carried
-forward".
+Thumbnails for clean frames landed on 2026-08-19, so the default upload now
+carries every compared frame: full artifacts for the flagged ones, one
+downscaled JPEG for each of the rest. **What remains in Step 2 is the secret
+scan on the upload path, crop grounding, and recalibration.**
+
+**Step 3 is no longer blocked.** The run report rendered blank in production
+because the `/r/` CSP blocked Next's inline scripts; `middleware.ts` has issued a
+per-request nonce since 2026-08-15, and the live site was checked on 2026-08-19 —
+the page renders, every script carries a nonce, and the nonce differs per
+request. Details and the rest of the open list: `PATHWAYS.md` Pathway 2,
+"Carried forward".
 
 ### The capture test applied to this path
 
