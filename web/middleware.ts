@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { storageImageOrigin } from "argus-cloud/storage/origin.js";
 import { gateFor, gateToken } from "./lib/gate";
 
 /**
@@ -54,6 +55,18 @@ const DEV_SCRIPT_SRC =
   process.env.NODE_ENV === "development" ? " 'unsafe-eval' https://va.vercel-scripts.com" : "";
 
 /**
+ * The `style-src-elem` source `next dev` needs and a deployed build must not
+ * have. Empty string in production.
+ *
+ * A production build emits CSS modules as `<link rel="stylesheet">` files, which
+ * `'self'` covers. The development server instead injects `<style>` elements
+ * from JavaScript as it hot-reloads, and blocking those does not fail loudly —
+ * the page renders completely unstyled while every script runs and every test
+ * passes. Same shape as `DEV_SCRIPT_SRC` above, and here for the same reason.
+ */
+const DEV_STYLE_SRC = process.env.NODE_ENV === "development" ? " 'unsafe-inline'" : "";
+
+/**
  * The strict policy, for trees that render untrusted content: `/r/` (model
  * findings and upload-supplied frame labels) and `/admin` (personal data).
  *
@@ -78,12 +91,61 @@ const DEV_SCRIPT_SRC =
  * blocked, and the blank page is back. `needsNonce` below is the list, and the
  * comment there records which routes that constrains.
  */
+/**
+ * The one host `/r/` may load images from besides itself.
+ *
+ * Uploaded artifacts are fetched **straight from storage** through short-lived
+ * presigned URLs — the application is deliberately not in the byte path — so
+ * with `default-src 'none'` and `img-src 'self'` alone, every screenshot on the
+ * report page would be blocked. Empty string when storage signs same-origin
+ * URLs, which is the filesystem driver's ordinary case.
+ *
+ * Derived from the same environment the driver is built from rather than
+ * configured separately; `storage/origin.ts` explains why, and
+ * `test/storage.test.mjs` holds it to a URL a real driver signed.
+ */
+const STORAGE_IMG_SRC = (() => {
+  const origin = storageImageOrigin(process.env);
+  return origin ? ` ${origin}` : "";
+})();
+
 function strictCsp(nonce: string): string {
   return [
     "default-src 'none'",
-    "img-src 'self' data:",
+    `img-src 'self' data:${STORAGE_IMG_SRC}`,
     "font-src 'self'",
+    // Split, rather than one `style-src 'self' 'unsafe-inline'`.
+    //
+    // **What this buys.** `style-src-elem` governs `<style>` blocks and
+    // stylesheet links; `style-src-attr` governs `style="..."` attributes. The
+    // page renders model output and upload-supplied labels, so an injected
+    // `<style>` element is a real concern — CSS can exfiltrate through attribute
+    // selectors and can rearrange a page into something that misleads. Blocking
+    // element styles while permitting attribute styles refuses that without
+    // refusing our own computed geometry.
+    //
+    // **What it does not buy, said plainly.** `'unsafe-inline'` on
+    // `style-src-attr` still permits a `style` attribute, so this is a
+    // tightening and not a closure. It stays because the page's geometry is
+    // computed per frame: a meter's fill width from its score, a region overlay's
+    // position as a percentage of the capture's natural size, the pane's
+    // aspect-ratio from the image the browser measured. Those are values, not
+    // styling, and there is no stylesheet that can hold them.
+    //
+    // PATHWAYS.md carried-forward item 1 asked for `'unsafe-inline'` to go when
+    // Phase H rewrote this page. The page's *styling* did move to a stylesheet
+    // (`report.module.css`), which is what makes the `-elem` half possible.
+    //
+    // **`style-src` is kept as the fallback and must stay.** A browser that does
+    // not implement the two specific directives ignores them and falls back to
+    // `style-src`; with `style-src` deleted it would fall back to
+    // `default-src 'none'` instead and block every stylesheet on the page. The
+    // page would render as unstyled HTML on exactly the older browsers least
+    // likely to be noticed in testing. Supporting browsers override it with the
+    // stricter pair below.
     "style-src 'self' 'unsafe-inline'",
+    `style-src-elem 'self'${DEV_STYLE_SRC}`,
+    "style-src-attr 'unsafe-inline'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV_SCRIPT_SRC}`,
     "connect-src 'self'",
     "frame-ancestors 'none'",

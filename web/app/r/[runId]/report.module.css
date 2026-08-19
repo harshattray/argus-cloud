@@ -1,0 +1,830 @@
+/*
+ * The hosted report's visual language — BuildV5 Phase H1.
+ *
+ * **Copied from `Argus/src/report.ts` (5d311fb), deliberately, not imported.**
+ * Doctrine 6 keeps paid logic out of the published package, so the two
+ * renderers cannot share code; FUTURENORMA §4 Step 3 says to copy the CSS on
+ * purpose and keep a checklist of the three fixes that shipped with it, rather
+ * than re-derive a second look and re-introduce bugs the CLI already fixed.
+ *
+ * The three, all of them bugs once:
+ *
+ *   1. **Aspect-ratio sizing** — a frame sizes to its capture's own aspect, so
+ *      three shots of one page stay the same size as each other without
+ *      letterboxed dead space. `--shot-aspect` is set by the client component
+ *      once the image reports its natural size.
+ *   2. **Tall captures scroll at natural size** — anything past 2.2:1 (full-page
+ *      exports) gets a fixed-height scrolling body instead of being squashed
+ *      into an unreadable sliver, and the three panes scroll together.
+ *   3. **The lightbox is bounded by the viewport**, not by its flex parent: a
+ *      flex item's automatic minimum size lets a very tall capture overflow a
+ *      percentage max-height.
+ *
+ * **Why a stylesheet and not inline styles.** The page carried its styling in
+ * `style={{...}}` attributes, which is why the strict CSP for `/r/` had to keep
+ * `style-src 'unsafe-inline'` — recorded as carried-forward item 1 in
+ * PATHWAYS.md, to be closed "when Phase H rewrites that page". This is that
+ * rewrite.
+ */
+
+.page {
+  --clay: #a8736e;
+  --clay-deep: #8e5c57;
+  --ink: #1c1b1a;
+  --ink-soft: #6b6664;
+  --ink-faint: #9a9391;
+  --line: #e7e1df;
+  --line-soft: #f1ecea;
+  --page-bg: #ede7e1;
+  --card: #ffffff;
+  --frame-bg: #f7f5f3;
+  --danger: #b6611f;
+  --danger-bg: #fbede3;
+  --success: #3e7d52;
+  --success-bg: #e8f1ea;
+  --warn: #8a6d1a;
+  --warn-bg: #efe7d9;
+  --shadow: 0 1px 2px rgba(28, 27, 26, 0.04), 0 12px 32px rgba(28, 27, 26, 0.07);
+  --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  background: var(--page-bg);
+  color: var(--ink);
+  min-height: 100vh;
+  padding: 28px 18px 56px;
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    --ink: #f2eeec;
+    --ink-soft: #a9a2a0;
+    --ink-faint: #7c7573;
+    --line: #34302e;
+    --line-soft: #292524;
+    --page-bg: #131211;
+    --card: #1c1b1a;
+    --frame-bg: #232120;
+    --clay: #c79b95;
+    --clay-deep: #d9b5b0;
+    --danger: #e29055;
+    --danger-bg: #33241a;
+    --success: #79bc92;
+    --success-bg: #1b2a21;
+    --warn: #d9b65e;
+    --warn-bg: #332c1b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+.sheet {
+  max-width: 1080px;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  padding: 28px 36px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  display: block;
+  color: var(--clay);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 23px;
+  letter-spacing: -0.01em;
+}
+
+.runmeta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.runmeta code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+
+.stat {
+  padding: 16px 20px;
+  border-right: 1px solid var(--line);
+  background: var(--frame-bg);
+}
+
+.stat:last-child {
+  border-right: none;
+}
+
+.statValue {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.statLabel {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 3px;
+}
+
+.danger .statValue {
+  color: var(--danger);
+}
+
+.success .statValue {
+  color: var(--success);
+}
+
+/* ---------- one frame ---------- */
+
+.frames {
+  padding: 0 36px;
+}
+
+.frame {
+  padding: 30px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.frame:last-child {
+  border-bottom: none;
+}
+
+.frameHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.frameName {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.status {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.status.flagged {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.status.clean {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.frameNumbers {
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+/* The threshold sits at the halfway mark, so the eye reads "how far past the
+   line" without comparing two numbers. */
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 380px;
+  margin: 0 0 18px;
+}
+
+.meterTrack {
+  position: relative;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.meterFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+}
+
+.meterFill.under {
+  background: var(--success);
+}
+
+.meterFill.over {
+  background: var(--danger);
+}
+
+.meterMark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--ink-faint);
+}
+
+.meterLegend {
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+
+/* ---------- history (H3 — the moat, as page furniture) ---------- */
+
+.history {
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--clay);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin: 0 0 18px;
+}
+
+.historyHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.historyLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--clay);
+}
+
+.historyFacts {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.historyFact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.historyFact dt {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.historyFact dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.historyFact code {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: 44px;
+  margin-top: 12px;
+  overflow: visible;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--clay);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.sparkThreshold {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.sparkDot {
+  fill: var(--success);
+}
+
+.sparkDot.over {
+  fill: var(--danger);
+}
+
+.sparkGapNote {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin: 4px 0 0;
+}
+
+.priorFinding {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
+/* ---------- the triptych ---------- */
+
+.shots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 0 0 18px;
+}
+
+.shots.single {
+  grid-template-columns: minmax(0, 520px);
+}
+
+.shotFrame {
+  margin: 0;
+  min-width: 0;
+}
+
+.shotFrame figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.shotTag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.shotZoom {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.shotFrame:hover .shotZoom {
+  opacity: 1;
+}
+
+/* Fix 1: the pane takes the capture's own aspect, set from the image's natural
+   size once it loads. The fallback keeps the layout from jumping before then. */
+.shotBody {
+  position: relative;
+  aspect-ratio: var(--shot-aspect, 4 / 3);
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 10px;
+  max-height: 620px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Fix 2: full-page captures scroll at natural size instead of shrinking to a
+   sliver. Height is fixed here so the three panes have one scroll range. */
+.shotBody.tall {
+  aspect-ratio: auto;
+  height: 460px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.shotBody img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: top center;
+  cursor: zoom-in;
+  display: block;
+  border-radius: 3px;
+}
+
+.shotBody.tall img {
+  height: auto;
+  object-fit: none;
+}
+
+.shotBody img:hover {
+  opacity: 0.9;
+}
+
+.shotMissing {
+  aspect-ratio: 4 / 3;
+  background: var(--frame-bg);
+  border: 1px dashed var(--line);
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* Region overlays sit in the padded box the image occupies, positioned as a
+   percentage of the capture's natural size. */
+.regionLayer {
+  position: absolute;
+  inset: 10px;
+  pointer-events: none;
+}
+
+.region {
+  position: absolute;
+  border: 1.5px solid var(--danger);
+  border-radius: 2px;
+  background: rgba(182, 97, 31, 0.09);
+}
+
+.region.active {
+  border-width: 2.5px;
+  background: rgba(182, 97, 31, 0.2);
+}
+
+.noArtifacts {
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--frame-bg);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+/* ---------- lightbox ---------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 16, 15, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  z-index: 10;
+  cursor: zoom-out;
+  border: none;
+  width: 100%;
+}
+
+/* Fix 3: sized against the viewport, not the flex parent — a flex item's
+   automatic minimum size lets very tall captures overflow a percentage
+   max-height. */
+.lightbox img {
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 80px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox::after {
+  content: "Esc or click to close";
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ---------- findings ---------- */
+
+.findings {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.findingsNote {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  margin: 0 0 10px;
+}
+
+.findingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.finding {
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 16px;
+  margin: 0 0 9px;
+}
+
+/* An injection-suspected finding is a warning about the *content*, not a
+   normal observation about the page. It must not be able to pass for one. */
+.finding.injection {
+  border-color: var(--warn);
+  border-left: 4px solid var(--warn);
+  background: var(--warn-bg);
+}
+
+.injectionNote {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.findingHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+
+.findingCat {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.findingObs {
+  margin: 0;
+  color: var(--ink);
+}
+
+.findingRegion {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.findingRegion:hover,
+.findingRegion:focus-visible {
+  border-color: var(--clay);
+  color: var(--clay);
+}
+
+.findingMeta {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 7px;
+}
+
+.findingMeta .fr {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.findingMeta dt {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.findingMeta dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.finding code {
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.badgeHigh {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badgeMedium {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.badgeLow {
+  background: var(--line-soft);
+  color: var(--ink-soft);
+}
+
+/* ---------- explain + share controls ---------- */
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.input {
+  background: var(--frame-bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 11px;
+  font-size: 13px;
+  width: 190px;
+  font-family: inherit;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 1px;
+}
+
+.button {
+  background: var(--clay);
+  color: var(--card);
+  border: none;
+  border-radius: 7px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buttonQuiet {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+
+.error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.share {
+  margin: 0;
+  padding: 22px 36px 28px;
+  border-top: 1px solid var(--line);
+  background: var(--frame-bg);
+}
+
+.shareHead {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.shareNote {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.shareList {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.shareUrl {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  word-break: break-all;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.shareMeta {
+  color: var(--ink-faint);
+  font-size: 11.5px;
+}
+
+/* ---------- footer + empty ---------- */
+
+.empty {
+  padding: 56px 36px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.footer {
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 20px 36px 24px;
+  border-top: 1px solid var(--line);
+}
+
+.notFound {
+  max-width: 620px;
+  margin: 80px auto;
+  padding: 0 24px;
+  color: var(--ink);
+}
+
+.notFound p {
+  color: var(--ink-soft);
+}
+
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stat:nth-child(2n) {
+    border-right: none;
+  }
+  .shots {
+    grid-template-columns: 1fr;
+  }
+  .masthead,
+  .frames,
+  .share,
+  .footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shotZoom {
+    transition: none;
+  }
+}

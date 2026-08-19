@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
 
 /**
- * Report-page chrome. These styles used to live on the root `<body>`; they
- * moved here when the marketing site landed, so the two surfaces stop sharing
- * a palette. Visually identical to what this page rendered before.
+ * Report-page chrome.
+ *
+ * The palette used to be set here with an inline `style` on a wrapper `div`.
+ * It moved into `report.module.css` with Phase H, so the page's appearance and
+ * its layout come from one stylesheet — and so the strict CSP for this tree no
+ * longer has to permit inline `<style>` elements. What remains inline is
+ * computed geometry (a meter's width, a region's position); `middleware.ts`
+ * records exactly what that costs.
  *
  * Report pages are share-token gated and must never be indexed.
  */
@@ -14,15 +19,5 @@ export const metadata = {
 };
 
 export default function ReportLayout({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        background: "#101014",
-        color: "#e8e6e1",
-        minHeight: "100vh",
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }

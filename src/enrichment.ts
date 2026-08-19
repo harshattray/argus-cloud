@@ -27,48 +27,61 @@ export function estimateTokens(text: string): number {
 }
 
 interface TrendRow {
+  run_id: string;
   commit_sha: string;
   aligned_mismatch_percent: number | null;
   flagged: boolean;
   created_at: string | Date;
 }
 
-export interface Enrichment {
+/**
+ * One frame's history, read from our own rows.
+ *
+ * **This is the only place these three facts are computed.** Phase H shows
+ * "first drifted at X" and "flagged N times" on the report page, Phase I
+ * annotates the same commit on the trend chart, and `buildEnrichment` below
+ * puts them in the prompt. Three readers, three chances to write a query that
+ * is *nearly* the same — and BuildV5's Phase I gate (I2.1) says outright that
+ * two implementations of "first drift" which disagree is a bug in one of them.
+ * The cheapest way to keep them agreeing is to have one of them.
+ *
+ * `trend` is newest first and carries `runId` so a caller rendering one run's
+ * page can tell the current run from its predecessors — "no history" on a
+ * frame's first ever run means one row, not zero.
+ */
+export interface FrameHistory {
+  trend: {
+    runId: string;
+    commitSha: string;
+    alignedMismatchPercent: number | null;
+    flagged: boolean;
+    createdAt: string;
+  }[];
+  /** Commit where this frame first exceeded threshold, or null if it never has. */
   firstDriftCommit: string | null;
-  recurrence: { count: number; lastObservation: string | null };
-  /** Delimited data block for the provider prompt (untrusted-data framing). */
-  text: string;
-  tokenEstimate: number;
-}
-
-/** Store a run's findings so future analyses can answer "what did we say then". */
-export async function saveRunFindings(
-  db: Db,
-  row: { orgId: string; repoId: string; runId: string; frame: string; model: string; findings: unknown }
-): Promise<void> {
-  await db.query(
-    `INSERT INTO run_findings (org_id, repo_id, run_id, frame, model, findings)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [row.orgId, row.repoId, row.runId, row.frame, row.model, JSON.stringify(row.findings)]
-  );
+  /** Committed runs in which this frame was flagged, this one included. */
+  recurrence: number;
+  /** The first observation from the most recent stored findings, or null. */
+  lastObservation: string | null;
 }
 
 /**
- * Compute the enrichment context for one frame, or null when the org has no
- * history for it. Pure read; deterministic for a fixed database state.
+ * Read one frame's history. `null` when the org has no committed rows for it
+ * at all — which is a different answer from "it has one run and no past".
  */
-export async function buildEnrichment(
+export async function frameHistory(
   db: Db,
-  args: { orgId: string; repoId: string; frame: string }
-): Promise<Enrichment | null> {
+  args: { orgId: string; repoId: string; frame: string; limit?: number }
+): Promise<FrameHistory | null> {
+  const limit = args.limit ?? TREND_ROWS_MAX;
   const trend = (
     await db.query<TrendRow>(
-      `SELECT r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at
+      `SELECT fs.run_id, r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at
        FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
        WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3
        ORDER BY fs.created_at DESC, fs.id DESC
        LIMIT $4`,
-      [args.orgId, args.repoId, args.frame, TREND_ROWS_MAX]
+      [args.orgId, args.repoId, args.frame, limit]
     )
   ).rows;
   if (trend.length === 0) {
@@ -114,17 +127,64 @@ export async function buildEnrichment(
     }
   }
 
-  const recurrenceCount = Number(flaggedCount?.n ?? 0);
-  const firstDriftCommit = first?.commit_sha?.trim() ? first.commit_sha : null;
+  return {
+    trend: trend.map((row) => ({
+      runId: row.run_id,
+      commitSha: row.commit_sha,
+      alignedMismatchPercent:
+        row.aligned_mismatch_percent === null ? null : Number(row.aligned_mismatch_percent),
+      flagged: row.flagged,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    })),
+    firstDriftCommit: first?.commit_sha?.trim() ? first.commit_sha : null,
+    recurrence: Number(flaggedCount?.n ?? 0),
+    lastObservation,
+  };
+}
 
-  const render = (rows: TrendRow[], observation: string | null): string => {
+export interface Enrichment {
+  firstDriftCommit: string | null;
+  recurrence: { count: number; lastObservation: string | null };
+  /** Delimited data block for the provider prompt (untrusted-data framing). */
+  text: string;
+  tokenEstimate: number;
+}
+
+/** Store a run's findings so future analyses can answer "what did we say then". */
+export async function saveRunFindings(
+  db: Db,
+  row: { orgId: string; repoId: string; runId: string; frame: string; model: string; findings: unknown }
+): Promise<void> {
+  await db.query(
+    `INSERT INTO run_findings (org_id, repo_id, run_id, frame, model, findings)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [row.orgId, row.repoId, row.runId, row.frame, row.model, JSON.stringify(row.findings)]
+  );
+}
+
+/**
+ * Compute the enrichment context for one frame, or null when the org has no
+ * history for it. Pure read; deterministic for a fixed database state.
+ */
+export async function buildEnrichment(
+  db: Db,
+  args: { orgId: string; repoId: string; frame: string }
+): Promise<Enrichment | null> {
+  const history = await frameHistory(db, args);
+  if (history === null) {
+    return null;
+  }
+  const { firstDriftCommit, recurrence: recurrenceCount, trend } = history;
+  const lastObservation = history.lastObservation;
+
+  const render = (rows: FrameHistory["trend"], observation: string | null): string => {
     const lines = rows
       .slice()
       .reverse() // oldest → newest reads as a trend
       .map((row) => {
         const pct =
-          row.aligned_mismatch_percent === null ? "n/a" : `${Number(row.aligned_mismatch_percent).toFixed(2)}%`;
-        return `- commit ${row.commit_sha || "(none)"}: aligned mismatch ${pct}${row.flagged ? " (flagged)" : ""}`;
+          row.alignedMismatchPercent === null ? "n/a" : `${row.alignedMismatchPercent.toFixed(2)}%`;
+        return `- commit ${row.commitSha || "(none)"}: aligned mismatch ${pct}${row.flagged ? " (flagged)" : ""}`;
       });
     const parts = [
       "<history-context>",

@@ -1514,7 +1514,7 @@ one of them sat where no test could see it, which is the point worth keeping:
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15, confirmed on the live site 2026-08-19** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. Then confirmed against `normascope.com` itself — **27 scripts, 27 nonces**, hydrated, fonts loaded, no console errors, a different nonce on each of three requests. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
+| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15, confirmed on the live site 2026-08-19** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. Then confirmed against `normascope.com` itself — **27 scripts, 27 nonces**, hydrated, fonts loaded, no console errors, a different nonce on each of three requests. `'unsafe-inline'` was never shipped. **Half-closed 2026-08-19 by Phase H, and the other half is not closing.** The page's styling moved into `report.module.css`, so `style-src-elem` on `/r/` and `/admin` no longer permits inline styles in production — verified against a production build: 2 stylesheet links, 0 inline `<style>` tags, 31 scripts and 31 nonces. `style-src-attr` still permits them and will keep having to: a meter's fill width, a region overlay's position and a pane's aspect ratio are computed per frame and have no stylesheet to live in. `style-src` is kept behind both as the fallback, because a browser implementing neither specific directive would otherwise fall through to `default-src 'none'` and load no CSS at all. |
 | 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
 | 4 | ~~500 included credits buy 100 analyses, not 500~~ **Softened 2026-08-19 — now 125** | The Sonnet 5 price correction (§3s) took an analysis from 5 credits to 3, and the crop budget put one back: **4 credits, 125 analyses a month**. Still short of 500, so whether that is the right allowance remains Harsha's call — but it is no longer a number moving in the wrong direction, and it improved without touching the model. |
@@ -1616,6 +1616,29 @@ differentiator and should not be faint text beneath an AI explanation.
 
 **Gate:** a prospect can compare one real local report with Cloud and immediately
 understand what historical state adds.
+
+**Built 2026-08-19 — BuildV5 Phase H, H1–H4.** Images, findings with region
+overlays, history as page furniture, and a share interface for the API that had
+none. Detail and evidence: `FinishedSPEC.md` §3t. `test/reportPage.test.mjs`
+(41 checks) plus 5 added to `uploadPipeline`; the suite total is **775 across 26
+suites** on PGlite. Four guards were watched failing before being trusted, and a
+fifth was found to be asserting nothing at all — see §3t, because that one is the
+best argument for the practice this repo already has.
+
+**The gate above is not yet met, and it is not code that is missing.** The gate
+asks that a *prospect* can put a local report beside a hosted one. Every check
+so far is against seeded data on a laptop; nothing is deployed, and the only
+real capture in the repo is the portfolio run. Meeting it needs Step 5 and a run
+someone did not seed.
+
+**Still open on this page, none of it blocking Step 4:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 1 | The capture's aspect is measured in the browser, not stored | Nothing decodes a customer image server-side, and dimensions are not on `run_artifacts`. So the first paint uses a 4:3 fallback and corrects once the image loads. Storing width/height at declare would remove the reflow — it is a CLI change with a publish attached, so it waits for a release rather than riding along here. |
+| 2 | `style-src-attr 'unsafe-inline'` remains | The page's geometry is computed per frame — meter width from a score, region position as a percentage of natural size. There is no stylesheet those can live in. Carried-forward item 1 asked for `'unsafe-inline'` to go when Phase H rewrote the page; the `-elem` half went, this half did not, and pretending otherwise would be worse than saying so. |
+| 3 | Region overlays assume the diff shares the build's dimensions | True for every capture the CLI produces today. A diff rendered at another size would misplace every box, and nothing checks it. |
+| 4 | No page above `/r/{runId}` | Still true, and still Phase I's job — there is no way to find a run except by holding its URL. |
 
 ### Pathway 4 — Create the recurring CI explanation loop
 

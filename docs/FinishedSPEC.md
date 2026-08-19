@@ -1558,6 +1558,92 @@ measurement on this path, and a cold prompt-cache mix. Real traffic will read th
 cache more often and cost less than these figures, not more. Full caveats in
 `calibration.md`.
 
+### 3t. The hosted report page — BuildV5 Phase H ✅ (2026-08-19)
+
+The page a customer looks at was 131 lines and no images. It now shows the
+three captures, the findings, and the history — the last of which is the only
+thing on it a local run structurally cannot produce.
+
+**H1 — the images.** Build / reference / diff per frame, in the CLI report's
+visual language, copied deliberately from `Argus/src/report.ts` (5d311fb) rather
+than re-derived, with its three fixes intact: panes size to the capture's own
+aspect, captures past 2.2:1 scroll at natural size with the three panes locked
+together, and the lightbox is bounded by the viewport. Verified in a browser
+against a **production build** on 2026-08-19: a 6:1 capture gave three panes of
+458px client height over 1844px of content, scrolling one moved all three to the
+same offset, and a 400×2400 image in the lightbox measured 153×920 against a
+1400×1000 viewport with no page overflow.
+
+Images are plain `<img>` from short-lived presigned GETs, never `next/image` —
+the 2026-08-19 decision, and the stated ground for the `sharp` entry in
+`security/audit-allowlist.json`.
+
+**H2 — the findings.** Category, confidence badge, observation, hypothesis,
+selector, code pointer, the "generated — verify before applying" label, and the
+flagged regions drawn on the diff as percentage boxes. `injection-suspected`
+renders as a warning with its own border and a leading explanation, not as an
+ordinary finding. E3's corpus was re-run against the rebuilt page: a seeded
+finding carrying `<img src=x onerror=alert(1)>`, `<script>alert('xss')</script>`,
+`"><svg onload=alert(2)>` and `javascript:alert(3)` produced **zero** injected
+`script`, `img` or `svg` nodes and rendered as visible text.
+
+**H3 — the history.** First drift, times flagged, prior-run count, a sparkline
+against the threshold line, and the previous finding. Computed by
+`frameHistory()` in `enrichment.ts` — **the same function the prompt uses**, and
+the one Phase I's chart will use, because BuildV5's I2.1 gate says two
+implementations of "first drift" that disagree is a bug in one of them.
+
+**H4 — share links.** `/api/share` gained `GET` (list) and `DELETE` (revoke)
+beside its `POST`, and an interface. The whole lifecycle was exercised against a
+production build with `NORMA_DEV_OPEN` off: no token → not found; create → the
+report renders; the share viewer sees **no Explain button and no share panel**;
+revoke → not found again.
+
+**Evidence.** `test/reportPage.test.mjs`, 41 checks, plus 5 added to
+`uploadPipeline`. Four guards were watched failing before being trusted
+(CLAUDE.md rule 3): dropping the current run from its own history, bounding a
+presigned TTL by the share link's remaining life, the tenant scope on the
+artifact query, and the server-side cap on rendered regions.
+
+**One of the new guards was vacuous when written, and only breaking the code
+found it.** The CSP checks in `uploadPipeline` V5 read `middleware.ts` as text,
+and `middleware.ts` explains each directive in prose directly above it — so a
+regex looking for `style-src-elem` matched the *comment* discussing
+`style-src-elem`, found no `'unsafe-inline'` after it, and passed regardless of
+the policy. Every extraction in V5 now strips comments first. This is the whole
+argument for rule 3 in one incident: the check was green, correct-looking, and
+asserting nothing.
+
+**Two real bugs found only by looking at the page, after the suite was green:**
+
+- **`onLoad` never fired.** The `<img>` is server-rendered, so the browser
+  finishes fetching it before React hydrates, and a handler attached afterwards
+  never runs. The page therefore never learned the capture's aspect and a 6:1
+  export rendered letterboxed into the default box — the exact sliver the CLI
+  fixed in `5d311fb`, reintroduced by a lifecycle detail rather than by the CSS.
+  The ref now checks `complete` on attach as well.
+- **`npm run seed:dev` wrote to a database that did not exist.** `createDb()`
+  falls back to in-memory PGlite without `PGLITE_DATA_DIR`, which is set in
+  `web/.env.local` — a file Next loads and a repo-root script does not. The seed
+  printed run URLs the whole time and every one of them 404'd.
+
+**The CSP was tightened, not closed.** `style-src-elem` on `/r/` and `/admin`
+no longer permits inline styles in production, because the page's styling moved
+from `style={{…}}` attributes into `report.module.css`. Verified against a
+production build: 2 stylesheet links, **0 inline `<style>` tags**, 31 scripts
+and 31 nonces, no console errors. `style-src-attr` still permits inline styles
+and will keep having to: the meter's fill width, a region overlay's position and
+the pane's aspect ratio are computed per frame and have no stylesheet to live in.
+`style-src` is kept as the fallback for browsers implementing neither, which
+would otherwise fall through to `default-src 'none'` and load no CSS at all.
+
+**`img-src` now names the storage origin**, derived in `src/storage/origin.ts`
+from the same environment the driver is built from rather than configured
+separately, and asserted against a URL a real driver signed. **The R2 shape is
+unproven** — virtual-hosted addressing against a custom endpoint is exactly what
+a local stub gets right and a real service does differently. That is Step 5's
+J2, and until it runs this is a claim, not a fact.
+
 ---
 
 ## 4. argus-cloud — the web surface

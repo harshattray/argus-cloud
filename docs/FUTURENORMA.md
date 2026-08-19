@@ -780,7 +780,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 0 | Loose ends | Argus | — | Registry listed, `doctor` reports explain readiness (**not** a tag — §2 settles that tags are not tracked as a task) |
 | 1 | Build substrate | argus-cloud | — | Builds on Vercel; migrations race-safe; storage port has two drivers |
 | 2 | Artifact pipeline | both | 1 | ✅ **Done 2026-08-19** — `norma-scope upload` ships, hosted explain is crop-grounded, re-calibrated |
-| 3 | The report page | argus-cloud | 2 | Images, findings, history visible; share UI |
+| 3 | The report page | argus-cloud | 2 | ✅ **Built 2026-08-19** — images, findings, history and share UI; the gate's "a prospect can compare" needs Step 5 |
 | 4 | Trends | argus-cloud | 2 | Repo view + frame trend chart |
 | 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
 | 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
@@ -816,6 +816,21 @@ per-request nonce since 2026-08-15, and the live site was checked on 2026-08-19 
 the page renders, every script carries a nonce, and the nonce differs per
 request. Details and the rest of the open list: `PATHWAYS.md` Pathway 2,
 "Carried forward".
+
+**Step 3 was built the same day.** The report page shows the three captures in
+the CLI report's visual language, the findings with their regions drawn on the
+diff, the history — first drift, recurrence, a sparkline — as page furniture
+rather than 12px grey text, and a share interface for an API that had none. The
+suite is **775 checks across 26 suites**. Evidence, including the two bugs found
+only by opening the page and the one new guard that was asserting nothing:
+`FinishedSPEC.md` §3t.
+
+**What Step 3 does *not* yet prove.** Its gate is that a prospect can put a real
+local report beside the hosted one and see what history adds. Everything so far
+is seeded data on a laptop against the one real capture in the repo. That gate
+needs Step 5 and a run nobody seeded, so treat Step 3 as *built* and not as
+*validated*. Next is Step 4, trends — `frameHistory()` in `enrichment.ts` is
+already the single source its chart must agree with.
 
 ### The capture test applied to this path
 
