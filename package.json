@@ -28,7 +28,8 @@
     "sweep-uploads": "npm run build && node scripts/sweep-uploads.mjs",
     "seed:dev": "npm run build && node scripts/seed-dev.mjs",
     "schema-drift": "npm run build && node scripts/schema-drift.mjs",
-    "adopt-schema": "npm run build && node scripts/adopt-schema.mjs"
+    "adopt-schema": "npm run build && node scripts/adopt-schema.mjs",
+    "calibrate:hosted": "npm run build && node scripts/calibrate-hosted.mjs"
   },
   "repository": {
     "type": "git",
