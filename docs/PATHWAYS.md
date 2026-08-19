@@ -1310,8 +1310,8 @@ the dependency audit). Three things remain, and none is a logic gap:
 5. Enforce entitlement and quota server-side on every request.
 6. Deduplicate content-addressed artifacts within an organization.
 7. ✅ Upload full artifacts for flagged frames and thumbnails for clean frames.
-8. Secret-scan DOM and code context before provider submission.
-9. Recalibrate after crops ship and reprice packs before billing.
+8. ✅ Secret-scan DOM and code context before provider submission.
+9. ✅ Recalibrate after crops ship and reprice packs before billing — recalibrated 2026-08-19; no reprice needed.
 
 **Tests:** containment, forged keys, free-plan refusal, quota isolation,
 abandoned uploads, duplicate artifacts, crop grounding, secret scanning, COGS.
@@ -1383,8 +1383,62 @@ the customer's quota. `thumbnailFor` never uploads a thumbnail larger than the
 image it stands in for. `report.ts` is the other caller and is deliberately left
 alone — it embeds thumbnails as data URIs and has its own reasons.
 
-Items 8 and 9 are open: the secret scan on the upload path, and the post-crop
-calibration.
+**Item 8 landed 2026-08-19.** A credential in a run's data no longer reaches the
+provider. The scan lives in `src/promptAssembly.ts` — the one function the
+interactive and batch paths both call, so an unscanned payload cannot be
+assembled at all. A hit **blocks and names the field**; it never redacts, because
+a redaction that misses is an exfiltration. Interactive explain returns
+`secret_blocked` and releases both reservations; the batch path skips that frame
+before it reserves anything and still submits the clean ones. Either way CI stays
+green and nothing is charged. `test/secretScan.test.mjs`, 42 checks, including
+SS7 — the pre-item-8 assembly run through the same harness to prove the rest has
+teeth. Detail: `FinishedSPEC.md` §3q.
+
+The scan reads the source fields rather than the assembled string: the stats
+blob is capped, so scanning the output would call a secret "safe" whenever the
+cap happened to cut it off.
+
+**Crop grounding landed 2026-08-19 (BuildV5 G3).** Hosted explain reasons over
+image crops of the flagged regions. Proven against the real portfolio capture
+with a real key: the crop-grounded answer reports the rectangle `compare`
+recorded (`960,400 336×48`) and describes a green element present in the
+reference and missing in the build, where the metadata-only answer said the
+location could not be determined and returned `0,0,0,0`.
+
+**The crops are cut in the CLI, not on the server** — BuildV5 G3 says otherwise
+and is superseded. Cropping means decoding, and the 2026-08-19 sharp decision
+exists precisely because uploaded images are hostile input; decoding them in our
+own function is that risk with a worse blast radius. `FinishedSPEC.md` §3r has
+the mechanism and the evidence.
+
+**Crops cost exactly one credit.** Vision is billed on area, so the crop budget
+is the price: an analysis is 3 credits without crops and 4 with. The budget is
+sized by the deep pass, which binds first. The server measures every image from
+its own header before spending anything on it, so a client cannot decide what an
+analysis costs us.
+
+**Item 9 landed 2026-08-19 (BuildV5 G4).** `scripts/calibrate-hosted.mjs` makes
+real billed calls through the real service and reads every figure back out of
+`usage_events`. Three results:
+
+- **Crops made the hosted analysis 2.3× cheaper** — $0.0083 crop-grounded against
+  $0.0194 metadata-only. They add ~600 input tokens and cut output from ~1,700 to
+  ~519, and output costs 5× input. G4 was written expecting the opposite.
+- **Our price table was wrong.** `usage.ts` priced Sonnet 5 at $3/$15 per MTok
+  against a live page saying $2/$10 — and the page states the $3/$15 increase
+  scheduled for 2026-09-01 will not occur. Every recorded Sonnet cost was 50%
+  high. Corrected; the harness now refuses to run while the two disagree.
+- **Every pack clears its 3× floor by 9-11×.** No reprice needed, which is the
+  gate's condition.
+
+Detail and caveats: `docs/calibration.md`, `FinishedSPEC.md` §3s.
+
+**Pathway 2 is complete.**
+
+**Uploads are deliberately not scanned.** The server is out of the byte path for
+artifacts once a presigned URL is issued, and the enforcement this item asks for
+is at submission. Crop grounding will add image and DOM context to the outbound
+request through the same function, so it inherits the guard.
 
 **Not yet true in production:** nothing has been deployed and **the R2 leg has
 never carried a real artifact**. Everything above is the filesystem driver.
@@ -1463,14 +1517,18 @@ one of them sat where no test could see it, which is the point worth keeping:
 | 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15, confirmed on the live site 2026-08-19** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. Then confirmed against `normascope.com` itself — **27 scripts, 27 nonces**, hydrated, fonts loaded, no console errors, a different nonce on each of three requests. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
 | 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
-| 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
+| 4 | ~~500 included credits buy 100 analyses, not 500~~ **Softened 2026-08-19 — now 125** | The Sonnet 5 price correction (§3s) took an analysis from 5 credits to 3, and the crop budget put one back: **4 credits, 125 analyses a month**. Still short of 500, so whether that is the right allowance remains Harsha's call — but it is no longer a number moving in the wrong direction, and it improved without touching the model. |
 | 5 | The R2 leg has never carried a real artifact | Step 5 requires the G suite re-run against real R2. |
 | 6 | `--target` produces no summary, so it cannot upload | The zero-config flow is outside the upload path entirely. Fine today; a decision if that flow should reach Cloud. |
 | 7 | `revokeApiKey` now has a surface, but no rotation | A leaked key can be withdrawn from `/admin/keys`. Issuing a replacement is still a script. |
+| 9 | G3.3's selector half is untested | Crop grounding's parity check asks that CLI and hosted findings both name a selector and a measurement. Both name the measurement — the same region rectangle, the same missing element. Neither names a selector, because selectors are derived from DOM context and the portfolio fixture is an offline capture with no `.bridge/context/`. Closing it needs a capture run against a live page, which is a browser, not a fixture. |
+| 8 | Argus's secret scanner flags ordinary file paths | Found while building item 8 here. With `/` in S8's entropy alphabet, `artifacts/build/marketing-hero-desktop-1440x900` scores 4.52 bits against a 4.5 threshold — a false positive that **blocks** a local explain and names an innocent file. Argus's copy (`src/explain/scanner.ts`) scans DOM and code context, where paths are far more common than in summary metadata, so it is likelier to bite there than here. The fix is the one-character change already made in `src/secretScan.ts`; it is a CLI change with a publish attached, so it waits for the next `norma-scope` release rather than riding along with a Cloud commit. |
 
 Next: Pathway 3 — the report page. **It is no longer blocked** — item 1 above was
 fixed on 2026-08-15 and verified against the live site on 2026-08-19. Pathway 2's
-own items 8 and 9 come first under the canonical order.
+own item 9 comes first under the canonical order, and it cannot start until crop
+grounding (G3) ships, because there is nothing to recalibrate until the payload
+changes.
 
 #### CLI-to-Cloud connection
 

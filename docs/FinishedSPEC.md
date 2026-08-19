@@ -1341,6 +1341,225 @@ excluded from the converter — that HTML references `.png` directly, so a sibli
 
 ---
 
+### 3q. Nothing secret reaches the provider — Pathway 2, item 8 ✅ (2026-08-19)
+
+A credential in a run's data is now blocked before any provider call, on both
+hosted paths, and being blocked costs the customer nothing.
+
+**Where the guard is, and why there.** `src/promptAssembly.ts` — the one
+function the interactive path and the batch path both call. A payload that has
+not been scanned cannot be assembled, so a caller added later inherits the guard
+instead of having to remember it. The rules are S1–S8 from SECURITY-LLM.md, in
+`src/secretScan.ts`.
+
+| Path | What happens | Cost to the customer |
+|---|---|---|
+| Interactive explain | Assembly throws; `explainService.ts` returns `secret_blocked`, releases both reservations | Nothing — credits and provider dollars both returned |
+| CI batch | The frame is skipped before it reserves anything; clean frames in the same batch still run | Nothing, and CI stays green |
+
+**A hit blocks and names the field. It never redacts** — a redaction that misses
+is an exfiltration, and nothing can promise it caught every copy of a value
+inside a JSON blob.
+
+**The scan reads the source fields, not the assembled string.** The stats blob
+is capped, so a secret far enough in is cut before the request goes out.
+Scanning the output would have called that safe — correct for that payload,
+wrong for the same payload 100KB shorter. SS4 pins both halves: the block still
+fires, and the capped output really does drop the secret, which is exactly why
+the weaker version would have looked fine.
+
+**Two things this found:**
+
+- **An ordinary file path scored as a secret.** With `/` in S8's entropy
+  alphabet, `artifacts/build/marketing-hero-desktop-1440x900` is one 47-char
+  token at 4.52 bits — over the 4.5 threshold, because entropy there measures
+  the variety of several ordinary words and their separators, not the randomness
+  of any value. A false positive refuses a paying customer's analysis for naming
+  a file. `/` is now a separator on this side. Found by the clean corpus, which
+  is why the suite has one.
+- **The same false positive exists in Argus's copy** (`src/explain/scanner.ts`),
+  which scans DOM and code context — where paths are far more common than in
+  summary metadata. Not fixed here: it is a CLI change with a publish attached.
+  Recorded in `PATHWAYS.md` Pathway 2, carried forward.
+
+**Evidence:** `test/secretScan.test.mjs`, 42 checks. SS1 plants one payload per
+rule; SS2 is the clean corpus (commit SHAs, UUIDs, blob keys, paths, Figma
+labels, `apiKey: process.env.X`) and pins the one known gap; SS5 and SS6 assert
+no provider call, no charge, a released reservation and a metered
+`blocked_no_charge` event; **SS7 runs the pre-item-8 assembly through the same
+harness and asserts the secret reaches the wire**, so the rest is known to have
+teeth. Deleting the throw turns 13 checks red, including the two that watch the
+money.
+
+**What this is not.** Uploads are not scanned — the server is out of the byte
+path for artifacts by design, and the enforcement the item asks for is at
+submission. Crop grounding (G3) will add image and DOM context to the outbound
+request; it goes through the same function, so it inherits the scan.
+
+---
+
+### 3r. Crop-grounded hosted explain — BuildV5 G3 ✅ (2026-08-19)
+
+Hosted explain now reasons over image crops of the flagged regions, not only
+over diff metadata. Proven against the real portfolio capture with a real key,
+not fixtures.
+
+**The mechanism changed from what BuildV5 G3 describes, and the change is the
+point.** G3 has the server fetch the uploaded PNGs and cut the regions itself.
+That was written before the 2026-08-19 decision that customer bytes never reach
+`sharp` — a decision whose whole reason is that uploaded images are hostile
+input. Decoding them inside our own function is that hazard with a worse blast
+radius than the `next/image` case that was already refused. **So the crops are
+cut in the CLI, where the pixels are already decoded, by the same `cropRegion`
+the local `explain` uses**, and arrive as one JSON sidecar per frame.
+
+| Piece | Where |
+|---|---|
+| Regions recorded when found | `Argus/src/compare.ts` → `.bridge/diff/{frame}-regions.json` |
+| Crops cut and uploaded | `Argus/src/cloud/upload.ts`, kind `crops` |
+| Sidecar validated and bounded | `src/cropGrounding.ts` |
+| Images added to the turn | `src/promptAssembly.ts`, `buildUserBlocks` |
+| Migration | `020_crop_artifacts.sql` |
+
+**Crops cost exactly one credit.** Vision is billed on area, so the pixel budget
+*is* the price: an analysis is 3 credits without crops and 4 with them, at any
+budget worth having. The 1.5M-pixel budget is sized by the **deep** pass, which
+binds first — opus input is 2.5× sonnet's, and 1.59M is the largest budget that
+still holds deep at 8 credits rather than 9.
+
+> An earlier version of this section said crop grounding changed no price. That
+> was computed against a Sonnet 5 list price of $3/$15 per MTok which Anthropic
+> has since confirmed will never take effect; at the real $2/$10 the analysis
+> price is 4, not 5, and one of those four credits is the crops. Corrected the
+> same day, by §3s below.
+
+**The server measures every image from its own header.** Twenty-four bytes of
+PNG IHDR, or a walk to the JPEG SOF marker — no pixel decompression anywhere. A
+sidecar declaring `10x10` while attaching `4000x4000` is measured at 4000x4000
+and dropped. Without that, the client would decide what an analysis costs us and
+the pre-call reservation would stop being a maximum: eight images at the largest
+size the provider bills is $0.1571 against an $0.0844 reservation, an 11% margin
+against a 50% floor.
+
+#### What the real run showed
+
+The portfolio capture — three frames, one flagged — compared, uploaded through
+the real CLI, and explained through the real `/api/explain` route:
+
+| | Metadata-only | Crop-grounded |
+|---|---|---|
+| Region reported | `0,0,0,0` | `960,400 336×48` — the rectangle `compare` recorded |
+| What it said | "No pixel coordinates or bounding box were provided… the exact location cannot be determined" | "the reference shows a faint teal/green horizontal line below the pink block that is missing in the build" |
+| Output tokens | 1,367 | 940 |
+| Measured cost | **$0.02444** | **$0.01999** |
+
+**Crop grounding cost less, not more** — a grounded model stops hedging, and the
+output tokens it saves are worth more than the image tokens it adds. One sample,
+on one frame; it is a reason to run G4, not a substitute for it.
+
+The crop-grounded run also flagged text rendered *inside the image* as
+`injection-suspected`, which is the untrusted-pixels rule doing its job on image
+content rather than on text.
+
+#### G3.3 — CLI versus hosted, same frame
+
+| | CLI `explain` (BYO key) | Hosted, crop-grounded |
+|---|---|---|
+| Region | `960,400 336×48` | `960,400 336×48` |
+| Finding | build background flat white/grey where the reference has a green-tinted gradient | reference has a teal/green line below the pink block, missing in the build |
+| Injection | flagged the overlay text | flagged the same text |
+| Cost | $0.0155 | $0.0200 |
+
+Both land on the same rectangle and the same missing green element, which is the
+parity G3.3 asks for. **One half of its pass condition is untested:** it also
+asks that both name a *selector*, and neither did, because selectors come from
+DOM context and this fixture has none — it is an offline capture with no
+`.bridge/context/`. That is a gap in the evidence, not a pass.
+
+#### Found by running it
+
+- **A silent fallback with no way to see it.** Staging the run put the sidecar
+  in `.storage` while the dev server resolves that path relative to `web/`, so
+  the first crop-grounded call quietly produced a metadata answer. Nothing
+  errored. In production the same silence covers a missing object or a corrupt
+  sidecar, and "why was my paid explanation so vague?" would have no answer.
+  `cropsForFrame` now returns a reason and it is recorded on the usage event
+  beside `crops=0`.
+- **Crops must be dropped in pairs.** A build crop whose reference did not
+  survive validation is one picture, not a comparison, and the model would be
+  judging it against nothing.
+
+**Evidence:** `test/cropGrounding.test.mjs` (29 checks) and
+`test/cropExplain.test.mjs` (21 checks) here; `cloud` C19–C23 (12 checks) in
+Argus. Two teeth checks: CG5.4/5.5 price the same request with the budget
+removed and show the reservation exceeded, and CE3.4 shows that with a fixed
+prompt version the metadata answer would have been served to every crop request
+forever — silently, which is how this feature would have been absent rather than
+broken.
+
+**Not proven:** the presigned transfer leg for this kind specifically was
+exercised against Argus's own HTTP test server, not against a deployed Cloud
+(the local dev server's presigned URLs point at a port another process held).
+Every other kind's transfer was proven on 2026-08-15 and the code path is shared.
+And R2 remains untouched — §3l's caveat stands unchanged.
+
+---
+
+### 3s. The hosted path, calibrated after crops — BuildV5 G4 ✅ (2026-08-19)
+
+`scripts/calibrate-hosted.mjs` makes real, billed calls through the real
+`hostedExplain` service and reads every figure back out of `usage_events`.
+`docs/calibration.md` carries the full table; the three findings are here.
+
+**1. Crops made the hosted analysis 2.3× cheaper.** G4 exists on the assumption
+that crops raise COGS — "crops change the input token profile, which changes
+COGS, which is the floor under every pack price". They do add ~600 input tokens.
+They also cut output from ~1,700 tokens to ~519, because a model that can see the
+difference stops writing paragraphs about what it cannot determine, and output
+costs 5× input.
+
+| | Calls | Cost/call | Avg output |
+|---|---:|---:|---:|
+| Analysis, crop-grounded | 3 | **$0.0083** | 519 |
+| Analysis, metadata-only | 4 | $0.0194 | 1,700 |
+| Deep, crop-grounded | 1 | $0.0351 | 758 |
+
+**2. Our price table had never been checked against the source, and was wrong.**
+`usage.ts` priced Sonnet 5 at $3/$15 per MTok. The live page says $2/$10 — and
+says explicitly that the $3/$15 increase scheduled for 2026-09-01 **will not
+occur**. Every recorded cost for Sonnet was 50% high: safe in direction, since
+spend was over-stated and no budget ever ran loose, but wrong since the table was
+written. The harness refuses to calibrate while the two disagree, which is how it
+surfaced. Consequences, all favourable:
+
+- The `$0.0164` "post-intro" figure quoted throughout `FUTURENORMA.md` was a
+  forecast of a cancelled event. Withdrawn.
+- Credits are derived from cost, so a sonnet analysis fell from 5 to 3 — and the
+  crop budget put one back, landing at **4**. 500 included credits now buy **125
+  analyses a month, up from 100**, which closes `PATHWAYS.md` carried-forward
+  item 4 without a model change.
+- Packs were seeded against the higher figure, so they clear their floors by more
+  than intended.
+
+**3. Every pack clears its 3× floor with room to spare — no reprice.**
+
+| Pack | COGS | 3× floor | Price | Headroom |
+|---|---:|---:|---:|---:|
+| pack_100 | $0.21 | $0.62 | $7 | 11.3× |
+| pack_200 | $0.41 | $1.24 | $12 | 9.7× |
+| pack_1000 | $2.07 | $6.21 | $55 | 8.9× |
+
+Priced at the *metadata* cost instead — the expensive shape — pack_1000's floor
+is $14.52 against $55. The gate's condition ("pack prices still ≥ 3× blended
+COGS, or the reprice is recorded") passes without a reprice.
+
+**What the sample does not settle:** nine calls on four fixtures, no batch
+measurement on this path, and a cold prompt-cache mix. Real traffic will read the
+cache more often and cost less than these figures, not more. Full caveats in
+`calibration.md`.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six

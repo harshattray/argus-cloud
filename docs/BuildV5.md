@@ -321,6 +321,18 @@ org that dumps 10GB and vanishes costs cents and is reclaimed by the 14-day
 sweep. The exposure is sustained storage, not bandwidth — quotas plus
 retention are sufficient, and nothing here warrants a WAF.
 
+> ⚠️ **Superseded 2026-08-19 — the server does not crop.** The paragraph below
+> has the server fetch the uploaded PNGs and cut the regions itself. That
+> predates the decision that customer bytes never reach `sharp`, whose whole
+> reason is that uploaded images are hostile input — decoding them inside our own
+> function is that risk with a worse blast radius than the `next/image` case
+> already refused. **Crops are cut in the CLI at upload time** and arrive as a
+> JSON sidecar per frame; the server measures each image from its header, bounds
+> it to a pixel budget, and forwards the bytes. Built and proven:
+> `FinishedSPEC.md` §3r. Everything below about *what* the crops are — top-N
+> regions, the Phase A budget, the A3.1 truncation order — is unchanged and is
+> what the CLI implements.
+
 **G3 — Crop-grounded hosted explain.** `explainService.ts` gains crops: for
 each frame, fetch the build and reference objects, crop the top-N significant
 regions from the uploaded `regions` sidecar, downscale to the Phase A budget,

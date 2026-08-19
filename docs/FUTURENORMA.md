@@ -2,7 +2,27 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-14** — §2 state facts refreshed after Pathway 1 item 10
+Last updated: **2026-08-19** — **Step 2 is complete**: the outbound secret scan
+(Pathway 2 item 8), crop grounding (BuildV5 G3), and the post-crop calibration
+(G4). §2 gains three rows, suite counts are 734 on PGlite / 762 on real Postgres
+across twenty-five suites, and the migration range is `001`–`020`.
+
+**Two things here are yours to look at, not mine to settle:**
+
+1. **A price we were carrying is wrong, and correcting it changed a customer-
+   facing number.** `usage.ts` priced Sonnet 5 at $3/$15 per MTok; the live page
+   says $2/$10 and states the scheduled increase will not occur. Correcting it
+   moved a hosted analysis from 5 credits to 4 — so 500 included credits now buy
+   125 analyses rather than 100. The credit price is derived, not chosen, so this
+   followed mechanically; reverse it if you disagree. §3 has the detail.
+2. **G3's crops are cut in the CLI, not on the server.** `BuildV5.md` G3
+   specifies server-side cropping and predates the 2026-08-19 sharp decision;
+   following it would have put attacker-supplied images through libvips inside
+   our own function.
+
+Strategy is otherwise unchanged.
+
+Before that, **2026-08-14** — §2 state facts refreshed after Pathway 1 item 10
 (encrypted backups, a rehearsed restore, and operational alerts): suite counts,
 suite names and the migration range. Strategy is unchanged.
 
@@ -46,8 +66,8 @@ here first.
 The **CLI is finished and published** (`norma-scope` v0.7.5 and
 `normascope-mcp` v0.2.2, both live on npm under Apache-2.0; registry verified
 2026-08-10). The **explain engine is finished** and its real cost is
-**measured, not guessed** ($0.0115/review; $0.0164 at post-intro list prices —
-target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
+**measured, not guessed** ($0.0115/review on the CLI path, **$0.0083** on the
+hosted crop-grounded path — target was ≤$0.08). The **metering core is finished** (credits, caps, breaker,
 webhooks, reconciliation). The real hosted product is the Next.js app in
 `argus-cloud/web/`, **developed and tested locally** — Steps 1–4 need no domain,
 no accounts, and no money. It ships to **normascope.com** at Step 5.
@@ -283,6 +303,8 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ✅ **production backed up 2026-08-15**, ❌ not scheduled | 91 checks; both failure paths watched — §3k. **Production Neon was dumped, encrypted, restored and compared table by table on 2026-08-15** (32 tables). The nightly workflow exists and is inert; scheduling is **deferred to the first paying organization**, with hand backups covering the waitlist meanwhile. Switch-on checklist: `PATHWAYS.md` Pathway 1 item 10 |
 | **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
 | **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-7) | ✅ built and run end to end, ❌ never against R2 | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Item 7 (2026-08-19) makes the default send full artifacts for flagged frames and a thumbnail for each clean one, and closed an unvalidated client-supplied `contentType` on the way — `PATHWAYS.md` Pathway 2. Filesystem driver only |
+| **Hosted explain is crop-grounded** (BuildV5 G3) | ✅ 2026-08-19 | Crops are cut in the **CLI**, not on the server — BuildV5 G3 says otherwise and is superseded, because cropping means decoding and the 2026-08-19 sharp decision exists precisely to keep uploaded bytes out of an image library in our own process. Proven on the real capture with a real key: the crop-grounded answer names the region `compare` recorded and the element missing from it; the metadata answer could not locate the difference. **Crops cost exactly one credit** — an analysis is 3 credits without them and 4 with, and the 1.5M-pixel budget is sized by the deep pass, which is what binds first. (An earlier line here said crops changed no price; that was computed against a Sonnet price that turns out never to take effect — see §3.) The server measures every image from its own header, so a client cannot decide what a call costs us. 50 checks here, 12 in Argus — §3r |
+| **Nothing secret reaches the provider** (Pathway 2 item 8) | ✅ 2026-08-19 | The scan lives in `promptAssembly.ts`, the one function both hosted paths call, so an unscanned payload cannot be assembled. A hit blocks and names the field — never a silent redaction. Interactive explain returns `secret_blocked` and releases both reservations; a poisoned frame in a CI batch is skipped before it reserves anything and the clean frames still run. 42 checks, including the naive path run through the same harness — §3q. It also found the same rule flagging ordinary file paths, fixed here and **still live in the CLI's copy** |
 | **The hosted run report renders** | ✅ **fixed 2026-08-15, verified in production 2026-08-19** | It rendered blank because the `/r/` CSP blocked the inline scripts Next uses to deliver page content. `middleware.ts` now issues a per-request nonce with `strict-dynamic` — not `unsafe-inline`; the strictness is deliberate on a page that renders model output. Checked against `normascope.com`: the page renders, **27 scripts and 27 nonces**, hydrated, fonts loaded, no console errors, and the nonce differs on every request. **No longer blocks Pathway 3** |
 | **Vercel build contract** (`vercel.json`, root-directory build, `tsc` before `next build`) | ✅ | Clean checkout — no `node_modules`, no `dist/` — installs and builds — §4f |
 | **Migrations reach the function bundles** (`outputFileTracingIncludes`) | ✅ | 0/34 → **34/34** bundles carry all ten `.sql` files — §4f |
@@ -296,12 +318,13 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**598 checks green** on PGlite, **626** against real Postgres, across twenty
-suites — `apiKeyRevocation`, `artifactUploads`, `backup`, `budgetAlerts`, `cibatch`, `enrichment`,
+**730 checks green** on PGlite, **758** against real Postgres, across
+twenty-five suites — `apiKeyRevocation`, `artifactUploads`, `backup`,
+`budgetAlerts`, `cibatch`, `cropExplain`, `cropGrounding`, `enrichment`,
 `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
-`rateLimit`, `reconcile`, `retention`, `storage`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks` —
-run 2026-08-15. Migrations are now `001`–`018`.
+`rateLimit`, `reconcile`, `retention`, `secretScan`, `seo`, `siteAnalytics`,
+`storage`, `uploadPipeline`, `waitlist`, `waitlistConfirmationEmail`,
+`webhooks` — run 2026-08-19. Migrations are now `001`–`020`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
@@ -336,17 +359,43 @@ frontend. Committed @ `b4eeb86`, deployed to production.
 
 ## 3. The measured economics (do not re-guess these)
 
-From `docs/calibration.md`, 22 recorded API calls on 2026-07-29:
+> ⚠️ **The "post-intro list price" column is withdrawn — 2026-08-19.** Every
+> figure below carried a second column priced at Sonnet 5 at $3/$15 per MTok,
+> the increase scheduled for 2026-09-01. Anthropic's pricing page now states the
+> $2/$10 introductory price **is** the standard price and the increase **will
+> not occur**. There is no post-intro case to survive. `usage.ts` had been
+> recording Sonnet at $3/$15 — over-stating every recorded cost for it by 50%,
+> which was safe but wrong — and is corrected. Found by
+> `scripts/calibrate-hosted.mjs`, which refuses to run while our price table and
+> the live page disagree; nothing had ever checked.
 
-| Figure | Intro prices | Post-intro list prices |
-|---|---|---|
-| Blended COGS per review | **$0.0115** | **$0.0164** |
-| Deep review | $0.0203 | $0.0200 |
-| Batched analysis | $0.0025/call | — |
-| Target | ≤ $0.08 | ≤ $0.08 — **met ~5× over** |
+**The CLI path** — `docs/calibration.md`, 22 recorded API calls on 2026-07-29:
 
-`usage.ts` deliberately records at **list** prices, never intro prices, so
-recorded spend can never under-state reality.
+| Figure | Measured |
+|---|---|
+| Blended COGS per review | **$0.0115** |
+| Deep review | $0.0203 |
+| Batched analysis | $0.0025/call |
+| Target | ≤ $0.08 — **met ~7× over** |
+
+**The hosted path, crop-grounded** — `docs/calibration.md`, 9 recorded calls on
+2026-08-19, read back out of `usage_events`:
+
+| Figure | Measured |
+|---|---|
+| Analysis, crop-grounded | **$0.0083** |
+| Analysis, metadata-only | $0.0194 |
+| Deep, crop-grounded | $0.0351 |
+| Target | ≤ $0.08 — **met ~10× over** |
+
+**Crops made the hosted analysis cheaper, not dearer.** They add ~600 input
+tokens and cut output from ~1,700 to ~519 — a model that can see the difference
+stops writing about what it cannot determine, and output costs 5× input. G4 was
+written expecting the opposite. Nine calls on four fixtures is a direction, not
+a forecast; the caveats are in `calibration.md`.
+
+`usage.ts` records at **list** prices, so recorded spend can never under-state
+reality.
 
 **Rule:** any figure that reaches a customer must trace to a recorded `usage`
 object × a live price. Never estimate.
@@ -378,7 +427,7 @@ removes the buyer's risk is the **30-day money-back guarantee**, not a low price
 |---|---|
 | Price | $59.00 |
 | Paddle (5% + $0.50) | −$3.45 |
-| Included credits at worst-case COGS (500 × $0.0164) | −$8.20 |
+| Included credits at measured crop-grounded COGS (125 analyses × $0.0083) | −$1.04 |
 | Storage / DB / serving | under $1 |
 | **Contribution** | **≈ $46 (78%)** |
 
@@ -413,23 +462,27 @@ Prices as derived today, against the cheapest pack net of Paddle
 
 | Pass | Model | Worst case | Credits | Revenue | Margin at worst case |
 |---|---|---:|---:|---:|---:|
-| analysis | Sonnet 5 | $0.0784 | **5** | $0.1767 | 55.6% |
-| deep | Opus 4.8 | $0.1307 | **8** | $0.2828 | 53.8% |
+| analysis | Sonnet 5 | $0.0563 | **4** | $0.1414 | 60.2% |
+| deep | Opus 4.8 | $0.1407 | **8** | $0.2828 | 50.2% |
 
-> ⚠️ **This replaces "1 credit = one analysis, 3 for deep".** Those prices were
-> chosen against *measured* cost ($0.0164) and lost money at the ceiling. The
-> consequence is real and needs a decision: **500 included credits now buy 100
-> analyses a month, not 500.**
+> **Updated 2026-08-19 and it moved in the customer's favour.** Analysis was 5
+> credits; the Sonnet price correction above took it to 3, and the crop budget
+> put one back, landing at 4. **Crops cost exactly one credit** — that is their
+> whole price, at any budget worth having.
 >
-> The lever that changes this is the model, and cost-wise it is large:
+> **500 included credits now buy 125 analyses a month, up from 100.** The
+> concern carried in `PATHWAYS.md` as open item 4 has resolved itself without a
+> model change.
+>
+> The model lever still exists and is still large:
 >
 > | If a pass ran on | Worst case | Credits per call |
 > |---|---:|---:|
 > | Haiku 4.5 | $0.0261 | **2** |
-> | Sonnet 5 | $0.0784 | 5 |
-> | Opus 4.8 | $0.1307 | 8 |
+> | Sonnet 5 | $0.0563 | 4 |
+> | Opus 4.8 | $0.1407 | 8 |
 >
-> Moving analysis to Haiku 4.5 would take it from 5 credits to 2 — 250 analyses
+> Moving analysis to Haiku 4.5 would take it from 4 credits to 2 — 250 analyses
 > in the monthly allowance. That is a **cost** finding only. §8's provider
 > substitution process requires the calibration fixtures re-run against the
 > candidate and its quality, schema validity and refusal rate compared before
@@ -577,8 +630,9 @@ must have a bounded amount, minimum-balance threshold, card/bank alerts,
 NormaScope daily/monthly caps, and an emergency kill switch.
 
 Planning example: 100 organizations with 500 credits each represent 50,000
-internal credits. At the measured post-intro list-price review cost of $0.0164,
-that is approximately $820 of potential provider COGS. It is not a reason to
+internal credits. At the measured crop-grounded review cost of $0.0083 — 125
+analyses per organization — that is approximately $104 of potential provider
+COGS. It is not a reason to
 pre-purchase $820. Actual usage, hard maximum reservations, and the global
 provider budget determine what is funded.
 
@@ -725,7 +779,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | P | Public website + waitlist | web/ | — | `normascope.com` explains the CLI and Cloud direction, waitlist works, and no paid Cloud access is implied |
 | 0 | Loose ends | Argus | — | Registry listed, `doctor` reports explain readiness (**not** a tag — §2 settles that tags are not tracked as a task) |
 | 1 | Build substrate | argus-cloud | — | Builds on Vercel; migrations race-safe; storage port has two drivers |
-| 2 | Artifact pipeline | both | 1 | `npx norma-scope upload` ships; hosted explain is crop-grounded; re-calibrated |
+| 2 | Artifact pipeline | both | 1 | ✅ **Done 2026-08-19** — `norma-scope upload` ships, hosted explain is crop-grounded, re-calibrated |
 | 3 | The report page | argus-cloud | 2 | Images, findings, history visible; share UI |
 | 4 | Trends | argus-cloud | 2 | Repo view + frame trend chart |
 | 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
@@ -743,8 +797,18 @@ run end to end against the real portfolio capture — declared, transferred
 through presigned URLs, committed after verification, read back in a browser.
 Thumbnails for clean frames landed on 2026-08-19, so the default upload now
 carries every compared frame: full artifacts for the flagged ones, one
-downscaled JPEG for each of the rest. **What remains in Step 2 is the secret
-scan on the upload path, crop grounding, and recalibration.**
+downscaled JPEG for each of the rest. The outbound secret scan landed the same
+day — a credential in a run's data is blocked before the provider call, on both
+hosted paths, and blocking costs the customer nothing (§3q). **Crop grounding
+landed the same day** and is proven against the real capture with a real key
+(§3r): hosted explain reports the rectangle `compare` recorded and describes what
+is in the pixels, where the metadata-only answer could not locate the difference
+at all. **The post-crop calibration (G4) followed it** and found crops make the
+hosted analysis *cheaper*, not dearer, plus a price-table error that had never
+been checked (§3s).
+
+**Step 2 is complete.** Next is Step 3, the report page — unblocked since
+2026-08-15.
 
 **Step 3 is no longer blocked.** The run report rendered blank in production
 because the `/r/` CSP blocked Next's inline scripts; `middleware.ts` has issued a
@@ -1456,7 +1520,8 @@ deployment.
 | E6 provider retention posture unverified | Open. Disclosure page unwritten. |
 | E7 live purchase loop | Blocked on MoR. |
 | Hosted findings are metadata-grounded, not crop-grounded | Known and honestly labelled in the prompt. Fixed by item 2 above. |
-| ~~Worst-case provider cost exceeds credit revenue~~ | **Closed 2026-08-10.** Credits are now derived from the hard maximum cost with a 50% margin floor, enforced by the suite — analysis 5 credits, deep 8. See §3 "Credits are derived from cost". **The consequence needs a decision:** 500 included credits now buy 100 analyses, not 500. Moving analysis to Haiku 4.5 would make it 2 credits (250 analyses), gated on a calibration run per §8. |
+| ~~Worst-case provider cost exceeds credit revenue~~ | **Closed 2026-08-10.** Credits are derived from the hard maximum cost with a 50% margin floor, enforced by the suite — **analysis 4 credits, deep 8** as of 2026-08-19. See §3 "Credits are derived from cost". The consequence that needed a decision has softened on its own: 500 included credits buy **125** analyses, not 100, after the Sonnet price correction. Moving analysis to Haiku 4.5 would make it 2 credits (250 analyses), still gated on a calibration run per §8. |
+| **Our price table had never been checked against the source** | **Closed 2026-08-19.** `usage.ts` carried Sonnet 5 at $3/$15 per MTok against a live page saying $2/$10 — every recorded cost for it 50% high. Safe in direction (spend was over-stated, so no budget ran loose) but wrong, and it had been wrong since the table was written. `scripts/calibrate-hosted.mjs` now refuses to calibrate while the two disagree, so a future price move is caught by the harness rather than by nobody. |
 | Screenshot-visible secrets and private data | Open. Text secret scanning does not detect credentials or personal data rendered inside pixels; redaction and a pre-upload manifest are required. |
 | Customer deletion path | **Engine closed 2026-08-13** (§3j): run, repo and org deletion remove storage objects as well as rows and leave a receipt that outlives the org. **The user-facing half is open** — re-authentication, typing the org name, and showing the receipt are Step 6 UI. |
 | Deleting an org deletes its books | **Open — a decision, not code.** The cascade from `orgs` takes `usage_events`, `credit_grants` and `subscription_periods` with it, so an erasure changes what past months report. The receipt keeps the aggregate totals; whether anonymised per-event records must be retained for the accounting period is undecided (§3j). |
