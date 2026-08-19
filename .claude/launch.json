@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev", "--prefix", "web"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "web-gate-test",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:gate-test", "--prefix", "web"],
+      "port": 3100,
+      "autoPort": true
     }
   ]
 }
