@@ -32,7 +32,15 @@ import { planLimitsFor, PlanConfigError, type PlanLimits } from "./plans.js";
 import type { Storage } from "./storage.js";
 import { blobKey } from "./storage.js";
 
-export type ArtifactKind = "build" | "reference" | "diff" | "summary" | "thumbnail" | "report" | "regions";
+export type ArtifactKind =
+  | "build"
+  | "reference"
+  | "diff"
+  | "summary"
+  | "thumbnail"
+  | "report"
+  | "regions"
+  | "crops";
 
 const ARTIFACT_KINDS: readonly ArtifactKind[] = [
   "build",
@@ -42,6 +50,7 @@ const ARTIFACT_KINDS: readonly ArtifactKind[] = [
   "thumbnail",
   "report",
   "regions",
+  "crops",
 ];
 
 /**
@@ -74,6 +83,12 @@ const CONTENT_TYPES: Record<ArtifactKind, readonly string[]> = {
   thumbnail: ["image/jpeg", "image/png"],
   summary: ["application/json"],
   regions: ["application/json"],
+  // The crops sidecar: base64 images inside JSON, one per frame. JSON rather
+  // than one binary artifact per crop because `UNIQUE (run_id, frame, kind)`
+  // holds one artifact of each kind per frame — and that constraint is what
+  // stops a client reserving the same frame's bytes twice (migration 015).
+  // The crops for a frame are always fetched and sent together anyway.
+  crops: ["application/json"],
   report: ["text/html"],
 };
 

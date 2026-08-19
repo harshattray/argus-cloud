@@ -12,6 +12,8 @@ import { isTripped, EXPLAIN_PAUSED_MESSAGE, type Alert } from "./breaker.js";
 import { reserveBoth, settleCharged, releaseBoth } from "./economicPath.js";
 import type { ApiKeyRecord } from "./apiKeys.js";
 import { buildEnrichment, applyEnrichment, type Enrichment } from "./enrichment.js";
+import { OutboundSecretError, promptVersionFor } from "./promptAssembly.js";
+import type { GroundingCrop } from "./cropGrounding.js";
 
 /**
  * Hosted explain pipeline (Build 4.0 Phase C) — the enforcement point every
@@ -57,6 +59,18 @@ export interface ProviderRequest {
    * prompt. Null for orgs/frames with no history. Never present on BYO.
    */
   enrichmentText?: string | null;
+  /**
+   * Validated crops for this frame (BuildV5 G3), already bounded to the pixel
+   * budget by `cropGrounding.ts`. Empty when the run predates artifact upload
+   * or its sidecar was unreadable — the provider then grounds on metadata and
+   * says so (G3.2).
+   *
+   * They travel through the service rather than being captured in the route's
+   * closure so that **the number the cache keys on and the images actually sent
+   * are the same list**. A count passed separately would be a second source for
+   * one fact, and the one that drifts is the cache.
+   */
+  crops?: readonly GroundingCrop[];
 }
 
 export type Provider = (request: ProviderRequest) => Promise<ProviderResult>;
@@ -89,6 +103,14 @@ export interface ExplainRequest {
   /** CI auto-explain (per-run cap applies); interactive requests pass false. */
   auto?: boolean;
   batch?: boolean;
+  /** Crops for this frame, validated and bounded by `cropGrounding.ts` (G3). */
+  crops?: readonly GroundingCrop[];
+  /**
+   * Why this request carries no crops, when it carries none. Recorded on the
+   * usage event so a silently vaguer answer can be explained after the fact —
+   * an old run and a broken storage path look identical from the outside.
+   */
+  groundingNote?: string;
 }
 
 export type ExplainOutcome =
@@ -102,7 +124,8 @@ export type ExplainOutcome =
         | "provider_budget_exhausted"
         | "insufficient_credits"
         | "analysis_failed"
-        | "model_not_priced";
+        | "model_not_priced"
+        | "secret_blocked";
       message: string;
       /** True when a CI job should continue green despite the error. */
       ciStaysGreen: boolean;
@@ -153,13 +176,15 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
   }
 
   // 2 — result cache: hits are free and never decremented.
+  // The prompt version carries the grounding, so a metadata-only answer is
+  // never served to a crop-grounded request (`promptAssembly.ts`).
   const cacheKey = makeCacheKey({
     orgId: req.orgId,
     frame: req.frame,
     buildHash: req.buildHash,
     designHash: req.designHash,
     model: req.model,
-    promptVersion: 1,
+    promptVersion: promptVersionFor(req.crops),
   });
   const cached = await cacheGet(db, req.orgId, cacheKey);
   if (cached !== null) {
@@ -252,7 +277,7 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
   }
 
   // 7 — provider call; any failure returns both reservations in full.
-  const fail = async (detail: string): Promise<ExplainOutcome> => {
+  const release = async (detail: string): Promise<void> => {
     await releaseBoth(db, {
       orgId: req.orgId,
       apiKeyId: req.apiKey?.id ?? null,
@@ -266,6 +291,9 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
       creditReservation: admission.creditReservation,
       detail,
     });
+  };
+  const fail = async (detail: string): Promise<ExplainOutcome> => {
+    await release(detail);
     return {
       ok: false,
       code: "analysis_failed",
@@ -288,8 +316,18 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
       model: req.model,
       batch: req.batch ?? false,
       enrichmentText: enrichment?.text ?? null,
+      crops: req.crops ?? [],
     });
   } catch (err) {
+    // The secret scan (Pathway 2 item 8) lives in prompt assembly, which runs
+    // inside the provider closure — so a block surfaces here, as a throw, and
+    // must not be reported as "analysis failed". It is not a failure: nothing
+    // was sent, nothing is wrong with the service, and the customer can fix it.
+    // Both reservations go back, exactly as on any other unsent call.
+    if (err instanceof OutboundSecretError) {
+      await release(`secret scan ${err.rule} blocked ${err.source}`);
+      return { ok: false, code: "secret_blocked", message: err.message, ciStaysGreen: true };
+    }
     return fail(`provider threw: ${(err as Error).message}`);
   }
   if (result.kind === "error") {
@@ -326,7 +364,17 @@ export async function hostedExplain(db: Db, deps: ExplainDeps, req: ExplainReque
     dailyBudgetMicrodollars: deps.dailyBudgetMicrodollars,
     alert: deps.alert,
     now,
-    detail: enrichment ? `enrichment_tokens=${enrichment.tokenEstimate}` : "",
+    detail: [
+      enrichment ? `enrichment_tokens=${enrichment.tokenEstimate}` : "",
+      // On the usage event because G4's recalibration has to be able to tell a
+      // crop-grounded call from a metadata one after the fact. Without it the
+      // recorded costs are a mix of two request shapes with no way to separate
+      // them, and the calibration would be an average of two things.
+      `crops=${req.crops?.length ?? 0}`,
+      req.groundingNote ? `grounding=${req.groundingNote}` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   });
   return { ok: true, findings, cached: false, creditsCharged: credits };
 }

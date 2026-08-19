@@ -523,6 +523,7 @@ if (REAL_PG) {
     {
       submit: async () => `batch_${randomUUID().slice(0, 8)}`,
       fetch: async () => null,
+      scan: () => null,
       dailyBudgetMicrodollars: dailyBudget,
       alert: alertsInto(sink),
       now: () => T0,
@@ -559,6 +560,7 @@ if (REAL_PG) {
     {
       submit: async () => `batch_${randomUUID().slice(0, 8)}`,
       fetch: async () => null,
+      scan: () => null,
       dailyBudgetMicrodollars: dailyBudget,
       alert: alertsInto(sink),
       now: () => T0,
@@ -622,6 +624,7 @@ if (REAL_PG) {
     {
       submit: async () => "batch_never",
       fetch: async () => null,
+      scan: () => null,
       dailyBudgetMicrodollars: generousDay,
       orgMonthlyBudgetMicrodollars: tinyOrgCeiling,
       alert: alertsInto(batchSink),

@@ -1,8 +1,9 @@
 import { getDb } from "../../../lib/db";
 import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
-import { makeBatchSubmit, makeBatchFetch, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
+import { makeBatchSubmit, makeBatchFetch, makeScan, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { enqueueCiBatch, collectCiBatch, summarizeForPr } from "argus-cloud/ciBatch.js";
 import { alert } from "../../../lib/alerts";
+import { cropsForFrame } from "../../../lib/crops";
 
 /**
  * CI auto-explain (Build 4.0 D2), two-step because Message Batches finish
@@ -21,6 +22,7 @@ const DAILY_BUDGET_MICRODOLLARS = Number(process.env.EXPLAIN_DAILY_BUDGET_MICROD
 const deps = (evidenceByFrame: Map<string, FrameEvidence>) => ({
   submit: makeBatchSubmit(evidenceByFrame),
   fetch: makeBatchFetch(),
+  scan: makeScan(evidenceByFrame),
   dailyBudgetMicrodollars: DAILY_BUDGET_MICRODOLLARS,
   alert,
 });
@@ -76,16 +78,24 @@ export async function POST(request: Request): Promise<Response> {
     ])
   );
 
+  // Crops per frame (G3), loaded before the enqueue so the cache key and the
+  // images sent are decided from one list. Frames without a sidecar carry an
+  // empty one and ground on metadata, as they did before crops existed.
+  const batchFrames = await Promise.all(
+    flagged.map(async (f) => ({
+      frame: f.screenshot as string,
+      buildHash: `${run.commit_sha}:${f.alignedMismatchPercent ?? ""}`,
+      designHash: String(f.structuralSimilarity ?? ""),
+      crops: (await cropsForFrame(db, key.org_id, run.id, f.screenshot as string)).crops,
+    }))
+  );
+
   const outcome = await enqueueCiBatch(db, deps(evidenceByFrame), {
     orgId: key.org_id,
     repoId: run.repo_id,
     runId: run.id,
     model: HOSTED_MODELS.analysis,
-    frames: flagged.map((f) => ({
-      frame: f.screenshot as string,
-      buildHash: `${run.commit_sha}:${f.alignedMismatchPercent ?? ""}`,
-      designHash: String(f.structuralSimilarity ?? ""),
-    })),
+    frames: batchFrames,
   });
 
   return Response.json(outcome, { status: outcome.batchId ? 202 : 200 });

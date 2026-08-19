@@ -56,12 +56,56 @@ export const HARD_CAPS = {
    * customer for headroom that does not exist.
    */
   charsPerToken: 3.0,
+  /**
+   * Most image crops one request may carry — four flagged regions, each as a
+   * build/reference pair (BuildV5 G3, matching the CLI's `MAX_REGIONS`).
+   */
+  maxCrops: 8,
+  /**
+   * Total crop pixels one request may carry, across all crops.
+   *
+   * **The budget is the price.** Vision is billed on area, so this number
+   * decides what an analysis costs: at 1.5M pixels the worst-case analysis is
+   * $0.0563 and worst-case deep $0.1407, deriving to 4 and 8 credits.
+   *
+   * It is sized by the **deep** pass, which binds first — opus input is 2.5×
+   * sonnet's, so the same pixels cost it more. 1.59M is the largest budget that
+   * still holds deep at 8 credits; above that it becomes 9. 1.5M sits just
+   * under, with room for the estimate to be slightly wrong.
+   *
+   * **Crops cost analysis exactly one credit** — 3 without them, 4 with — and
+   * that is true at any budget worth having, including 0.5M. An earlier version
+   * of this comment claimed crops were free; that was computed against a sonnet
+   * price of $3/$15 per MTok which Anthropic has since confirmed will never take
+   * effect. `test/cropGrounding.test.mjs` CG5.2b states the real cost.
+   *
+   * It is enforced against dimensions read from each image's own header
+   * (`cropGrounding.ts`), never against what the client said they were.
+   */
+  maxCropPixels: 1_500_000,
+  /**
+   * Provider vision cost model: tokens ≈ pixels / 750. The same divisor the
+   * CLI's assembly uses, so both sides estimate one call the same way.
+   */
+  imagePixelsPerToken: 750,
 } as const;
 
-export function maxInputTokens(): { system: number; user: number } {
+/**
+ * Worst-case input tokens, by where they come from.
+ *
+ * `image` is charged at the full crop budget on **every** call, including one
+ * with no crops at all. That is deliberate: credits are derived per operation,
+ * not per request, so an operation needs one price — and pricing metadata-only
+ * calls lower would mean the same button costs a different number of credits
+ * depending on whether an upload happened to carry crops. A metadata-only call
+ * over-reserves and the difference is released at settle, which is what
+ * reservations are for.
+ */
+export function maxInputTokens(): { system: number; user: number; image: number } {
   return {
     system: Math.ceil(HARD_CAPS.maxSystemPromptChars / HARD_CAPS.charsPerToken),
     user: Math.ceil(HARD_CAPS.maxUserContentChars / HARD_CAPS.charsPerToken),
+    image: Math.ceil(HARD_CAPS.maxCropPixels / HARD_CAPS.imagePixelsPerToken),
   };
 }
 
@@ -74,12 +118,13 @@ export function maxInputTokens(): { system: number; user: number } {
  * it can be billed — it is the cached block, and the write is its worst case.
  * User content is priced as ordinary input, which is what it is. Output is
  * priced at the full `max_tokens`, because the provider is entitled to use all
- * of it.
+ * of it. Crops are ordinary input too, at the full pixel budget — see
+ * `maxInputTokens` for why every call is priced as though it carried them.
  */
 export function hardMaxCostMicrodollars(model: string, options: { batch?: boolean } = {}): number | null {
-  const { system, user } = maxInputTokens();
+  const { system, user, image } = maxInputTokens();
   const worstCase: TokenUsage = {
-    inputTokens: user,
+    inputTokens: user + image,
     cacheCreationInputTokens: system,
     cacheReadInputTokens: 0,
     outputTokens: HARD_CAPS.maxOutputTokens,
