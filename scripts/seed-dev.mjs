@@ -279,13 +279,21 @@ if (richExists.rows.length > 0) {
   console.log(`\nrich run: /r/${richExists.rows[0].id}  (already there)`);
 } else {
   // History first: five earlier runs of the product frame, so the page has a
-  // trend to draw and a first-drift commit to name. One of them deliberately
-  // has *no* frame_stats row for the frame — a skipped run, which must render
-  // as a gap in the sparkline and never as a zero.
+  // trend to draw and a first-drift commit to name.
+  //
+  // One of them deliberately records **no measurement** — a `frame_stats` row
+  // with a null `aligned_mismatch_percent`, which is what a frame that was
+  // compared and produced no number looks like. It must render as a gap in
+  // both charts and never as a zero.
+  //
+  // It used to be seeded as *no row at all*, which is a different thing: a run
+  // where the frame simply is not present does not appear on the chart, so
+  // nothing was drawing the gap the comment claimed to be testing. Phase I's
+  // trend page is where that difference became visible.
   const past = [
     { commit: "a1b2c3d4e5", pct: 0.02, flagged: false },
     { commit: "b2c3d4e5f6", pct: 0.04, flagged: false },
-    { commit: "c3d4e5f6a7", pct: null, flagged: false }, // skipped this frame
+    { commit: "c3d4e5f6a7", pct: null, flagged: false }, // compared, no number
     { commit: "d4e5f6a7b8", pct: 0.31, flagged: true },
     { commit: "e5f6a7b8c9", pct: 0.18, flagged: true },
   ];
@@ -298,9 +306,6 @@ if (richExists.rows.length > 0) {
       "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary, state, created_at) VALUES ($1,$2,$3,$4,'main',$5,'committed',$6)",
       [id, team.id, repo, entry.commit, JSON.stringify(richSummary), at]
     );
-    if (entry.pct === null) {
-      continue;
-    }
     await db.query(
       `INSERT INTO frame_stats (org_id, repo_id, run_id, frame, mode, source, aligned_mismatch_percent, structural_similarity, flagged, created_at)
        VALUES ($1,$2,$3,$4,'baseline','baseline',$5,$6,$7,$8)`,
@@ -407,6 +412,65 @@ if (richExists.rows.length > 0) {
   console.log(`  storage: ${process.env.NORMA_STORAGE_DIR}`);
   console.log(`  add NORMA_STORAGE_DIR to web/.env.local with this exact value, or the server reads web/.storage`);
 }
+
+// ---------------------------------------------------------------------------
+// Trends — BuildV5 Phase I
+// ---------------------------------------------------------------------------
+//
+// Two things the repository and trend views have branches for and the data
+// above cannot produce:
+//
+//   - **A repository with no runs** (I1.2), so the empty state is something you
+//     can look at rather than a branch nobody has rendered.
+//   - **A frame whose measurement changed mid-history** (I2.2). `fidelity` and
+//     `baseline` are different quantities against different references, and the
+//     chart marks where the definition changed. Nothing else here changes mode,
+//     so without this the marker has never been drawn.
+//
+// The mode-change frame is named for what it is, for the same reason the tall
+// PNG above is: a page of invented numbers under a plausible name reads as the
+// product measuring nonsense.
+const emptyExists = await db.query("SELECT id FROM repos WHERE org_id = $1 AND name = 'dev-empty'", [team.id]);
+const emptyRepo = emptyExists.rows[0]?.id ?? randomUUID();
+if (!emptyExists.rows[0]) {
+  await db.query("INSERT INTO repos (id, org_id, name) VALUES ($1, $2, 'dev-empty')", [emptyRepo, team.id]);
+}
+console.log(`\nempty repository (I1.2 empty state): /repos/${emptyRepo}`);
+
+const MODE_FRAME = "DEV-FIXTURE-mode-change-not-a-real-frame.png";
+const modeExists = await db.query(
+  "SELECT count(*)::int AS n FROM frame_stats WHERE org_id = $1 AND frame = $2",
+  [team.id, MODE_FRAME]
+);
+if (modeExists.rows[0].n === 0) {
+  const arc = [
+    { commit: "mode000001", mode: "baseline", source: "baseline", pct: 0.03, threshold: 0.1, flagged: false },
+    { commit: "mode000002", mode: "baseline", source: "baseline", pct: 0.06, threshold: 0.1, flagged: false },
+    { commit: "mode000003", mode: "baseline", source: "baseline", pct: 0.42, threshold: 0.1, flagged: true },
+    { commit: "mode000004", mode: "fidelity", source: "figma", pct: 6.10, threshold: 5, flagged: true },
+    { commit: "mode000005", mode: "fidelity", source: "figma", pct: 4.20, threshold: 5, flagged: false },
+    { commit: "mode000006", mode: "fidelity", source: "figma", pct: 3.10, threshold: 5, flagged: false },
+  ];
+  let back = arc.length;
+  for (const entry of arc) {
+    const id = randomUUID();
+    const when = new Date(Date.now() - back * 30 * 3600 * 1000).toISOString();
+    back--;
+    await db.query(
+      "INSERT INTO runs (id, org_id, repo_id, commit_sha, branch, summary, state, created_at) VALUES ($1,$2,$3,$4,'main',$5,'committed',$6)",
+      [id, team.id, repo, entry.commit, JSON.stringify({ schemaVersion: 2, threshold: entry.threshold, frames: [] }), when]
+    );
+    await db.query(
+      `INSERT INTO frame_stats (org_id, repo_id, run_id, frame, mode, source, aligned_mismatch_percent, structural_similarity, flagged, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [team.id, repo, id, MODE_FRAME, entry.mode, entry.source, entry.pct, 95, entry.flagged, when]
+    );
+  }
+}
+console.log(
+  `mode-change trend (I2.2 marker): /repos/${repo}/trend?frame=${encodeURIComponent(MODE_FRAME)}`
+);
+console.log(`repository view: /repos/${repo}`);
 
 console.log("\nAdmin: http://localhost:3000/admin/keys (password: ADMIN_PASSWORD from web/.env.local)");
 await db.close();

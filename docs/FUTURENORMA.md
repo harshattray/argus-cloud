@@ -2,10 +2,19 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-19** — **Step 2 is complete**: the outbound secret scan
+Last updated: **2026-08-20** — **Step 4 (trends) is built**: a repository view, a
+frame trend chart, and an org-scoped trends API (BuildV5 Phase I). Suite counts
+are **878 on PGlite / 906 on real Postgres across twenty-eight suites**. The
+migration range is unchanged at `001`–`020` — Phase I needed no new columns,
+because `frame_stats` has carried them since migration 001.
+
+**Steps 3 and 4 are both *built* and neither is *validated*.** Their gates ask
+what a prospect can see, and everything so far is seeded data on a laptop. That
+needs Step 5.
+
+Before that, **2026-08-19** — **Step 2 is complete**: the outbound secret scan
 (Pathway 2 item 8), crop grounding (BuildV5 G3), and the post-crop calibration
-(G4). §2 gains three rows, suite counts are 734 on PGlite / 762 on real Postgres
-across twenty-five suites, and the migration range is `001`–`020`.
+(G4). §2 gains three rows, and the migration range moved to `001`–`020`.
 
 **Two things here are yours to look at, not mine to settle:**
 
@@ -312,19 +321,25 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Production database provisioned** — Neon, us-east-1, Postgres 17.10, pooled | ✅ | 10 migrations cold through the pooler, 23 tables — §4f |
 | **Waitlist verified against the real production database** | ✅ | Signup row read back from a separate process; dedupe, honeypot, referrer stripping — §4f |
 | Waitlist client-side validation, sharing the server's rules and wording | ✅ | `web/lib/waitlistEmail.ts`; both forms + the API import it — §4f |
+| **The hosted run report renders images, findings and history** (BuildV5 Phase H) | ✅ built 2026-08-19 | The gate — a prospect comparing a local report with the hosted one — needs Step 5 — `FinishedSPEC.md` §3t |
+| **Trends: repository view, frame trend chart, trends API** (BuildV5 Phase I) | ✅ built 2026-08-20 | The first page above `/r/{runId}`. First drift is *placed* from `enrichment.ts`, never recomputed — the counter-test shows the naive version disagreeing on a truncated window. 71 checks — §3u. **Owner-gated by `NORMA_DEV_OPEN`, so these pages 404 in production until Step 6's session layer** |
+| **Cloud app chrome: wordmark, breadcrumbs, frame navigation, theme switch, Yutic endorsement** | ✅ 2026-08-20 | One shell across `/r/` and `/repos/`. The theme has three states (light / dark / follow the device) and is a cookie read server-side, so there is no flash and no client JavaScript on either page tree. 32 checks — §3v |
+| **A labelled demo tenant** (`npm run seed:demo`) | ✅ 2026-08-20 | Three repositories, twelve weeks, six frames, real credit grants and `usage_events`. The organization is named `DEMO — … (sample data)` and it is the top breadcrumb, so the label is on screen throughout a walkthrough. **Not evidence** — §3v records the one surface where the label does not appear |
 
 Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 `normascope-site` that landed the public marketing site, the gated `/pitch` tree
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**730 checks green** on PGlite, **758** against real Postgres, across
-twenty-five suites — `apiKeyRevocation`, `artifactUploads`, `backup`,
-`budgetAlerts`, `cibatch`, `cropExplain`, `cropGrounding`, `enrichment`,
-`legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`, `providerBudget`,
-`rateLimit`, `reconcile`, `retention`, `secretScan`, `seo`, `siteAnalytics`,
-`storage`, `uploadPipeline`, `waitlist`, `waitlistConfirmationEmail`,
-`webhooks` — run 2026-08-19. Migrations are now `001`–`020`.
+**878 checks green** on PGlite, **906** against real Postgres, across
+twenty-eight suites — `apiKeyRevocation`, `artifactUploads`, `backup`,
+`budgetAlerts`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
+`enrichment`, `legal`, `metering`, `migrations`, `opsAlerts`, `planLimits`,
+`providerBudget`,
+`rateLimit`, `reconcile`, `reportPage`, `retention`, `secretScan`, `seo`,
+`siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
+`waitlistConfirmationEmail`, `webhooks` — run 2026-08-20. Migrations are still
+`001`–`020`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
@@ -781,7 +796,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 1 | Build substrate | argus-cloud | — | Builds on Vercel; migrations race-safe; storage port has two drivers |
 | 2 | Artifact pipeline | both | 1 | ✅ **Done 2026-08-19** — `norma-scope upload` ships, hosted explain is crop-grounded, re-calibrated |
 | 3 | The report page | argus-cloud | 2 | ✅ **Built 2026-08-19** — images, findings, history and share UI; the gate's "a prospect can compare" needs Step 5 |
-| 4 | Trends | argus-cloud | 2 | Repo view + frame trend chart |
+| 4 | Trends | argus-cloud | 2 | ✅ **Built 2026-08-20** — repo view, frame trend chart, trends API; the "publish a real dogfood trend" claim under it needs Step 5 |
 | 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
 | 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
@@ -829,8 +844,28 @@ only by opening the page and the one new guard that was asserting nothing:
 local report beside the hosted one and see what history adds. Everything so far
 is seeded data on a laptop against the one real capture in the repo. That gate
 needs Step 5 and a run nobody seeded, so treat Step 3 as *built* and not as
-*validated*. Next is Step 4, trends — `frameHistory()` in `enrichment.ts` is
-already the single source its chart must agree with.
+*validated*.
+
+**Step 4 was built on 2026-08-20.** There is now a page above `/r/{runId}`: a
+repository view with paginated runs and a sparkline per frame, a frame trend
+chart, and `GET /api/trends`. The chart's "first drift" is *placed* from
+`frameHistory()` in `enrichment.ts` rather than recomputed — the gate — and the
+counter-test shows why that mattered: the naive version, scanning the visible
+points for the first flagged one, agrees on a full window and disagrees the
+moment the window truncates. The suite is **878 checks across 28 suites** on
+PGlite, **906** against real Postgres. Evidence, including the three things
+found only by opening the page: `FinishedSPEC.md` §3u.
+
+**Step 4 carries the same caveat as Step 3, plus one of its own.** These pages
+are gated by `NORMA_DEV_OPEN` and **404 in production**: a share token names one
+run, so it cannot open a repository-wide view without widening every link ever
+issued, and there is no session layer until Step 6. Nothing about that is a gap
+in the trends work — it is Step 6 arriving after Step 4 in this order, which was
+the plan.
+
+**Next is Step 5, cloud infrastructure go-live.** It is now the only thing
+standing between four built steps and the gates that would validate three of
+them.
 
 ### The capture test applied to this path
 
@@ -1035,18 +1070,32 @@ same work as promoting the enrichment fields out of 12px grey text.
 
 ---
 
-### Step 4 — Trends → `BuildV5.md` Phase I
+### Step 4 — Trends → `BuildV5.md` Phase I ✅ built 2026-08-20
 
-Every number already exists in `frame_stats` with the right index.
+Every number already existed in `frame_stats` with the right index, and still
+does — Phase I added no migration.
 
-- Repo view — runs, flagged counts, per-frame sparkline. **Nothing above
-  `/r/{runId}` exists today.**
-- Frame trend — score over commits, threshold line, first-exceeded annotation,
-  mode-transition markers. Skips render as gaps, never zeros.
-- Org-scoped, capped trends API.
+- Repo view — `/repos/{repoId}`: runs paginated at 20 with compared and flagged
+  counts, then every frame's last 12 runs as a sparkline, worst first. ✅
+- Frame trend — `/repos/{repoId}/trend?frame=…`: score over commits, a
+  **stepped** threshold line (each run carries its own), the first-exceeded
+  annotation, and mode-transition markers that **break the line** rather than
+  drawing across two incomparable measurements. Skips render as gaps, never
+  zeros. ✅
+- Org-scoped, capped trends API — `GET /api/trends?repo&frame&limit`. ✅
 
-**Gate:** the chart's "first drift" must agree with `enrichment.ts` on the same
-data. Two implementations that disagree means one is wrong.
+**Gate: met.** The chart's "first drift" comes *from* `frameHistory()` in
+`enrichment.ts` rather than agreeing with it by coincidence — there is one
+implementation, and the chart only places its answer. The counter-test in
+`test/trends.test.mjs` (T2.1b) runs the second implementation this gate warns
+about and shows it disagreeing on a truncated window.
+
+**Not yet met: the sentence below this one.** Publishing Argus's own months-deep
+history as a case study needs a deployment and a real upload — Step 5.
+
+**Gated by `NORMA_DEV_OPEN`, so these pages 404 in production.** A share token
+names one run and must not open a repository-wide view; sessions arrive at
+Step 6.
 
 > **Steps 3 and 4 are the sales asset.** With no trial, a prospect never touches
 > the hosted product before paying — the demo carries the whole argument. Argus

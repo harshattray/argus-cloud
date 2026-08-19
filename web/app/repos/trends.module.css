@@ -1,0 +1,484 @@
+/*
+ * The repository and frame-trend views — BuildV5 Phase I (I1, I2).
+ *
+ * Palette and page chrome come from `_styles/surface.module.css`, the same
+ * tokens the run report uses, so the two pages are one product rather than two.
+ *
+ * **Everything here renders on the server as inert markup and SVG.** No client
+ * component, so the strict CSP for these trees costs nothing: no nonce to
+ * thread, no hydration to wait for, and the chart is in the first byte of HTML.
+ * The report page's `style-src-attr 'unsafe-inline'` is still needed here for
+ * the same reason it is needed there — a bar's width and a marker's position
+ * are values computed per row, and no stylesheet can hold them.
+ */
+
+.page {
+  composes: surface from "../_styles/surface.module.css";
+}
+
+.sheet {
+  composes: card from "../_styles/surface.module.css";
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  padding: 26px 30px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--clay);
+}
+
+.title {
+  margin: 8px 0 4px;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.crumbs {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.crumbs a {
+  color: var(--clay-deep);
+}
+
+.crumbs code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ---------- stat row ---------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+
+.stat {
+  padding: 16px 20px;
+  border-right: 1px solid var(--line);
+  background: var(--frame-bg);
+}
+
+.stat:last-child {
+  border-right: none;
+}
+
+.statValue {
+  display: block;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.statLabel {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.danger .statValue {
+  color: var(--danger);
+}
+
+.success .statValue {
+  color: var(--success);
+}
+
+/* ---------- sections ---------- */
+
+.section {
+  padding: 24px 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--clay);
+}
+
+.sectionNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* ---------- runs table ---------- */
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.runs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.runs th {
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
+  padding: 0 12px 8px 0;
+  white-space: nowrap;
+}
+
+.runs td {
+  padding: 9px 12px 9px 0;
+  border-top: 1px solid var(--line-soft);
+  vertical-align: baseline;
+}
+
+.runs code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.runs a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pillFlagged {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.pillClean {
+  color: var(--success);
+  font-weight: 650;
+}
+
+.muted {
+  color: var(--ink-faint);
+}
+
+/* ---------- pagination ---------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.pager a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.pagerState {
+  color: var(--ink-faint);
+}
+
+/* ---------- frame list ---------- */
+
+.frames {
+  display: grid;
+  gap: 10px;
+}
+
+.frameRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--clay);
+  border-radius: 10px;
+}
+
+.frameName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  color: var(--clay-deep);
+}
+
+.frameMeta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.spark {
+  display: block;
+  width: 200px;
+  height: 40px;
+  overflow: visible;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--clay);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.sparkThreshold {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.sparkDot {
+  fill: var(--success);
+}
+
+.sparkDot.over {
+  fill: var(--danger);
+}
+
+/* ---------- the trend chart (I2) ---------- */
+
+.chartWrap {
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px 10px;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 260px;
+  overflow: visible;
+}
+
+.axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-faint);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--clay);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trendArea {
+  fill: var(--clay);
+  opacity: 0.08;
+}
+
+.thresholdLine {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+  opacity: 0.75;
+}
+
+.dot {
+  fill: var(--success);
+  stroke: var(--card);
+  stroke-width: 1.5;
+}
+
+.dot.over {
+  fill: var(--danger);
+}
+
+.driftMark {
+  stroke: var(--danger);
+  stroke-width: 1.25;
+}
+
+.driftRing {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 1.5;
+}
+
+.driftLabel {
+  fill: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.transitionMark {
+  stroke: var(--warn);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 3;
+}
+
+.transitionLabel {
+  fill: var(--warn);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.gapBand {
+  fill: var(--ink-faint);
+  opacity: 0.08;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.legend b {
+  font-weight: 650;
+}
+
+.swatch {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  vertical-align: middle;
+  margin-right: 6px;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+
+.swatchTrend {
+  border-top-color: var(--clay);
+}
+
+.swatchThreshold {
+  border-top-color: var(--danger);
+  border-top-style: dashed;
+}
+
+.swatchTransition {
+  border-top-color: var(--warn);
+  border-top-style: dashed;
+}
+
+/* ---------- history facts ---------- */
+
+.facts {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fact dt {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.fact dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.fact code {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.caveat {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--warn);
+  padding-left: 10px;
+}
+
+/* ---------- empty state, footer, not found ---------- */
+
+.empty {
+  padding: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  max-width: 62ch;
+}
+
+.emptyCommand {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+}
+
+.footer {
+  padding: 16px 30px 20px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--line);
+}
+
+.notFound {
+  max-width: 520px;
+  margin: 60px auto;
+  text-align: center;
+  color: var(--ink-soft);
+}

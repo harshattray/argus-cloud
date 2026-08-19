@@ -1,0 +1,315 @@
+/*
+ * The palette and page chrome shared by every signed-in Cloud surface: the run
+ * report (`/r/`) and the repository and trend views (`/repos/`).
+ *
+ * **One source for the fact, per CLAUDE.md rule 1.** Phase I added a second set
+ * of pages in the same visual language as Phase H's report. The obvious move
+ * was to copy the token block into a second stylesheet with a comment asking
+ * the next person to keep them in step — which is exactly the shape of comment
+ * that rule exists to forbid. A colour changed in one file and not the other
+ * would not fail anything; the product would just look like two products.
+ *
+ * The palette itself is copied from `Argus/src/report.ts` (5d311fb), on purpose
+ * and once: Doctrine 6 keeps paid logic out of the published package, so the
+ * CLI's renderer and this one cannot share code. That copy is documented at the
+ * top of `report.module.css`, along with the three layout fixes that must not be
+ * re-derived.
+ */
+
+.surface {
+  --clay: #a8736e;
+  --clay-deep: #8e5c57;
+  --ink: #1c1b1a;
+  --ink-soft: #6b6664;
+  --ink-faint: #9a9391;
+  --line: #e7e1df;
+  --line-soft: #f1ecea;
+  --page-bg: #ede7e1;
+  --card: #ffffff;
+  --frame-bg: #f7f5f3;
+  --danger: #b6611f;
+  --danger-bg: #fbede3;
+  --success: #3e7d52;
+  --success-bg: #e8f1ea;
+  --warn: #8a6d1a;
+  --warn-bg: #efe7d9;
+  --shadow: 0 1px 2px rgba(28, 27, 26, 0.04), 0 12px 32px rgba(28, 27, 26, 0.07);
+  --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  background: var(--page-bg);
+  color: var(--ink);
+  min-height: 100vh;
+  padding: 28px 18px 56px;
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+/*
+ * ── The three theme states ──────────────────────────────────────────────────
+ *
+ * `light` and `dark` are explicit choices, stamped on this element as
+ * `data-theme` from a cookie the server read before the first byte. *Absent* is
+ * the default and means "follow the device", which is `prefers-color-scheme`.
+ *
+ * The order matters and so does the `:not()`. The media block must not override
+ * an explicit `light` choice — a viewer on a dark laptop who picked light gets
+ * light — and the `[data-theme="dark"]` block after it must win in the other
+ * direction, for a viewer on a light laptop who picked dark. Drop either guard
+ * and the switch works in one direction only, which is the shape of bug that
+ * looks like "the toggle is broken sometimes".
+ *
+ * Every token is defined once on the bare `.surface` above. Nothing gets its
+ * only definition inside a media query, or the light theme would depend on a
+ * query that never runs.
+ */
+@media (prefers-color-scheme: dark) {
+  .surface:not([data-theme="light"]) {
+    --ink: #f2eeec;
+    --ink-soft: #a9a2a0;
+    --ink-faint: #7c7573;
+    --line: #34302e;
+    --line-soft: #292524;
+    --page-bg: #131211;
+    --card: #1c1b1a;
+    --frame-bg: #232120;
+    --clay: #c79b95;
+    --clay-deep: #d9b5b0;
+    --danger: #e29055;
+    --danger-bg: #33241a;
+    --success: #79bc92;
+    --success-bg: #1b2a21;
+    --warn: #d9b65e;
+    --warn-bg: #332c1b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* The explicit dark choice. Last, so it beats the light defaults above on a
+   device whose own setting is light. */
+.surface[data-theme="dark"] {
+  --ink: #f2eeec;
+  --ink-soft: #a9a2a0;
+  --ink-faint: #7c7573;
+  --line: #34302e;
+  --line-soft: #292524;
+  --page-bg: #131211;
+  --card: #1c1b1a;
+  --frame-bg: #232120;
+  --clay: #c79b95;
+  --clay-deep: #d9b5b0;
+  --danger: #e29055;
+  --danger-bg: #33241a;
+  --success: #79bc92;
+  --success-bg: #1b2a21;
+  --warn: #d9b65e;
+  --warn-bg: #332c1b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.card {
+  max-width: 1080px;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/*
+ * ── Ground-dependent assets ─────────────────────────────────────────────────
+ *
+ * The wordmark and the Yutic lockup each ship as two files, one drawn for a
+ * light ground and one for a dark one. In the *auto* theme state the server
+ * cannot know which the viewer will see, so both are rendered and one is
+ * hidden here — the same three-state cascade as the tokens above.
+ *
+ * `display: none` rather than `visibility` or opacity, deliberately: it takes
+ * the hidden copy out of the accessibility tree, so a screen reader announces
+ * one wordmark and one endorsement instead of two.
+ */
+.onDark {
+  display: none;
+}
+
+.onLight {
+  display: inline-flex;
+}
+
+@media (prefers-color-scheme: dark) {
+  .surface:not([data-theme="light"]) .onDark {
+    display: inline-flex;
+  }
+
+  .surface:not([data-theme="light"]) .onLight {
+    display: none;
+  }
+}
+
+.surface[data-theme="dark"] .onDark {
+  display: inline-flex;
+}
+
+.surface[data-theme="dark"] .onLight {
+  display: none;
+}
+
+.surface[data-theme="light"] .onDark {
+  display: none;
+}
+
+.surface[data-theme="light"] .onLight {
+  display: inline-flex;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  padding: 22px 30px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mastheadTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.wordmark img {
+  display: block;
+  height: 19px;
+  width: auto;
+}
+
+.title {
+  margin: 6px 0 4px;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.runmeta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.runmeta a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.runmeta code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ---------- breadcrumb ---------- */
+
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.crumbs li + li::before {
+  content: "/";
+  margin-right: 8px;
+  color: var(--ink-faint);
+}
+
+.crumbs a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.crumbs [aria-current="page"] {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- theme switch ---------- */
+
+.themeSwitch {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--frame-bg);
+}
+
+.themeSwitch form + form .themeOption {
+  border-left: 1px solid var(--line);
+}
+
+.themeOption {
+  display: block;
+  height: 100%;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.themeOption:hover {
+  color: var(--ink);
+}
+
+.themeOn {
+  background: var(--clay);
+  color: var(--card);
+}
+
+.themeOn:hover {
+  color: var(--card);
+}
+
+.themeOption:focus-visible {
+  outline: 2px solid var(--clay-deep);
+  outline-offset: -2px;
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 30px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.footerLine {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+  max-width: 62ch;
+}
+
+.endorsement {
+  flex: none;
+}

@@ -27,101 +27,18 @@
  * rewrite.
  */
 
+/*
+ * The palette and the page/sheet chrome live in `_styles/surface.module.css`
+ * and are composed in, because `/repos/` renders the same product in the same
+ * language and a second copy of the tokens would drift silently (CLAUDE.md
+ * rule 1). Everything below this point is the report page's own.
+ */
 .page {
-  --clay: #a8736e;
-  --clay-deep: #8e5c57;
-  --ink: #1c1b1a;
-  --ink-soft: #6b6664;
-  --ink-faint: #9a9391;
-  --line: #e7e1df;
-  --line-soft: #f1ecea;
-  --page-bg: #ede7e1;
-  --card: #ffffff;
-  --frame-bg: #f7f5f3;
-  --danger: #b6611f;
-  --danger-bg: #fbede3;
-  --success: #3e7d52;
-  --success-bg: #e8f1ea;
-  --warn: #8a6d1a;
-  --warn-bg: #efe7d9;
-  --shadow: 0 1px 2px rgba(28, 27, 26, 0.04), 0 12px 32px rgba(28, 27, 26, 0.07);
-  --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  background: var(--page-bg);
-  color: var(--ink);
-  min-height: 100vh;
-  padding: 28px 18px 56px;
-  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  .page {
-    --ink: #f2eeec;
-    --ink-soft: #a9a2a0;
-    --ink-faint: #7c7573;
-    --line: #34302e;
-    --line-soft: #292524;
-    --page-bg: #131211;
-    --card: #1c1b1a;
-    --frame-bg: #232120;
-    --clay: #c79b95;
-    --clay-deep: #d9b5b0;
-    --danger: #e29055;
-    --danger-bg: #33241a;
-    --success: #79bc92;
-    --success-bg: #1b2a21;
-    --warn: #d9b65e;
-    --warn-bg: #332c1b;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
-  }
+  composes: surface from "../../_styles/surface.module.css";
 }
 
 .sheet {
-  max-width: 1080px;
-  margin: 0 auto;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-/* ---------- masthead ---------- */
-
-.masthead {
-  padding: 28px 36px 22px;
-  border-bottom: 1px solid var(--line);
-}
-
-.wordmark {
-  display: block;
-  color: var(--clay);
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.title {
-  margin: 0 0 6px;
-  font-size: 23px;
-  letter-spacing: -0.01em;
-}
-
-.runmeta {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-
-.runmeta code {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  background: var(--frame-bg);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 1px 6px;
+  composes: card from "../../_styles/surface.module.css";
 }
 
 .stats {
@@ -162,6 +79,79 @@
 
 .success .statValue {
   color: var(--success);
+}
+
+/* ---------- frame navigation ---------- */
+
+.frameNav {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 36px;
+  border-bottom: 1px solid var(--line);
+  background: var(--frame-bg);
+}
+
+.frameNavLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  flex: none;
+}
+
+.frameNav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.frameNavLink {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  text-decoration: none;
+  max-width: 30ch;
+}
+
+.frameNavLink:hover {
+  border-color: var(--clay);
+  color: var(--ink);
+}
+
+.frameNavLink.flagged {
+  border-left: 3px solid var(--danger);
+}
+
+.frameNavState {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--success);
+  flex: none;
+}
+
+.frameNavLink.flagged .frameNavState {
+  color: var(--danger);
+}
+
+/* The masthead is sticky-free, so a fragment jump lands the heading hard
+   against the top of the viewport. A little scroll margin keeps the frame's
+   name visible instead of clipped by the window edge. */
+.frame {
+  scroll-margin-top: 16px;
 }
 
 /* ---------- one frame ---------- */
@@ -784,14 +774,6 @@
   color: var(--ink-soft);
 }
 
-.footer {
-  text-align: center;
-  color: var(--ink-faint);
-  font-size: 12px;
-  line-height: 1.7;
-  padding: 20px 36px 24px;
-  border-top: 1px solid var(--line);
-}
 
 .notFound {
   max-width: 620px;

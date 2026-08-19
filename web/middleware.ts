@@ -196,7 +196,10 @@ const SITE_CSP = [
  * The routes that get the nonce, which is to say the routes that must be
  * dynamically rendered.
  *
- * `/r/*` is dynamic because it reads a share token per request. Under `/admin`
+ * `/r/*` is dynamic because it reads a share token per request. `/repos/*` is
+ * dynamic because it reads a page number and a frame label per request, and it
+ * belongs on the strict policy for the same reason `/r/` does: it renders
+ * upload-supplied frame labels, commit shas and branch names. Under `/admin`
  * every page that renders anything is dynamic too — `/admin` itself is a bare
  * `redirect()` with no document body for a policy to govern, so it is safe
  * either way.
@@ -206,7 +209,12 @@ const SITE_CSP = [
  * with a real page body is the warning.
  */
 function needsNonce(pathname: string): boolean {
-  return pathname.startsWith("/r/") || pathname === "/admin" || pathname.startsWith("/admin/");
+  return (
+    pathname.startsWith("/r/") ||
+    pathname.startsWith("/repos/") ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/")
+  );
 }
 
 /** `NextResponse.next()` carrying whichever policy this path should have. */
@@ -294,6 +302,7 @@ export const config = {
     "/admin",
     "/admin/:path*",
     "/r/:path*",
+    "/repos/:path*",
     // Everything else that is a document. Excluded:
     //
     //   - `api/` — a JSON body is not a document, so a policy on it governs

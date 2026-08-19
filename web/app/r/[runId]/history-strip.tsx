@@ -1,4 +1,5 @@
 import type { FrameHistory } from "argus-cloud/enrichment.js";
+import { segments } from "../../repos/sparkline";
 import styles from "./report.module.css";
 
 /**
@@ -33,10 +34,19 @@ export function HistoryStrip({
   threshold: number | null;
   frame: string;
 }) {
-  const points = history.trend
-    .slice()
-    .reverse() // oldest → newest reads as a trend
-    .map((row) => row.alignedMismatchPercent);
+  const rows = history.trend.slice().reverse(); // oldest → newest reads as a trend
+  const points = rows.map((row) => row.alignedMismatchPercent);
+
+  // Where the number stopped meaning the same thing. The trend chart and the
+  // repository view both break their line here; this strip used to draw
+  // straight through, so a `baseline` → `fidelity` switch read as a sudden
+  // regression on the report page and as a marked transition two pages over.
+  // One rule, three charts.
+  const breaks = rows
+    .map((row, i) =>
+      i > 0 && `${rows[i - 1].mode}/${rows[i - 1].source}` !== `${row.mode}/${row.source}` ? i : -1
+    )
+    .filter((i) => i !== -1);
 
   const measured = points.filter((p): p is number => p !== null);
   const skipped = points.length - measured.length;
@@ -69,10 +79,18 @@ export function HistoryStrip({
         </div>
       </dl>
 
-      {measured.length >= 2 && <Sparkline points={points} threshold={threshold} frame={frame} />}
+      {measured.length >= 2 && (
+        <Sparkline points={points} breaks={breaks} threshold={threshold} frame={frame} />
+      )}
       {skipped > 0 && (
         <p className={styles.sparkGapNote}>
           {skipped} run{skipped === 1 ? "" : "s"} skipped this frame — shown as a gap, not a zero.
+        </p>
+      )}
+      {breaks.length > 0 && (
+        <p className={styles.sparkGapNote}>
+          How this frame is measured changed during its history, so the line breaks there — the two
+          stretches are not the same quantity.
         </p>
       )}
 
@@ -90,16 +108,25 @@ export function HistoryStrip({
  *
  * **A skipped run is a gap, never a zero.** A frame that was not compared has no
  * number; plotting it at 0 would draw a pass that never happened, and a chart
- * that invents passes is worse than no chart. The line is broken into runs of
- * consecutive measured points, which is also what Phase I's gate (I2.3) asks of
- * the trend chart.
+ * that invents passes is worse than no chart.
+ *
+ * **A change of measurement is a break, not a slope.** `fidelity` and `baseline`
+ * are different quantities against different references, so a stroke from the
+ * last of one to the first of the other draws a regression that did not happen.
+ *
+ * Both rules come from `segments()` in `repos/sparkline.tsx` rather than being
+ * decided again here. They were decided again here once, and the result was
+ * three charts of the same data with two different answers about whether a mode
+ * change is a cliff.
  */
 function Sparkline({
   points,
+  breaks,
   threshold,
   frame,
 }: {
   points: (number | null)[];
+  breaks: number[];
   threshold: number | null;
   frame: string;
 }) {
@@ -113,21 +140,14 @@ function Sparkline({
     CHART.padX + (points.length === 1 ? innerW / 2 : (index / (points.length - 1)) * innerW);
   const y = (value: number) => CHART.padY + innerH - (value / top) * innerH;
 
-  const segments: string[] = [];
-  let current: string[] = [];
-  points.forEach((value, index) => {
-    if (value === null) {
-      if (current.length > 1) {
-        segments.push(current.join(" "));
-      }
-      current = [];
-      return;
-    }
-    current.push(`${current.length === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(value).toFixed(1)}`);
-  });
-  if (current.length > 1) {
-    segments.push(current.join(" "));
-  }
+  const paths = segments(points, breaks).map((seg) =>
+    seg
+      .map(
+        (i, n) =>
+          `${n === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(points[i] as number).toFixed(1)}`
+      )
+      .join(" ")
+  );
 
   const thresholdY = threshold === null ? null : y(threshold);
 
@@ -142,7 +162,7 @@ function Sparkline({
       {thresholdY !== null && (
         <line className={styles.sparkThreshold} x1={CHART.padX} x2={CHART.width - CHART.padX} y1={thresholdY} y2={thresholdY} />
       )}
-      {segments.map((d) => (
+      {paths.map((d) => (
         <path key={d} className={styles.sparkLine} d={d} />
       ))}
       {points.map((value, index) =>

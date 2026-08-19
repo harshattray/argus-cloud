@@ -32,6 +32,10 @@ interface TrendRow {
   aligned_mismatch_percent: number | null;
   flagged: boolean;
   created_at: string | Date;
+  mode: string;
+  source: string;
+  /** `summary.threshold` as text — see the note on `FrameHistory.trend`. */
+  threshold: string | null;
 }
 
 /**
@@ -48,6 +52,13 @@ interface TrendRow {
  * `trend` is newest first and carries `runId` so a caller rendering one run's
  * page can tell the current run from its predecessors — "no history" on a
  * frame's first ever run means one row, not zero.
+ *
+ * `mode`, `source` and `threshold` are here for Phase I rather than for the
+ * prompt, which reads none of them. They ride on this query instead of a second
+ * one for the reason above: the trend chart has to mark where the metric's
+ * definition changed, and a chart drawing its own row set could disagree with
+ * the row set `firstDriftCommit` was computed over. `render()` below is
+ * unchanged, so the enrichment text and its token estimate are unaffected.
  */
 export interface FrameHistory {
   trend: {
@@ -56,6 +67,17 @@ export interface FrameHistory {
     alignedMismatchPercent: number | null;
     flagged: boolean;
     createdAt: string;
+    /** `fidelity | baseline` — two different metrics, never one y-axis. */
+    mode: string;
+    source: string;
+    /**
+     * The run's own threshold, read as text and parsed here.
+     *
+     * `summary` is uploaded JSON, so `threshold` may be anything at all. A SQL
+     * cast would throw on a string and take down the report page for one bad
+     * upload; parsing in JS makes a junk value `null`, which draws no line.
+     */
+    threshold: number | null;
   }[];
   /** Commit where this frame first exceeded threshold, or null if it never has. */
   firstDriftCommit: string | null;
@@ -63,6 +85,22 @@ export interface FrameHistory {
   recurrence: number;
   /** The first observation from the most recent stored findings, or null. */
   lastObservation: string | null;
+}
+
+/**
+ * A run's threshold, or null for anything that is not a real, non-negative
+ * number. An uploaded `summary.threshold` of `"0.1"` is as valid as `0.1`;
+ * `"nope"`, `NaN` and `-1` are not, and a threshold line drawn from any of them
+ * would be a line the customer never set.
+ */
+function asThreshold(value: string | null): number | null {
+  // `Number("")` and `Number(" ")` are both 0, so a blank threshold would draw
+  // a "flag on any difference" line the customer never asked for.
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /**
@@ -76,7 +114,8 @@ export async function frameHistory(
   const limit = args.limit ?? TREND_ROWS_MAX;
   const trend = (
     await db.query<TrendRow>(
-      `SELECT fs.run_id, r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at
+      `SELECT fs.run_id, r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at,
+              fs.mode, fs.source, (r.summary ->> 'threshold') AS threshold
        FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
        WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3
        ORDER BY fs.created_at DESC, fs.id DESC
@@ -135,6 +174,9 @@ export async function frameHistory(
         row.aligned_mismatch_percent === null ? null : Number(row.aligned_mismatch_percent),
       flagged: row.flagged,
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      mode: row.mode,
+      source: row.source,
+      threshold: asThreshold(row.threshold),
     })),
     firstDriftCommit: first?.commit_sha?.trim() ? first.commit_sha : null,
     recurrence: Number(flaggedCount?.n ?? 0),

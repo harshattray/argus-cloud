@@ -81,6 +81,24 @@ export interface FrameReport {
 
 export interface RunReport {
   runId: string;
+  /**
+   * The repository this run belongs to, so the page can link up to its trends
+   * (Phase I). **Owner views only** — a share token names one run, and putting a
+   * link to the repository's other runs on a share page would widen every link
+   * ever issued into a tenant-wide read.
+   */
+  repoId: string;
+  /** Owner views only, for the same reason as `repoId` — it names the repository. */
+  repoName: string;
+  /**
+   * Owner views only.
+   *
+   * It is the top of the breadcrumb, and it is also what makes a demo tenant
+   * announce itself: `scripts/seed-demo.mjs` names its organization
+   * "DEMO — … (sample data)" precisely so the label rides on every page the
+   * person driving a walkthrough is looking at.
+   */
+  orgName: string;
   commitSha: string;
   branch: string;
   createdAt: string;
@@ -220,9 +238,15 @@ export async function loadRun(
       branch: string;
       created_at: string | Date;
       summary: unknown;
+      repo_name: string;
+      org_name: string;
     }>(
-      `SELECT id, org_id, repo_id, commit_sha, branch, created_at, summary
-       FROM runs WHERE id = $1 AND state = 'committed'`,
+      `SELECT r.id, r.org_id, r.repo_id, r.commit_sha, r.branch, r.created_at, r.summary,
+              repo.name AS repo_name, org.name AS org_name
+       FROM runs r
+         JOIN repos repo ON repo.id = r.repo_id
+         JOIN orgs org ON org.id = r.org_id
+       WHERE r.id = $1 AND r.state = 'committed'`,
       [runId]
     )
   ).rows[0];
@@ -321,6 +345,9 @@ export async function loadRun(
   const summary = run.summary as { threshold?: unknown } | null;
   return {
     runId: run.id,
+    repoId: run.repo_id,
+    repoName: run.repo_name,
+    orgName: run.org_name,
     commitSha: run.commit_sha,
     branch: run.branch,
     createdAt: run.created_at instanceof Date ? run.created_at.toISOString() : String(run.created_at),

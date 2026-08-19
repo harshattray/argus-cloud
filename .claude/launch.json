@@ -9,6 +9,13 @@
       "autoPort": true
     },
     {
+      "name": "web-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--prefix", "web"],
+      "port": 3200,
+      "autoPort": true
+    },
+    {
       "name": "web-gate-test",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:gate-test", "--prefix", "web"],

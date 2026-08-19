@@ -1638,7 +1638,7 @@ someone did not seed.
 | 1 | The capture's aspect is measured in the browser, not stored | Nothing decodes a customer image server-side, and dimensions are not on `run_artifacts`. So the first paint uses a 4:3 fallback and corrects once the image loads. Storing width/height at declare would remove the reflow — it is a CLI change with a publish attached, so it waits for a release rather than riding along here. |
 | 2 | `style-src-attr 'unsafe-inline'` remains | The page's geometry is computed per frame — meter width from a score, region position as a percentage of natural size. There is no stylesheet those can live in. Carried-forward item 1 asked for `'unsafe-inline'` to go when Phase H rewrote the page; the `-elem` half went, this half did not, and pretending otherwise would be worse than saying so. |
 | 3 | Region overlays assume the diff shares the build's dimensions | True for every capture the CLI produces today. A diff rendered at another size would misplace every box, and nothing checks it. |
-| 4 | No page above `/r/{runId}` | Still true, and still Phase I's job — there is no way to find a run except by holding its URL. |
+| 4 | ~~No page above `/r/{runId}`~~ | **Closed 2026-08-20.** `/repos/{repoId}` lists a repository's runs and frames, and the run report links up to it for owners. See Pathway 6 below. |
 
 ### Pathway 4 — Create the recurring CI explanation loop
 
@@ -1813,6 +1813,34 @@ This is where Cloud becomes organizational memory rather than report hosting.
 
 **Gate:** trend charts, enrichment, and quality-debt counts agree on the same
 underlying data.
+
+**Frame-level history is built — 2026-08-20, BuildV5 Phase I (I1–I3).** Score
+over commits, a threshold line that steps where the threshold moved, the
+first-exceeded marker, source/mode transitions, and gaps for runs that measured
+nothing. `test/trends.test.mjs` (71 checks); the suite total is **878 across 28
+suites** on PGlite and **906** against real Postgres. Detail and evidence:
+`FinishedSPEC.md` §3u.
+
+The gate is met for the part that is built, and met by construction rather than
+by comparison: first drift is not calculated twice. `frameHistory()` in
+`enrichment.ts` remains the only implementation, and the chart places its answer
+— which is what §10.8's "do not calculate first drift independently in multiple
+places" asks for.
+
+**Organization-level quality debt is not built**, and is deliberately still
+here rather than pulled forward. It needs records this schema does not carry —
+owner, due date, status, resolution commit — and §10.8 item 5 says to add them
+only after the basic chart agrees with enrichment. It now does.
+
+**Open on this pathway:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 1 | `/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production | A share token is a capability for one run; honouring it on a repository-wide view would widen every link ever issued into a tenant-wide read. Sessions arrive in Pathway 5 / Step 6, and the landing-page-after-login framing in BuildV5 I1 belongs to that step. |
+| 1b | A share view carries no breadcrumb, so it shows no organization name | Deliberate — the trail would name the repository and offer a link the holder cannot open. It has one consequence worth knowing: the demo tenant's `DEMO — … (sample data)` label rides on the breadcrumb, so a demo report sent as a share link is unlabelled. `seed-demo` prints that caveat; a durable fix is a share-view label, which is Pathway 5's territory. |
+| 2 | There is no repository *list* | It would have to answer "what does this organization have", which needs a session to know whose organization it is. The trends API is specified to answer about a frame and never about the tenant, so it cannot supply one either. Pathway 5. |
+| 3 | The x-axis is runs in which the frame was *compared* | A run where the frame is absent entirely is not a point on the chart, where a run that recorded a null measurement is a gap. Both are honest; they are not the same picture, and nothing yet says which happened. |
+| 4 | Quality debt, recurrence resolution, and org-level summaries | Items 5–7 of §10.8. Unblocked as of this build. |
 
 ### Pathway 7 — Add organization-level quality contracts
 

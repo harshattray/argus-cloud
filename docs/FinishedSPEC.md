@@ -1646,6 +1646,275 @@ J2, and until it runs this is a claim, not a fact.
 
 ---
 
+### 3u. Trends — BuildV5 Phase I ✅ built (2026-08-20)
+
+Until now there was **no page above `/r/{runId}`**: a run could only be found by
+already holding its URL. There is now a repository view, a frame trend chart,
+and an API that serves one frame's trend and nothing else.
+
+**I1 — the repository view.** `/repos/{repoId}`. Committed runs, newest first,
+with commit, branch, date, frames compared and frames flagged, paginated at 20;
+then every tracked frame with its last 12 runs as a sparkline, worst first.
+Pending runs are absent, which is migration 017's promise kept in the second
+place it can be broken.
+
+A page of forty runs costs **four queries**, whatever the size of the
+repository: resolve the repo, count the runs, read the page, read every frame's
+sparkline. `test/trends.test.mjs` T1.1a asserts the number by counting through
+the `Db` seam, and T1.1b runs the per-row version through the same harness — 21
+queries for the same answer.
+
+The empty state names the next action (`npx norma-scope upload`) rather than
+saying "no runs yet", because a repository row with nothing in it almost always
+means a key was set up and nothing was uploaded.
+
+**I2 — the frame trend.** `/repos/{repoId}/trend?frame=…`. Aligned mismatch over
+commits, oldest first, with four things that the obvious version of this chart
+would get wrong:
+
+- **Gaps, not zeros.** A run that recorded no measurement breaks the line and
+  gets a band. Plotting it at 0 draws a pass that never happened.
+- **A stepped threshold line.** The threshold comes from each run's own uploaded
+  summary and can change. One flat line at today's value would put runs that
+  were flagged underneath it.
+- **The line breaks where the measurement changed.** `fidelity` and `baseline`
+  are different quantities against different references. Marking the boundary
+  and still drawing a stroke across it says two things at once; I2.2 asks for the
+  two segments to be visually distinguished, so they are.
+- **First drift is placed, not computed.** The commit comes from
+  `frameHistory()` in `enrichment.ts` — the same function the prompt and the
+  report page use — and this code only finds where that commit sits among the
+  points on screen.
+
+**The gate is that agreement, and the counter-test is the argument for it.**
+T2.1b runs the naive version — scan the visible points for the first flagged one
+— through the same harness. On a full window it agrees. On a 3-run window it
+answers `r11kkkkkkk` where `enrichment.ts` says `r07ggggggg`: it is a different
+query over a truncated window, and it would have shipped looking correct. When
+first drift is older than the window the marker is absent and the page *says so*,
+because an absent marker otherwise reads as "never drifted", which is the
+opposite of the truth.
+
+**I3 — the trends API.** `GET /api/trends?repo&frame&limit`, bearer key, rate
+limited. Verified against a production build:
+
+| Probe | Answer |
+|---|---|
+| No key | 401 |
+| No `frame` / no `repo` | 400, naming the missing one |
+| Another tenant's **real** repo id | `404 {"error":"not found"}` |
+| A repo id that never existed | the same 404, byte for byte |
+| `limit=100000` | served at the 200-point ceiling, with `limit: 200` in the body |
+| `limit=3` on an 11-run frame | 3 points, `truncated: true`, `firstDriftIndex: null`, `firstDriftCommit` still named |
+
+The response body's top-level keys are `frame`, `points`, `firstDriftCommit`,
+`firstDriftIndex`, `recurrence`, `transitions`, `skipped`, `truncated`, `limit`
+— no repository list, no run totals, no plan or credit state. `frame` is
+required rather than optional for that reason: an omitted frame would have to
+mean "tell me what you have".
+
+**Access, stated plainly: these pages 404 in production.** A share token is a
+capability for exactly one run, so honouring it on a repository-wide view would
+widen every share link ever issued into a tenant-wide read. There is no session
+layer until Step 6, so `/repos/` answers only behind `NORMA_DEV_OPEN` — the same
+local door the report page uses — and the run report links up to its repository
+**for owners only**. This is Step 6's work, not a gap in Phase I.
+
+**One source for the palette.** The report page's tokens moved into
+`web/app/_styles/surface.module.css` and both stylesheets `composes` from it.
+Copying the block into a second file with a comment asking the next person to
+keep them in step is the exact shape CLAUDE.md rule 1 forbids: a colour changed
+in one and not the other fails nothing, and the product just looks like two
+products.
+
+**Evidence.** `test/trends.test.mjs`, 71 checks. Suite totals at the time: **846
+on PGlite, 874 against real Postgres**, across 27 suites (they moved again with
+§3v). Guards watched failing before
+being trusted (CLAUDE.md rule 3), each by breaking the built code and re-running:
+
+| Break | Went red |
+|---|---|
+| First drift placed by scanning for the first flagged point | T2.10, T5.3 |
+| A skipped measurement coerced to 0 | T2.7, T2.8, T2.3b |
+| The transition marker on the last old point instead of the first new one | T3.2 |
+| The `org_id` predicate dropped from `resolveRepo` | T1.14, T1.15 |
+| An unusable uploaded threshold read as a number | T3.5, T3.6 |
+| The sparkline's break at a mode change removed | T3.4a |
+| The frame cap moved out of the database into JavaScript | T6.3a |
+| The page-offset clamp removed | T6.6 |
+
+**Two bounds were open until the code was re-read, and both are now asserted.**
+A `?page=999999999` became a nine-billion-row `OFFSET`, and the frame list was
+capped in JavaScript *after* reading every frame in the repository. The second
+is the more interesting one: it was four queries either way, so the query count
+T1.1a asserts could not see it. `test/trends.test.mjs` now counts **rows** as
+well as statements, with a ceiling tight enough that removing the database-side
+cap fails it — a loose ceiling would have passed with the cap gone, which is the
+whole thing being checked.
+
+The frame cap therefore binds **by name, in the database**, and the page says so
+rather than claiming "the 60 worst": working out which frames are worst is
+exactly what reading all of them is for.
+
+**Found by looking at the page, after the suite was green:**
+
+- **The line ran straight through a mode change.** The marker was there; the
+  stroke crossing it said the two numbers were comparable. Fixed by breaking the
+  line — on the large chart and on the repository view's sparkline, because a
+  small chart that lies where the large one does not is still a lie.
+- **`seed:dev` was not seeding the case its own comment claimed.** The "skipped
+  run" was seeded as *no `frame_stats` row at all*, which is a run where the
+  frame is absent — it does not appear on a chart, so nothing was drawing the gap
+  the comment described. It now seeds a row with a null measurement, which is
+  what a compared-but-unmeasured frame actually looks like. Phase I is where the
+  difference became visible.
+- **Two stat labels were wrong.** "Flagged on latest run" counted frames flagged
+  on *their own* latest run, and the frame-list note quoted the longest history
+  across all frames as though it applied to each.
+
+**CSP.** `/repos/*` joins `/r/` and `/admin` on the strict per-request-nonce
+policy, verified against a production build: `default-src 'none'`, 35 scripts,
+38 nonce attributes, one nonce value per response and a different one on each
+request. Every chart is server-rendered inert SVG — no client component on
+either page, so there is nothing to hydrate and nothing to nonce beyond Next's
+own bundle.
+
+**What this does not prove.** Everything above is seeded data on a laptop. The
+Phase I gate is I1–I3 green and the annotation agreeing with `enrichment.ts`,
+which is met; the *sales* claim under it — a months-deep dogfood repository
+rendering a real trend — needs Step 5 and a repository nobody seeded. Treat
+Step 4 as **built and not yet validated**, the same standing Step 3 has.
+
+---
+
+### 3v. Cloud app chrome, the theme switch, and a demo tenant ✅ (2026-08-20)
+
+Four things, from Harsha's review of the trend pages.
+
+**One shell across every Cloud page.** `/r/`, `/repos/{id}` and the trend page
+share a masthead — product wordmark, breadcrumb, theme switch — and a footer.
+The run report also gained a **jump-to list** for its frames, worst-first,
+with each frame's pass/flag state on the chip so a twenty-frame run is
+navigable before you scroll. Anchor ids are positional (`frame-0`, `frame-1`),
+never slugged from the label: a label is upload-supplied, so slugging it makes
+ids that collide silently and builds a fragment out of hostile text.
+
+**The breadcrumb is owner-only, and it does a second job.** A share token names
+one run, so a trail up to the repository would name it and offer a link the
+holder cannot open. For owners it reads *organization / repository / commit* —
+and naming the organization is what makes the demo tenant below announce itself.
+
+**The theme is a cookie, and it has three states.** Light and dark are explicit
+choices; absent means "follow the device", which is the default and what the
+pages did before. `POST /api/theme` sets it and 303s back.
+
+- **POST, not a link.** A side-effecting `GET` would be flipped by any link
+  prefetcher, crawler or speculative load.
+- **Same-origin only**, on `Sec-Fetch-Site` with `Origin` as the fallback.
+- **The redirect target is validated as a same-site path** — `//evil.example`
+  is a protocol-relative URL and a browser treats it as another origin, so
+  without that check this route is an open redirect. Verified: it answers `/`.
+- **No JavaScript anywhere on these pages.** Read server-side before the first
+  byte, so no flash of the wrong theme, no hydration, and nothing new to nonce
+  under the strict CSP.
+
+The cascade is the part that quietly breaks. `@media (prefers-color-scheme:
+dark)` is guarded by `:not([data-theme="light"])` and the explicit
+`[data-theme="dark"]` block is declared after it. Drop either and the switch
+works in one direction only — the shape of bug that reads as "the toggle is
+broken sometimes". S1.4b evaluates the unguarded cascade against all four
+device × choice cases and shows a viewer on a dark device who picks light
+staying dark.
+
+**Logos.** The Normascope Cloud wordmark in the masthead, the Yutic endorsement
+in the footer, on every Cloud page. Both ship as a light-ground and a
+dark-ground file, and in the *auto* theme state the server cannot know which the
+viewer will get — so both are rendered and one is `display: none`, which also
+keeps it out of the accessibility tree. Verified: one wordmark and one
+endorsement in `innerText`, and the dark-ground Yutic file is the brand book's
+own approved reversal, which §01 names as the only sanctioned recolour.
+
+> **This overrode a rule in `yutic-brand-rules.txt`.** §09 read "never in
+> product headers or app UI", and `YuticEndorsement.tsx` had excluded `/r/`
+> deliberately for that reason. Harsha decided on 2026-08-20 that the
+> endorsement belongs on every surface; the rules file was updated in the same
+> change so the book and the code agree, and it records that this also puts the
+> endorsement in front of anyone holding a share link. **Still open, and not
+> ours to settle:** the rules file says the line reads *"A lab from Yutic"* and
+> the component renders *"A product from"*. Both have shipped.
+
+**The x-axis, which Harsha was right to question.** Positions were correct;
+two things were not.
+
+| Defect | Fix |
+|---|---|
+| Labels were a fixed `slice(0, 7)`. A fixture whose commits shared a seven-character prefix rendered six distinct runs as one repeated string | The prefix length is chosen from the data — never below 7, so real shas keep git's familiar form, never above 12. Two runs on the same commit still share a label, because they share a commit |
+| The threshold riser sat *on* a run; the measurement-changed marker sat *between* two runs. Same event, two positions, half a slot apart | Both on the boundary. A threshold is a rule that applied to a stretch of runs, so it changes between them, not at one of them |
+
+Spacing is by run index rather than by time, which is deliberate and unchanged —
+the axis says "over commits".
+
+**A third chart was lying, and only opening the page found it.** The run
+report's history strip drew straight through a `baseline` → `fidelity` change
+while the trend chart and the repository sparkline broke their lines there. The
+same data read as a sudden regression on one page and a marked transition two
+pages over. All three now take the rule from one `segments()` helper.
+
+**`npm run seed:demo` — a demo tenant that cannot be mistaken for evidence.**
+Three repositories, twelve weekly runs each, six frames, chosen so each page has
+something worth looking at: a regression that appears and is fixed, a frame that
+regresses twice, a repository whose measurement changed mid-history, a quiet
+frame, and a frame whose capture failed twice. Real `credit_grants` and real
+`usage_events`, so the balance is a number something moved rather than a
+display.
+
+Every figure in it is invented, and the surfaces say so: the organization is
+`DEMO — Northwind Retail (sample data)`, repositories are `demo-`prefixed, the
+seeded finding opens "SAMPLE FINDING (demo data, not a real analysis)", and the
+model column records `demo-sample-not-a-real-model-call`. The script refuses to
+run against a hosted database on a hostname match rather than a prompt somebody
+clicks through — it writes to the two ledgers every customer-facing figure
+traces to.
+
+**The honest limit, stated where it is used:** share views carry no breadcrumb
+by design, so a report opened from a share link shows **no demo label**. The
+script prints that caveat every run.
+
+> **The first cut of the demo data contradicted itself**, and it is worth
+> recording why. A run carries **one** `summary.threshold` for all its frames.
+> Putting the mode-changing frame in with the storefront's meant the
+> storefront's threshold jumped 0.1% → 5% at week 6, which silently un-flagged
+> `home.png`'s regression halfway through its own story. Frames measured
+> differently belong to different runs; the schema said so and the first cut did
+> not listen. `search-results` and `nav-bar` now live in `demo-design-system`,
+> where the threshold moves with the measurement for every frame in the run.
+
+**Evidence.** `test/cloudShell.test.mjs`, 32 checks. Suite totals: **878 on
+PGlite, 906 against real Postgres**, across 28 suites. Guards watched failing
+before being trusted:
+
+| Break | Went red |
+|---|---|
+| `:not([data-theme="light"])` dropped from the media block | S1.2 |
+| The explicit `[data-theme="dark"]` block renamed | S1.3 |
+| The protocol-relative check removed from the redirect target | S2.3 |
+| The breadcrumb handed to share viewers as well as owners | S4.4 |
+| The demo organization renamed to a plausible company | S5.1 |
+| Commit labels returned to a fixed 7-character slice | S3.2b (counter-test) |
+
+Checked in a browser against a production build: the switch flips a dark-device
+page to light and back, `data-theme` is stamped on the surface, the cookie POST
+returns 303 with `HttpOnly; SameSite=Lax; Secure`, a cross-site POST is 403, an
+open-redirect attempt lands on `/`, both logo variants are present with one
+hidden, and every jump link has a matching anchor.
+
+**What this does not prove.** Same standing as §3u: seeded data on a laptop, and
+`/repos/` still 404s in production until Step 6. The demo tenant is a testing
+and walkthrough surface, not the sales asset — that remains Argus's own
+dogfooded history on a deployed instance, per FUTURENORMA §4.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -2290,6 +2559,7 @@ this section and are deliberately absent.
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on |
 | Sonnet 5 intro pricing ends 2026-08-31 | **21 days.** Post-intro COGS is already the basis for the pack floor, so no repricing is forced — but verify |
 | No paying customers exist | Every economic figure here is a projection from measured COGS, never from revenue |
+| `migrations` failed one check once, against real Postgres, and has not repeated | **Open, unexplained.** On 2026-08-20 a full real-Postgres run reported `1 suite(s) failed: migrations — 1 failing check(s)`. The output was filtered before the `FAIL` line was captured, so **which check failed is not known.** Five subsequent runs — three of the full 27 suites and three of `migrations` alone — were green at 874 and 20. It happened immediately after a 27-suite PGlite run finished, so the machine was loaded, and M7/M7b spawn 20 processes against one barrier; a timing flake is the obvious guess and a guess is all it is. Nothing in the trends work touches migrations or spawns a process. **Recorded rather than dismissed**: a suite that fails once and passes six times is still a suite that failed, and the next person to see it should know it is the second sighting, not the first |
 
 ---
 

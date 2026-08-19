@@ -17,5 +17,13 @@ TYPE  DM Mono for wordmark, headlines, labels, numbers. DM Sans for body text.
 VOICE  Plain and factual. Say what it does and who it is for. No mission language.
 
 PRODUCTS  Yutic is the quiet parent. Products keep their own identity.
-          Endorsement 'A lab from Yutic' appears once per surface, never in product headers or app UI.
+          Endorsement appears once per surface, in the footer, never in a product header.
+          It appears on app UI as well as marketing surfaces (changed 2026-08-20 by
+          Harsha; previously read 'never in product headers or app UI'). Note this
+          means it also reaches anyone holding a Normascope share link.
           Products are numbered in ship order: 01 Normascope.
+
+          OPEN: this file says the endorsement reads 'A lab from Yutic'.
+          web/app/_components/YuticEndorsement.tsx renders 'A product from'.
+          Both have shipped. Not reconciled here because the wording is Harsha's
+          to settle, not a state fact.
