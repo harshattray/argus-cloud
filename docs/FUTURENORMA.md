@@ -1276,6 +1276,25 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    > quoted to anyone — including in a sales call — and make the ladder's
    > Starter no smaller than it. Needed for the pricing page at Step 8.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
+3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19: yes,
+   before launch, as its own dedicated change.** It clears all three accepted
+   high-severity advisories — `npm audit` goes to **0** — which is the reason,
+   not any wish to use `next/image`. The screenshot decision is independent and
+   unchanged: uploaded artifacts stay on plain `<img>` with presigned URLs
+   (`PATHWAYS.md` §10.5 3A). Also: 16 is the active-LTS line while 15 is
+   maintenance, 15.5.23 is already the newest 15.x and carries the `backport`
+   dist-tag, and Node 22 here clears 16's Node 20.9+ floor.
+
+   **Pre-launch because it gets more expensive later** — migrating while
+   customer reports and uploaded artifacts are live is a different job than
+   migrating now. The 2026-08-16 trial is the evidence it is cheap today:
+   `next@16.3.1` in a throwaway worktree, 635/635 suite green, typecheck and
+   build passing, every route keeping its rendering mode, the nonce CSP still
+   stamping every script with zero unnonced and zero violations
+   (`FinishedSPEC.md` §8). Expected work: async request APIs,
+   `middleware.ts` → `proxy.ts`, and a look at Turbopack defaults — the trial
+   saw the rename only as a cosmetic relabel in build output, so confirm which
+   of these actually bind before planning around them.
 4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
    first. Designer seats are a differentiator; shipping OAuth alone delays it.
 

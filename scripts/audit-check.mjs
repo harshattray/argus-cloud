@@ -79,7 +79,12 @@ for (const vuln of found) {
   }
   if (!entry.reviewBy || entry.reviewBy < today) {
     problems.push(
-      `EXPIRED  ${vuln.name} was accepted on ${entry.acceptedOn} for review by ${entry.reviewBy ?? "never"}. That date has passed — take the decision again.`
+      // `acceptedOn` is optional and no entry has carried one yet, so it is
+      // read through a fallback rather than printed as "undefined" — an expiry
+      // notice that looks like a bug is one people argue with instead of acting
+      // on. `proposedOn` is the honest stand-in: for an entry nobody signed,
+      // the day the reasoning was written is the only date there is.
+      `EXPIRED  ${vuln.name} was accepted on ${entry.acceptedOn ?? entry.proposedOn ?? "an unrecorded date"} for review by ${entry.reviewBy ?? "never"}. That date has passed — take the decision again.`
     );
     continue;
   }

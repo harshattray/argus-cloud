@@ -1896,6 +1896,14 @@ Cloud is not ready to charge until:
   backup key. **This box does not go green on the rehearsal alone.** Launch
   means paying customers, and by then the schedule must be on: see Pathway 1
   item 10 for the switch-on checklist;
+- [ ] **`next` is on 16, taken as its own dedicated change** — decided
+  2026-08-19 (`FUTURENORMA.md` §4 open decision 3b). It clears all three
+  accepted high advisories to `npm audit` **0**; that is the reason, not
+  `next/image`, which uploaded artifacts still must not use (§10.5 3A). Cheap
+  now and dearer later: the 2026-08-16 trial at `next@16.3.1` was 635/635 green
+  with the nonce CSP intact, and migrating once customer reports and uploaded
+  artifacts are live is a different job. Do it before launch, not beside other
+  work;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
 - [ ] a real demo uses real historical Normascope data;
