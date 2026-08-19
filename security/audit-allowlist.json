@@ -36,7 +36,7 @@
     {
       "package": "sharp",
       "severity": "high",
-      "reason": "libvips CVEs, reached through next's image optimiser. We do not serve user-uploaded images through next/image today. This changes the moment Pathway 2 ships artifact upload — uploaded screenshots are exactly the hostile input these CVEs are about. Re-decide before that lands, not on the reviewBy date.",
+      "reason": "libvips CVEs, reached through next's image optimiser. We do not serve user-uploaded images through next/image, and that is now a decision rather than an accident: Harsha settled on 2026-08-19 that uploaded artifacts render as plain <img> from short-lived presigned GET URLs, so customer bytes never reach sharp. PATHWAYS.md §10.5 3A carries the instruction and the reasoning; web/app/_components/Screenshot.tsx is the precedent for our own images. Verified 2026-08-19: no next/image anywhere under web/app/r/. This entry stands only while that holds — anything that would put uploaded images through the optimiser re-opens it rather than quietly making this sentence false.",
       "reviewBy": "2026-09-30",
       "proposedOn": "2026-08-12",
       "acceptedBy": null

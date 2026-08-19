@@ -2342,6 +2342,29 @@ organization/session scoped. Add a report view model that resolves artifact
 references to short-lived authorized GET URLs. Do not expose object keys or
 permanent public URLs to the browser.
 
+> **Render those URLs with a plain `<img>`. Never `next/image`.** Decided by
+> Harsha on 2026-08-19, before this pathway starts, so it is settled rather than
+> discovered late.
+>
+> `next/image` puts `sharp` in the request path, and
+> `security/audit-allowlist.json` accepts three high-severity libvips advisories
+> in `sharp` **on the recorded ground that we do not serve user-uploaded images
+> through the optimiser**. Those advisories need attacker-chosen image bytes to
+> matter, and an uploaded screenshot is exactly that: a customer, or anyone
+> holding their upload key, can craft a malformed PNG. Routing artifacts through
+> the optimiser would feed hostile input straight into `sharp` on Vercel *and*
+> silently make the allowlist's stated reason false.
+>
+> Three reasons this way round: customer bytes stay out of `sharp`, it matches
+> the storage design already in place (short-TTL presigned GETs direct from
+> storage, never through our origin), and it avoids both a breaking Next 15→16
+> major and per-image optimisation billing.
+>
+> `web/app/_components/Screenshot.tsx` is the precedent and its header explains
+> the same trade for our own screenshots. Anything that would make the
+> allowlist's sentence untrue re-opens that entry rather than quietly
+> invalidating it.
+
 Reuse visual behavior from `Argus/src/report.ts`:
 
 - three panes for build/reference/diff;
