@@ -13,6 +13,7 @@ const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { grantCredits, balance } = await import(path.join(DIST, "ledger.js"));
 const { enqueueCiBatch, collectCiBatch, summarizeForPr, escapeHtml } = await import(path.join(DIST, "ciBatch.js"));
 const { AUTO_EXPLAIN_PER_RUN_CAP, CREDITS_PER_ANALYSIS } = await import(path.join(DIST, "explainService.js"));
+const { computeCostMicrodollars } = await import(path.join(DIST, "usage.js"));
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -61,6 +62,9 @@ const mkDeps = ({ results, submitError = false } = {}) => {
         return `batch_${randomUUID().slice(0, 8)}`;
       },
       fetch: async () => results ?? null,
+      // These fixtures carry no evidence to scan; the secret scan's own
+      // behaviour on this path is `test/secretScan.test.mjs` SS5.
+      scan: () => null,
       dailyBudgetMicrodollars: 10_000_000_000,
       alert: () => {},
     },
@@ -93,8 +97,13 @@ const mkDeps = ({ results, submitError = false } = {}) => {
   const events = (await db.query(
     "SELECT interactive, auto, status, cost_microdollars, input_tokens FROM usage_events WHERE org_id = $1 AND status = 'charged'", [org]
   )).rows;
-  // 15000 in × $3/MTok = 45000 μ$ interactive → 22500 μ$ at the 50% batch rate, + output 1200 × $15/MTok × 0.5 = 9000 μ$.
-  const expected = Math.round((15000 * 3 + 1200 * 15) * 0.5);
+  // Derived from the pricing function, not from arithmetic in a comment. The
+  // hand-computed version hardcoded sonnet at $3/$15 per MTok and went stale the
+  // day the list price changed — a test that fails when a *price* moves is
+  // asserting the price, not the batch rate it was written for.
+  const expected = computeCostMicrodollars("claude-sonnet-5",
+    { inputTokens: 15000, outputTokens: 1200, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+    { batch: true });
   check("D2.1f", events.length === 2 && events.every((e) => e.auto === true && e.interactive === false && Number(e.cost_microdollars) === expected),
     `usage events billed at the batch rate (${expected} μ$ each)`);
 

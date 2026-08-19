@@ -32,8 +32,8 @@ const DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "d
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { grantCredits, balance } = await import(path.join(DIST, "ledger.js"));
-const { attributeCost, recordUsage } = await import(path.join(DIST, "usage.js"));
-const { hostedExplain } = await import(path.join(DIST, "explainService.js"));
+const { attributeCost, recordUsage, computeCostMicrodollars } = await import(path.join(DIST, "usage.js"));
+const { hostedExplain, CREDITS_PER_ANALYSIS } = await import(path.join(DIST, "explainService.js"));
 const { recordSubscriptionPeriod, refundSubscriptionPeriod } = await import(path.join(DIST, "subscriptions.js"));
 const { reconcileMonth, MARGIN_ALERT_THRESHOLD } = await import(path.join(DIST, "reconcile.js"));
 
@@ -72,13 +72,16 @@ const okFindings = {
   ],
 };
 // Fixed token counts, so every cost in this file is a number we can assert
-// exactly rather than a range: sonnet-5 at 15,000 in / 1,200 out is
-// 15000×3 + 1200×15 = 63,000µ$.
-const SONNET_COST = 63_000;
+// exactly rather than a range. The figure itself is derived from the pricing
+// function rather than multiplied out here: the hand-computed 63,000µ$ assumed
+// sonnet at $3/$15 per MTok and broke the day the list price changed, which
+// made a reconciliation suite fail over a number it was not testing.
+const SONNET_USAGE = { inputTokens: 15000, outputTokens: 1200, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
+const SONNET_COST = computeCostMicrodollars("claude-sonnet-5", SONNET_USAGE);
 const okProvider = async () => ({
   kind: "ok",
   json: structuredClone(okFindings),
-  usage: { inputTokens: 15000, outputTokens: 1200, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+  usage: SONNET_USAGE,
 });
 const failingProvider = async () => ({ kind: "error", message: "provider unavailable" });
 const deps = (provider) => ({ provider, dailyBudgetMicrodollars: 10_000_000_000, alert: () => {} });
@@ -151,9 +154,11 @@ async function sourcesFor(orgId) {
 
 {
   // An allowance with only 3 credits left and a pack behind it. `ledger.ts`
-  // consumes soonest-to-expire first, so one 5-credit analysis is funded 3
-  // from the allowance and 2 from the pack — the case the old reconciliation
-  // could not see at all.
+  // consumes soonest-to-expire first, so one analysis is funded 3 from the
+  // allowance and the rest from the pack — the case the old reconciliation
+  // could not see at all. The split follows the derived credit price rather
+  // than a literal, so a price change cannot silently make this test assert
+  // a different scenario than the one it describes.
   const org = await makeOrg("r2-split");
   await grantCredits(db, { orgId: org, kind: "plan_allotment", credits: 3, expiresAt: soon });
   await grantCredits(db, {
@@ -165,14 +170,14 @@ async function sourcesFor(orgId) {
     orgId: org, frame: "pricing.png", buildHash: "r2-1", designHash: "d1",
     model: "claude-sonnet-5", pass: "analysis",
   });
-  check("R2.0", run.ok && run.creditsCharged === 5, `analysis charged (${run.ok ? run.creditsCharged : run.code})`);
+  check("R2.0", run.ok && run.creditsCharged === CREDITS_PER_ANALYSIS, `analysis charged (${run.ok ? run.creditsCharged : run.code} credits, the derived price)`);
 
   const rows = await sourcesFor(org);
   const byKind = new Map(rows.map((r) => [r.kind, r]));
   check("R2.1",
     rows.length === 2 &&
       byKind.get("plan_allotment")?.credits === 3 &&
-      byKind.get("pack_purchase")?.credits === 2,
+      byKind.get("pack_purchase")?.credits === CREDITS_PER_ANALYSIS - 3,
     `one charge, two funding sources with the right kinds (${rows.map((r) => `${r.kind}:${r.credits}`).join(", ")})`);
   check("R2.2",
     rows.reduce((s, r) => s + r.cost, 0) === SONNET_COST && rows.every((r) => r.eventCost === SONNET_COST),
