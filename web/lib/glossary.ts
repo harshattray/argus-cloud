@@ -225,6 +225,26 @@ export const CLOUD_GLOSSARY: GlossaryEntry[] = [
     def: "Your monthly allowance for hosted AI. A price is set by what the call can cost us at worst, so it never moves after you press the button.",
   },
   {
+    id: "overview",
+    term: "History at a glance",
+    def: "Every run we still hold, squeezed into one picture and spaced by date rather than by commit. It is for finding when something started; drag across it to see the actual runs.",
+  },
+  {
+    id: "overview-band",
+    term: "Range in a period",
+    def: "The lowest and highest a frame measured during that slice of time. Both are real readings — nothing here is an average, so a single bad run cannot be smoothed away.",
+  },
+  {
+    id: "overview-crossing",
+    term: "Mixed period",
+    def: "Some runs in that slice were over the threshold and some were not. Worth a look: it is usually a flaky capture or a change that landed mid-period.",
+  },
+  {
+    id: "retention",
+    term: "All retained",
+    def: "Everything still stored for your organization. Runs are deleted after your plan's retention window, so this is all of your history, not all of time.",
+  },
+  {
     id: "share-link",
     term: "Share link",
     def: "A URL that opens this one report and nothing else. It can be revoked, it can expire, and it does not let the holder see any other run.",

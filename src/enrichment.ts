@@ -125,18 +125,38 @@ function asThreshold(value: string | null): number | null {
  */
 export async function frameHistory(
   db: Db,
-  args: { orgId: string; repoId: string; frame: string; limit?: number }
+  args: {
+    orgId: string;
+    repoId: string;
+    frame: string;
+    limit?: number;
+    /**
+     * Restrict the returned *trend rows* to a time span — a brushed selection.
+     *
+     * **It deliberately does not narrow `firstDriftCommit` or `recurrence`.**
+     * Those two are the answer to "has this ever happened", and an answer that
+     * changes when you drag a chart is not that answer. They stay computed over
+     * everything the organization holds, which is why `firstDriftIndex` can come
+     * back null with a commit beside it: the drift is real and outside what you
+     * are looking at, and the page says exactly that.
+     */
+    span?: { from: Date; to: Date } | null;
+  }
 ): Promise<FrameHistory | null> {
   const limit = args.limit ?? TREND_ROWS_MAX;
+  const spanParams = args.span ? [args.span.from.toISOString(), args.span.to.toISOString()] : [];
+  const spanWhere = args.span
+    ? " AND fs.created_at >= $5::timestamptz AND fs.created_at <= $6::timestamptz"
+    : "";
   const trend = (
     await db.query<TrendRow>(
       `SELECT fs.run_id, r.commit_sha, fs.aligned_mismatch_percent, fs.flagged, fs.created_at,
               fs.mode, fs.source, (r.summary ->> 'threshold') AS threshold
        FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
-       WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3
+       WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3${spanWhere}
        ORDER BY fs.created_at DESC, fs.id DESC
        LIMIT $4`,
-      [args.orgId, args.repoId, args.frame, limit]
+      [args.orgId, args.repoId, args.frame, limit, ...spanParams]
     )
   ).rows;
   if (trend.length === 0) {

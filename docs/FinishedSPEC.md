@@ -2135,6 +2135,134 @@ laptop, `/repos/` still 404s in production. Two limits specific to this work:
 
 ---
 
+### 3x. Two-level history: an overview, a brush, and a bound on the DOM ✅ (2026-08-20)
+
+**The trend chart could not show a customer's history, and said so in a sentence
+nobody could act on.** It drew the newest 30 runs. First drift and recurrence are
+computed over *everything* the organization holds — so the page routinely stated
+"first drifted at `ee6813323c`" above a chart with no marker on it, and offered
+as remedy a note about editing a URL parameter.
+
+Measured before designing, on a 200-run frame. The numbers are the reason this
+is a defect report rather than a preference:
+
+| Runs drawn | Gap between marks | Dots merge? | Hover hits the right run? |
+|---|---|---|---|
+| 20 | 27px | no | yes |
+| **30 — the old default** | 17.8px | no | **marginal** |
+| 60 | 8.8px | no | no |
+| 90 | 5.8px | yes | no |
+| 200 | 2.6px | yes | **off by three** |
+
+A tooltip that names the wrong commit is worse than no tooltip, and it was
+already imprecise at the default window on a narrow card.
+
+**The model Harsha settled on**, after two rounds of it: **time is the primary
+axis of history, run count is a secondary detail control.**
+
+| | Overview | Detail |
+|---|---|---|
+| Axis | **time** | run index |
+| Range | 7d / 30d / … / retention | what the brush selected |
+| Resolution | bucketed, spike-preserving | every run, exact |
+| Interaction | drag to select | hover for the run |
+
+Reading them in that order is the answer to "when did this start": the overview
+shows ninety days, you drag the fortnight it happened in, and the detail chart
+gives you the individual commits with their cards.
+
+**Why the overview is a different chart and not a smaller one.** The detail chart
+is spaced by run index — correct when reading commits in order, and it means two
+hundred runs in an afternoon and two hundred across a quarter draw *identically*.
+Over ninety days that is not a rendering choice, it is a false picture, and the
+one question the overview exists to answer is exactly the one that spacing
+cannot. This was a latent flaw in the existing chart, not a new requirement.
+
+**Nothing is averaged, and that is doctrine rather than taste.** Each bucket
+keeps five facts, every one a value some run recorded: lowest, highest, first,
+last, and whether runs inside it disagreed about crossing the threshold. An
+average is a sixth number that no run measured. `test/overview.test.mjs` carries
+both counter-tests and prints what the reader would have seen:
+
+| Instead of min/max | What it draws |
+|---|---|
+| mean of the bucket (O2.4b) | **24.36%** for a bucket whose real peak is 97.4% |
+| every nth run (O2.5b) | the spike is visible at stride 2 and invisible at 3, 4, 5 and 7 — the picture depends on the stride, not on the site |
+
+**The ladder's largest step is the tenant's retention, read rather than
+written.** `plan_limits.retention_days` is 90 for every plan today and the sweep
+cascades `frame_stats`, so 90 days genuinely *is* all this organization has —
+and "all retained" is therefore an **annotation on that step, not a fourth
+option**. A separate "All" beside a 90 that means the same thing is a control
+where one choice does nothing, and it would imply storage the plan does not
+sell. `overviewRanges(365)` returns four real steps, so a later tier needs no
+code change.
+
+**The DOM is bounded; the data is not.** Every run stays in the line geometry and
+in the export. What is bounded is how many *interactive* elements exist:
+
+| Size | What it gives |
+|---|---|
+| 200 runs | fully interactive — marks and hover cards |
+| 1k, 5k | the exact line; select a range to inspect it |
+| Runs table | 25 rows a page |
+| Export | the complete span, exact, as CSV |
+
+5,000 interactive points would be ~40,000 DOM nodes in the first byte, aimed at
+0.14-unit targets. Bounding a view is only honest while the whole dataset stays
+reachable — hence the export, and hence pagination on the *table*, which has no
+shape to break, and never on the chart, which does.
+
+> **`FinishedSPEC.md` §3v's "zero client JavaScript on `/repos/`" is no longer
+> true, by decision.** Harsha chose a real drag over the zero-JS approximation
+> (clickable buckets) on 2026-08-20. The valuable half survives and is now what
+> the suite guards: **both charts are still inert server-rendered SVG**, complete
+> in the first byte, and with JavaScript off the pages read correctly and the
+> range links work — only the drag is missing. `brush.tsx` is the one client
+> component on the tree, it holds no history, and it converts a drag into a URL
+> for the server to answer. X4.1 was rewritten rather than deleted.
+
+**Three defects found by rendering it rather than by reasoning about it:**
+
+- **The hit target was a circle.** Fixed radius means the targets overlap once
+  runs are closer than the diameter, and the last one drawn wins — aiming at run
+  80 opened run 83. Now a full-height column exactly one slot wide: they tile the
+  plot, so they cannot overlap at any density, and the reader aims at an
+  x-position rather than at a dot they may not be able to see.
+- **The overview sized its bars by `buckets.length`.** Only buckets holding runs
+  come back, so with sparse history the array is far shorter than the division of
+  time — six real runs from one afternoon drew as a block covering a quarter of a
+  90-day chart. Correct data, a picture claiming three weeks of drift.
+- **The interactivity label read the size requested, not the size drawn.** A 5k
+  selection narrowed by the brush to 32 runs still said "line only, select a
+  range to inspect" while showing 32 dots and their cards.
+
+**The export defuses formula injection.** A CSV field beginning `=`, `+`, `-` or
+`@` is executed by Excel and Sheets on open, and frame labels and commit
+messages are upload-supplied — the same argument that made `contentType` an
+allowlist in `artifactUploads.ts`. Fields are quoted and such values prefixed.
+
+**Evidence.** `test/overview.test.mjs` (42 checks) plus additions to `explainers`
+and `trends`. Suite totals: **1,012 on PGlite, 1,040 against a real Postgres
+server**, across 31 suites. Guards watched failing before being trusted:
+
+| Break | Went red |
+|---|---|
+| Hit target back to a fixed-radius circle | X6.3, X6.3b |
+| Dots thinned by value rather than by density | X6.13 |
+| `pointer-events: all` on the hover card | X6.5 |
+| Points drawn before the trend line | X6.7 |
+| The whole detail ladder shown regardless of what exists | T5b.1, T5b.3, T5b.5 |
+| A second client component added to `/repos/` | X4.1 |
+
+**What this does not prove.** The brush was driven with a synthetic pointer in
+one browser at one width; touch has not been tried, and `touch-action: pan-y` is
+reasoning rather than evidence. The 200-run stress frame was seeded locally and
+deleted afterwards — **no real tenant has more than ten runs of one frame**, so
+every density figure above is a measurement of a fixture, not of a customer.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six

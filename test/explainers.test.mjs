@@ -418,11 +418,18 @@ const shotTerms = [
   );
 }
 
-// ═══ X4 — zero client JavaScript on the /repos tree ═══
+// ═══ X4 — what still renders on the server, now that one thing does not ═══
 //
-// `FinishedSPEC.md` §3v claims these pages render entirely on the server. A
-// `useState` tooltip would have made that sentence false — and put a hydration
-// boundary around a chart that currently arrives in the first byte.
+// `FinishedSPEC.md` §3v claimed **zero** client JavaScript on this tree. That
+// stopped being true on 2026-08-20: Harsha chose a real drag-to-select over the
+// zero-JS approximation, so `brush.tsx` is a client component and the doc was
+// corrected in the same change rather than left saying something false.
+//
+// **The guard did not go away, it got narrower**, because the valuable half of
+// that property survives: the *charts* are still inert server-rendered SVG. Both
+// arrive complete in the first byte, and with JavaScript off or still loading
+// the pages are readable and the range links work — only the drag is missing.
+// So: exactly one client component, and it is not a chart.
 
 {
   const tree = await tsxUnder(path.join(WEB, "app/repos"));
@@ -433,7 +440,27 @@ const shotTerms = [
       clientFiles.push(path.relative(ROOT, file));
     }
   }
-  check("X4.1", clientFiles.length === 0, `the /repos tree has no client components${clientFiles.length ? `: ${clientFiles.join(", ")}` : ""}`);
+  check(
+    "X4.1",
+    clientFiles.length === 1 && clientFiles[0].endsWith("brush.tsx"),
+    `exactly one client component on /repos, and it is the brush (${clientFiles.join(", ") || "none"})`
+  );
+  for (const [id, rel] of [
+    ["X4.1b", "app/repos/trend-chart.tsx"],
+    ["X4.1c", "app/repos/overview-chart.tsx"],
+    ["X4.1d", "app/repos/sparkline.tsx"],
+  ]) {
+    const src = await readFile(path.join(WEB, rel), "utf-8");
+    check(id, !/^\s*["']use client["']/m.test(src),
+      `${rel.split("/").pop()} is still server-rendered, so the picture is in the first byte`);
+  }
+  // The brush carries no data. The selection becomes a URL the server answers,
+  // so no tenant history is serialised into the page for a client to filter.
+  {
+    const brush = decomment(await readFile(path.join(WEB, "app/repos/brush.tsx"), "utf-8"));
+    check("X4.1e", !/points|buckets|runs\b/.test(brush),
+      "and it holds no history — it converts a drag into a URL and lets the server answer");
+  }
 
   const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
   check("X4.2", !/^\s*["']use client["']/m.test(component), "the Explainer itself is a server component");
@@ -482,8 +509,36 @@ const shotTerms = [
     "and the card carries the commit, the threshold and the date — the row of the table, at the mark"
   );
 
-  // The hit target, and the bug it exists to prevent twice over.
-  check("X6.3", chart.includes("dotHit") && /r=\{13\}/.test(chart), "a 13px hit target sits under the 3.5px dot");
+  /*
+   * The hit target: a full-height column, one slot wide.
+   *
+   * It was an `r=13` circle, and a circle is wrong twice. Fixed radius means the
+   * targets overlap the moment runs are closer together than the diameter, and
+   * the one drawn last wins — measured on a 200-run frame, aiming at run 80
+   * opened run 83's card. It also started overlapping at *thirty* runs on a
+   * narrow card, which is the default window.
+   */
+  check(
+    "X6.3",
+    chart.includes("dotHit") && /<rect[\s\S]{0,200}?className=\{styles\.dotHit\}/.test(chart),
+    "the hit target is a rect column, not a circle"
+  );
+  check(
+    "X6.3b",
+    /width=\{slot\}/.test(chart) && /height=\{plotHeight\}/.test(chart),
+    "one slot wide and the full height of the plot, so the columns tile it exactly"
+  );
+  // X6.3c — the counter-test, by arithmetic. A fixed-radius circle against the
+  // spacing each window produces; a column is correct at every one of them.
+  {
+    const innerW = 720 - 46 - 16;
+    const overlapping = [20, 30, 60, 120, 200].filter((n) => innerW / (n - 1) < 26);
+    check(
+      "X6.3c",
+      overlapping.length >= 4 && overlapping.includes(30),
+      `a 26-unit circle overlaps at ${overlapping.join(", ")} runs — including the default 30; a column never does`
+    );
+  }
   check(
     "X6.4",
     /\.dotHit\s*\{[^}]*fill:\s*transparent/.test(trends),
@@ -503,6 +558,52 @@ const shotTerms = [
     "X6.6",
     /\.point:hover\s+\.tip/.test(trends),
     "it opens on plain :hover, so the page still ships no JavaScript"
+  );
+
+  /*
+   * Density. Above `DOT_MIN_SLOT` the plain dots stop being drawn — but the
+   * *line* keeps every run, and nothing is averaged or resampled anywhere.
+   * A downsampled series would put a number on screen that no run measured.
+   */
+  check("X6.12", chart.includes("DOT_MIN_SLOT"), "the chart thins its dots by density");
+  check(
+    "X6.13",
+    /showDot=\{slot >= DOT_MIN_SLOT\}/.test(chart),
+    "purely from slot width — not from the value, which would drop runs by how bad they were"
+  );
+  check(
+    "X6.14",
+    /segments\(\s*points\.map\(\(p\) => p\.alignedMismatchPercent\)/.test(chart),
+    "the line is built from every point, so thinning the marks never thins the data"
+  );
+  check(
+    "X6.15",
+    !/\baverage|\bmean\(|downsample|bucket|lttb/i.test(chart),
+    "nothing is averaged or bucketed — an invented value is worse than a crowded chart"
+  );
+  // The detail label describes what came back, not what was asked for. Reading
+  // it off the requested size told a reader looking at 32 interactive points
+  // that they were looking at a line.
+  {
+    const page = decomment(
+      await readFile(path.join(WEB, "app/repos/[repoId]/trend/page.tsx"), "utf-8")
+    );
+    check(
+      "X6.17",
+      /trend\.dense[\s\S]{0,200}fully interactive/.test(page) && !/trend\.limit <= MAX_INTERACTIVE_POINTS/.test(page),
+      "the interactivity label is driven by the points drawn, not by the size requested"
+    );
+    check(
+      "X6.18",
+      page.includes("frameOverview") && page.includes("OverviewChart") && page.includes("<Brush"),
+      "the page carries an overview, its chart, and the brush that narrows it"
+    );
+  }
+
+  check(
+    "X6.16",
+    chart.includes("dotOnHover"),
+    "and a run with no dot still gets a mark when it is hovered, or the card names a point that is not there"
   );
 
   // Points are drawn last so an open card is not painted over by a later dot.

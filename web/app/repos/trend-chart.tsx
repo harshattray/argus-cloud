@@ -32,6 +32,33 @@ const H = 260;
 const PAD = { left: 46, right: 16, top: 18, bottom: 30 };
 const MAX_X_LABELS = 7;
 
+/**
+ * Slot width, in viewBox units, below which the plain dots stop being drawn.
+ *
+ * A dot is `r=3.5` plus a 1.5 stroke — 8.5 units across. Once the runs are
+ * closer together than that, the markers touch and then merge, and what the
+ * reader sees is a chain of beads with the 2-unit line invisible underneath it.
+ * Measured on a 200-run frame: the shape was still readable and the *line* was
+ * gone.
+ *
+ * 9 units is about 74 runs across this chart.
+ *
+ * **Flagged runs lose their dots too, and that is deliberate.** Keeping them was
+ * the first cut and it still ate the line wherever a stretch was flagged — 90 of
+ * 200 runs in the test frame, drawn as one long red caterpillar. It was also
+ * redundant: "over the threshold" is already on screen as height against the
+ * threshold line, which is what that line is drawn for. What is lost is a run
+ * flagged by a hair, and at three units per run a mark would not have told you
+ * that either — the hover card and the table do.
+ *
+ * **Nothing is dropped from the line and nothing is averaged.** Every run is
+ * still a vertex and still has its own hover column. This thins the *rendering*
+ * of the points, not the data behind them — an averaged or downsampled series
+ * would put a number on screen that no run ever measured, which Doctrine 2
+ * forbids outright.
+ */
+const DOT_MIN_SLOT = 9;
+
 export function TrendChart({ trend }: { trend: FrameTrend }) {
   const points = trend.points;
   const measured = points
@@ -174,7 +201,13 @@ export function TrendChart({ trend }: { trend: FrameTrend }) {
             label={labels[i]}
             cx={x(i)}
             cy={y(p.alignedMismatchPercent)}
+            slot={slot}
+            plotTop={PAD.top}
+            plotHeight={innerH}
             firstDrift={i === trend.firstDriftIndex}
+            /* A mark on every run while they are far enough apart to be
+               distinct, and on none once they are not. */
+            showDot={slot >= DOT_MIN_SLOT}
             /* Flip the card to the left of the point once past the middle, or
                the last few runs open theirs past the right edge of the SVG. */
             flip={points.length > 1 && i / (points.length - 1) > 0.6}
@@ -253,16 +286,26 @@ function PointMarker({
   label,
   cx,
   cy,
+  slot,
+  plotTop,
+  plotHeight,
   flip,
   firstDrift,
+  showDot,
 }: {
   point: FrameTrend["points"][number];
   /** The commit label the x-axis uses, so the card and the axis agree. */
   label: string;
   cx: number;
   cy: number;
+  /** Distance to the next run, in viewBox units. The hit column is this wide. */
+  slot: number;
+  plotTop: number;
+  plotHeight: number;
   flip: boolean;
   firstDrift: boolean;
+  /** False where the runs are too close together for a mark to mean anything. */
+  showDot: boolean;
 }) {
   const pct = point.alignedMismatchPercent as number;
   const tipX = flip ? cx - TIP.gap - TIP.w : cx + TIP.gap;
@@ -277,13 +320,45 @@ function PointMarker({
 
   return (
     <g className={styles.point}>
-      <circle className={styles.dotHit} cx={cx} cy={cy} r={13} />
-      <circle
-        className={point.flagged ? `${styles.dot} ${styles.over}` : styles.dot}
-        cx={cx}
-        cy={cy}
-        r={3.5}
+      {/*
+        A full-height column, one slot wide — not a circle around the dot.
+        
+        **A circle was wrong twice.** Fixed radius means the targets overlap the
+        moment the runs are closer together than the diameter, and the one drawn
+        last wins: measured on a 200-run frame, aiming at run 80 opened run 83's
+        card. A tooltip that names the wrong commit is worse than no tooltip. It
+        also started overlapping at **thirty** runs on a narrow card — the
+        default window — so this was not only a problem at the ceiling.
+        
+        Columns tile the plot exactly: no overlap, no gaps, correct at any
+        density, and the reader aims at an x-position rather than at a 3.5-unit
+        dot they may not be able to see.
+      */}
+      <rect
+        className={styles.dotHit}
+        x={cx - slot / 2}
+        y={plotTop}
+        width={slot}
+        height={plotHeight}
       />
+      {showDot && (
+        <circle
+          className={point.flagged ? `${styles.dot} ${styles.over}` : styles.dot}
+          cx={cx}
+          cy={cy}
+          r={3.5}
+        />
+      )}
+      {/* Whatever the density, the hovered run gets a mark — otherwise the card
+          names a run with nothing on screen to point at. */}
+      {!showDot && (
+        <circle
+          className={`${styles.dotOnHover} ${point.flagged ? styles.over : ""}`}
+          cx={cx}
+          cy={cy}
+          r={3.5}
+        />
+      )}
       <g className={styles.tip}>
         <rect className={styles.tipBox} x={tipX} y={tipY} width={TIP.w} height={TIP.h} rx={7} />
         <text className={styles.tipCommit} x={textX} y={line(0)}>

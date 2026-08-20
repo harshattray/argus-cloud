@@ -285,6 +285,131 @@
   cursor: pointer;
 }
 
+/* ---------- how many runs the chart draws ---------- */
+
+.window {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: -6px 0 12px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.windowLabel {
+  letter-spacing: 0.04em;
+}
+
+.windowOption,
+.windowOn {
+  display: inline-block;
+  min-width: 30px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.windowOption {
+  color: var(--clay-deep);
+  text-decoration: none;
+}
+
+.windowOption:hover {
+  border-color: var(--clay);
+  background: var(--frame-bg);
+}
+
+.windowOn {
+  background: var(--clay);
+  border-color: var(--clay);
+  color: var(--card);
+  font-weight: 600;
+}
+
+/* ---------- the overview (whole retained history) ---------- */
+
+.overviewWrap {
+  position: relative;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px 4px;
+}
+
+.overview {
+  display: block;
+  width: 100%;
+  height: 120px;
+}
+
+/*
+ * The brush layer, exactly covering the plot area of the chart under it.
+ *
+ * The insets are the overview's own padding — `PAD` in `overview-chart.tsx`,
+ * expressed as a percentage of its 720x120 viewBox, plus this container's
+ * padding. They have to agree, or a drag maps to a different span from the one
+ * the reader aimed at: the selection would look right and navigate wrong.
+ */
+.brush {
+  position: absolute;
+  left: calc(14px + (46 / 720) * (100% - 28px));
+  right: calc(14px + (16 / 720) * (100% - 28px));
+  top: calc(12px + (12 / 120) * 120px);
+  height: calc(120px - ((12 + 22) / 120) * 120px);
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.brushSelection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--clay) 22%, transparent);
+  border-left: 1px solid var(--clay-deep);
+  border-right: 1px solid var(--clay-deep);
+  pointer-events: none;
+}
+
+.ovBand {
+  fill: var(--clay);
+  opacity: 0.45;
+}
+
+.ovBand.over {
+  fill: var(--danger);
+  opacity: 0.55;
+}
+
+.ovLine {
+  fill: none;
+  stroke: var(--clay-deep);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.ovCrossing {
+  stroke: var(--warn);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.swatchBand {
+  background: var(--clay);
+  opacity: 0.5;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.exportLink {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
 /* ---------- the trend chart (I2) ---------- */
 
 .chartWrap {
@@ -356,8 +481,8 @@
 
 .dotHit {
   fill: transparent;
-  /* `transparent` still paints, so the circle is a hit target. `fill: none`
-     would not be, and the tooltip would only open on the 3.5px dot itself. */
+  /* `transparent` still paints, so the column is a hit target. `fill: none`
+     would not be, and the tooltip would only open on the 3.5-unit dot itself. */
   cursor: pointer;
 }
 
@@ -379,6 +504,31 @@
    together — the card names a commit, and the reader has to know which mark it
    belongs to. */
 .point:hover .dot {
+  r: 5;
+}
+
+/*
+ * The mark for a run that is too crowded to draw a dot for.
+ *
+ * Above ~74 runs the plain dots merge into a bead chain and are dropped
+ * (`DOT_MIN_SLOT`), which leaves the card naming a run with nothing on screen
+ * to point at. This appears on hover only, so the chart stays a line and the
+ * hovered run still gets a marker.
+ */
+.dotOnHover {
+  fill: var(--success);
+  stroke: var(--card);
+  stroke-width: 1.5;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dotOnHover.over {
+  fill: var(--danger);
+}
+
+.point:hover .dotOnHover {
+  opacity: 1;
   r: 5;
 }
 

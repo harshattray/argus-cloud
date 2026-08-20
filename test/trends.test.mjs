@@ -36,6 +36,9 @@ const {
   assembleTrend,
   frameTrend,
   MAX_TREND_POINTS,
+  MAX_INTERACTIVE_POINTS,
+  TREND_WINDOWS,
+  windowOptions,
   DEFAULT_TREND_POINTS,
   MAX_FRAMES_LISTED,
   pageNumber,
@@ -506,6 +509,48 @@ const orgB = await makeOrg(`trend-b-${randomUUID().slice(0, 8)}`);
     oldReading(noSha) === oldReading(never) &&
       (noSha.firstDriftAt === null) !== (never.firstDriftAt === null),
     `the one-field reading calls both "${oldReading(noSha)}"; the two-field one separates them`);
+}
+
+// ═══ T5b — the detail ladder never promises history that is not there ═══
+//
+// `?limit=` has been server-clamped since I3.2 and had no control on the page —
+// so the "first drifted before this window" caveat told the reader, in words, to
+// edit the URL. The ladder is that control. Its one rule is that it must not
+// offer a size that returns the same chart.
+//
+// The sizes are read caps, not tooltip counts: above `MAX_INTERACTIVE_POINTS`
+// the chart draws the exact line and stops drawing marks. The page labels each
+// state, because presenting 200 / 1k / 5k as a plain ladder implies five
+// thousand hoverable points.
+{
+  const full = windowOptions(200, false);
+  check("T5b.1", full.length === 1 && full[0] === 200,
+    "a history that fits inside 200 offers nothing larger, so the control does not appear at all");
+
+  const truncated = windowOptions(200, true);
+  check("T5b.2", truncated.join(",") === TREND_WINDOWS.join(","),
+    `a truncated 200 read offers the whole ladder (${truncated.join(", ")})`);
+
+  const mid = windowOptions(1000, false);
+  check("T5b.3", mid.join(",") === "200,1000",
+    `a complete 1k read still offers 200 — narrowing always does something (${mid.join(", ")})`);
+
+  const ceiling = windowOptions(MAX_TREND_POINTS, true);
+  check("T5b.4", Math.max(...ceiling) === MAX_TREND_POINTS,
+    `even a still-truncated read never offers past the server ceiling (${MAX_TREND_POINTS})`);
+
+  // The counter-test: print the whole ladder always. It offers 5k on a
+  // twelve-run frame, and the reader clicks it and gets the same twelve points
+  // back with nothing to say why.
+  check("T5b.5", TREND_WINDOWS.length > full.length,
+    `the always-show ladder offers ${TREND_WINDOWS.length} sizes to a 200-run frame; ${full.length} of them does anything`);
+
+  // The default has to be *on* its own ladder, or nothing is ever selected and
+  // the label describing the current size floats free of any option.
+  check("T5b.6", TREND_WINDOWS.includes(DEFAULT_TREND_POINTS),
+    `the default (${DEFAULT_TREND_POINTS}) is one of the offered sizes`);
+  check("T5b.7", DEFAULT_TREND_POINTS <= MAX_INTERACTIVE_POINTS,
+    `and it is fully interactive (${DEFAULT_TREND_POINTS} <= ${MAX_INTERACTIVE_POINTS}), so the page a reader lands on has working tooltips`);
 }
 
 // ═══ T6 — the frame list is bounded ═══

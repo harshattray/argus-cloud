@@ -34,14 +34,93 @@ import { frameHistory, type FrameHistory } from "./enrichment.js";
 /** Runs listed per page of the repository view. */
 export const RUNS_PAGE_SIZE = 20;
 
-/** Trend points returned when the caller does not ask for a number. */
-export const DEFAULT_TREND_POINTS = 30;
+/**
+ * Trend points returned when the caller does not ask for a number.
+ *
+ * **Raised from 30 to 200 on 2026-08-20**, which is `DETAIL_SIZES[0]` and the
+ * largest fully-interactive size. Two reasons, and the second is the real one:
+ *
+ *   - 30 runs is a fortnight for anyone running CI on every pull request, and
+ *     the page's own "first drifted at" answer is computed over *all* history —
+ *     so the default view routinely stated a drift it could not show.
+ *   - the detail ladder offers 200 / 1k / 5k. A default outside its own ladder
+ *     means nothing is selected, and the label describing the current size then
+ *     appears to describe whichever option the eye lands on.
+ *
+ * `/api/trends` inherits it. A caller that wants the old size asks for it.
+ */
+export const DEFAULT_TREND_POINTS = 200;
 
 /**
  * Hard server-side ceiling on trend points (I3.2). A caller asking for 100,000
  * gets this, not an error: the request is answerable, just not at that size.
+ *
+ * **This is the ceiling on what the *detail* chart reads, not on history.** The
+ * overview covers the whole retained window by bucketing; this bounds how many
+ * individual runs the exact chart will pull before it says it truncated.
  */
-export const MAX_TREND_POINTS = 200;
+export const MAX_TREND_POINTS = 5000;
+
+/**
+ * Detail sizes the page offers: how many individual runs the exact chart reads.
+ *
+ * They are read caps, not tooltip counts. Past `MAX_INTERACTIVE_POINTS` the
+ * chart draws a line and stops drawing per-run marks and cards, because 5,000
+ * of those is 40,000 DOM nodes in the first byte and no reader can aim at a
+ * 0.14-unit target anyway. Narrowing the range is what gets the detail back,
+ * which is what the brush is for.
+ */
+export const DETAIL_SIZES = [200, 1000, MAX_TREND_POINTS];
+
+/**
+ * Above this many runs on one chart, per-run marks and hover cards are dropped
+ * and the line is drawn alone.
+ *
+ * Chosen from geometry rather than taste: the plot is 658 units wide, so 250
+ * runs is 2.6 units apart — already below the 8.5 units a dot occupies, and
+ * about the point where a hit column stops being aimable. Everything above it is
+ * a shape to navigate, not a set of points to inspect.
+ */
+export const MAX_INTERACTIVE_POINTS = 250;
+
+/** Fixed steps on the overview ladder. The tenant's retention is appended. */
+export const OVERVIEW_STEPS = [7, 30];
+
+/**
+ * The overview ranges to offer this tenant, largest being its actual retention.
+ *
+ * **"All retained" is not a constant, and it is not "all history".** Every plan
+ * is seeded at 90 days today (`migrations/016`), and the sweep in
+ * `retention.ts` cascades `frame_stats` — so 90 days genuinely is everything
+ * this organization has. But `plan_limits.retention_days` is a column, and
+ * FUTURENORMA §3 plans a tier ladder after validation; a Team plan with 365-day
+ * retention would make a hard-coded 90 both wrong and quietly lossy.
+ *
+ * So the largest step is read, not written. Today it dedupes to `7 / 30 / 90`
+ * with the last one labelled "all retained"; at 365 it becomes four real steps.
+ * **Offering "All retained" *beside* a 90 that means the same thing would be a
+ * control with a dead option** — the failure `windowOptions` already refuses.
+ *
+ * The label matters as much as the number: a product that says "all history"
+ * while deleting at 90 days is promising storage it does not sell.
+ */
+export function overviewRanges(retentionDays: number): number[] {
+  const steps = OVERVIEW_STEPS.filter((d) => d < retentionDays);
+  return [...steps, retentionDays];
+}
+
+/** Clamp a caller-supplied overview range against that ladder. */
+export function overviewRange(raw: string | number | null | undefined, retentionDays: number): number {
+  const offered = overviewRanges(retentionDays);
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) {
+    return offered.includes(30) ? 30 : offered[offered.length - 1];
+  }
+  return offered.find((d) => d >= n) ?? offered[offered.length - 1];
+}
+
+/** Buckets across the overview. ~3.6 units each on a 658-unit plot. */
+export const OVERVIEW_BUCKETS = 180;
 
 /**
  * Frames listed on the repository view. A repo with 500 frames is a scroll, not
@@ -168,6 +247,11 @@ export interface FrameTrend {
   /** True when the frame has more history than the window shows. */
   truncated: boolean;
   limit: number;
+  /**
+   * True when there are more points here than the page will make interactive.
+   * The chart still draws every one of them; it stops drawing marks and cards.
+   */
+  dense: boolean;
 }
 
 /** Clamp a caller-supplied trend size to something the server chose (I3.2). */
@@ -177,6 +261,51 @@ export function trendLimit(raw: string | number | null | undefined): number {
     return DEFAULT_TREND_POINTS;
   }
   return Math.min(MAX_TREND_POINTS, Math.floor(n));
+}
+
+/** Detail sizes to show, given what the current read found. */
+export const TREND_WINDOWS = DETAIL_SIZES;
+
+/**
+ * Which detail sizes to offer, given what the current read found.
+ *
+ * **Never offer more history than exists.** A frame with twelve runs showing a
+ * "5000 runs" option promises history that is not there and returns the same
+ * twelve — the reader learns nothing except that the control does nothing.
+ *
+ * `truncated` is the only fact available for this without a second COUNT, and it
+ * is exactly the right one: it means the read filled up and there is more behind
+ * it. So larger sizes are offered when it is true, and never when it is false.
+ * Smaller sizes are always offered — narrowing always does something.
+ *
+ * Lives here rather than in the page because it is a statement about what the
+ * server will honour, next to `MAX_TREND_POINTS` which is the other half of it.
+ */
+export function windowOptions(limit: number, truncated: boolean): number[] {
+  return TREND_WINDOWS.filter((n) => n <= limit || truncated);
+}
+
+/**
+ * A brushed selection, parsed from the URL.
+ *
+ * Returned as `null` for anything unusable — absent, unparseable, inverted, or
+ * a zero-width span. A bad range must not empty the chart silently; the caller
+ * falls back to the whole window, which is what the page showed before anyone
+ * dragged anything.
+ */
+export function parseSpan(
+  from: string | undefined,
+  to: string | undefined
+): { from: Date; to: Date } | null {
+  if (!from || !to) {
+    return null;
+  }
+  const a = new Date(from);
+  const b = new Date(to);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || a.getTime() >= b.getTime()) {
+    return null;
+  }
+  return { from: a, to: b };
 }
 
 /** Clamp a caller-supplied page number. Page 1 is the first page. */
@@ -441,6 +570,296 @@ function threshold(value: string | null): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** Exact runs listed under the chart. Bounded, because 5,000 rows is not a table. */
+export const RUNS_TABLE_PAGE = 25;
+
+export interface FrameRunRow {
+  runId: string;
+  commitSha: string;
+  createdAt: string;
+  alignedMismatchPercent: number | null;
+  flagged: boolean;
+  mode: string;
+  source: string;
+  threshold: number | null;
+}
+
+export interface FrameRunPage {
+  rows: FrameRunRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+}
+
+/**
+ * A page of one frame's exact runs, newest first, optionally inside a span.
+ *
+ * **The table needed the same bound as the chart, for the same reason.** It used
+ * to render every point the detail chart had read — fine at thirty, and 5,000
+ * `<tr>` at the ceiling, which is a slower page than the chart it sits under and
+ * no more readable. The chart bounds *interactive marks*; this bounds *rows*.
+ *
+ * **Browsing is paginated; the complete dataset is an export.** Those are two
+ * different jobs and one control cannot do both — a reader scanning for the run
+ * that broke something wants twenty-five rows and a pager, and a reader doing
+ * arithmetic over a quarter wants the whole thing in a spreadsheet. Paginating
+ * the *chart* would be the mistake, because it breaks the shape; paginating a
+ * table costs nothing, because a table has no shape to break.
+ */
+export async function frameRuns(
+  db: Db,
+  args: {
+    orgId: string;
+    repoId: string;
+    frame: string;
+    span?: { from: Date; to: Date } | null;
+    page?: number;
+    pageSize?: number;
+  }
+): Promise<FrameRunPage> {
+  const pageSize = args.pageSize ?? RUNS_TABLE_PAGE;
+  const page = Math.max(1, Math.floor(args.page ?? 1));
+  const span = args.span ?? null;
+  const params: unknown[] = [args.orgId, args.repoId, args.frame];
+  let where = "fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3";
+  if (span) {
+    params.push(span.from.toISOString(), span.to.toISOString());
+    where += ` AND fs.created_at >= $${params.length - 1}::timestamptz AND fs.created_at <= $${params.length}::timestamptz`;
+  }
+
+  const total = Number(
+    (
+      await db.query<{ n: string | number }>(
+        `SELECT COUNT(*) AS n FROM frame_stats fs
+           JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
+          WHERE ${where}`,
+        params
+      )
+    ).rows[0]?.n ?? 0
+  );
+
+  const rows = (
+    await db.query<{
+      run_id: string;
+      commit_sha: string;
+      created_at: string | Date;
+      aligned_mismatch_percent: number | null;
+      flagged: boolean;
+      mode: string;
+      source: string;
+      threshold: string | null;
+    }>(
+      `SELECT fs.run_id, r.commit_sha, fs.created_at, fs.aligned_mismatch_percent,
+              fs.flagged, fs.mode, fs.source, (r.summary ->> 'threshold') AS threshold
+         FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
+        WHERE ${where}
+        ORDER BY fs.created_at DESC, fs.id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, (page - 1) * pageSize]
+    )
+  ).rows;
+
+  return {
+    rows: rows.map((r) => ({
+      runId: r.run_id,
+      commitSha: r.commit_sha,
+      createdAt: iso(r.created_at),
+      alignedMismatchPercent:
+        r.aligned_mismatch_percent === null ? null : Number(r.aligned_mismatch_percent),
+      flagged: r.flagged,
+      mode: r.mode,
+      source: r.source,
+      threshold: threshold(r.threshold),
+    })),
+    total,
+    page,
+    pageSize,
+    pages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+/**
+ * One bucket of the overview: a slice of time, and what happened in it.
+ *
+ * Every number here is a value some run actually recorded. Nothing is averaged.
+ */
+export interface OverviewBucket {
+  /** Bucket index, 0-based, uniform in *time* across the range. */
+  index: number;
+  /** Wall-clock bounds of the bucket, so the x-axis can be time. */
+  from: string;
+  to: string;
+  runs: number;
+  /** Runs in this bucket that recorded no measurement. Gaps, never zeros. */
+  skipped: number;
+  flagged: number;
+  /** The four values the bucket keeps. All recorded, none derived. */
+  lo: number | null;
+  hi: number | null;
+  first: number | null;
+  last: number | null;
+  /** The lowest threshold any run in the bucket was judged against. */
+  threshold: number | null;
+  /** True when runs inside this bucket disagree about being over the line. */
+  crossing: boolean;
+}
+
+export interface FrameOverview {
+  frame: string;
+  /** Days covered. The largest offered equals the tenant's retention. */
+  days: number;
+  retentionDays: number;
+  from: string;
+  to: string;
+  buckets: OverviewBucket[];
+  /**
+   * Buckets the range was divided into — **not** `buckets.length`.
+   *
+   * Only buckets that hold runs are returned, so the two differ whenever the
+   * history is sparse, which is most of the time. A renderer sizing a bar by
+   * the array length drew one bucket of six runs as a block covering a quarter
+   * of a 90-day chart: correct data, and a picture claiming three weeks of
+   * drift where there had been four minutes.
+   */
+  bucketCount: number;
+  /** Runs in the range, counted before bucketing. */
+  totalRuns: number;
+  /** Highest value anywhere in the range — the y-scale, and a real measurement. */
+  peak: number | null;
+}
+
+/**
+ * The whole retained history of one frame, compressed to something drawable.
+ *
+ * **Buckets are uniform in time, not in runs.** That is the entire reason this
+ * exists beside `frameTrend`: the detail chart is spaced by run index, so two
+ * hundred runs in an afternoon and two hundred across a quarter draw
+ * identically. Over 90 days that is not a rendering choice, it is a false
+ * picture, and an overview whose job is "when did this start" cannot make it.
+ *
+ * **No bucket can hide a spike, and none invents a number.** Each keeps the
+ * lowest and highest values recorded inside it, plus its first and last, plus
+ * whether runs inside it disagreed about crossing the threshold. Those are five
+ * facts about real runs. An average would be a sixth number that no run
+ * measured — cheaper to compute, and forbidden here: Doctrine 2 says a figure
+ * that reaches a customer traces to a recording. "Every nth run" is worse
+ * again, because the run it skips is exactly the one-run spike somebody needs.
+ *
+ * **The aggregation happens in the database.** 90 days at the team plan's 200
+ * runs/day is up to 18,000 rows for one frame; reading them into the function to
+ * bucket them there would make the response size a function of how busy the
+ * customer is. This returns at most `buckets` rows however much history exists.
+ */
+export async function frameOverview(
+  db: Db,
+  args: {
+    orgId: string;
+    repoId: string;
+    frame: string;
+    days: number;
+    retentionDays: number;
+    buckets?: number;
+    now?: Date;
+  }
+): Promise<FrameOverview | null> {
+  const buckets = args.buckets ?? OVERVIEW_BUCKETS;
+  const to = args.now ?? new Date();
+  const from = new Date(to.getTime() - args.days * 24 * 3600 * 1000);
+
+  const rows = (
+    await db.query<{
+      b: string | number;
+      runs: string | number;
+      skipped: string | number;
+      flagged: string | number;
+      lo: string | number | null;
+      hi: string | number | null;
+      first_pct: string | number | null;
+      last_pct: string | number | null;
+      threshold: string | null;
+      from_at: string | Date;
+      to_at: string | Date;
+    }>(
+      // `width_bucket` over epoch seconds gives uniform *time* slices. Runs with
+      // no measurement are counted but excluded from lo/hi/first/last, so a
+      // skipped run never lowers a bucket's floor to zero.
+      `SELECT b,
+              COUNT(*) AS runs,
+              COUNT(*) FILTER (WHERE pct IS NULL) AS skipped,
+              COUNT(*) FILTER (WHERE flagged) AS flagged,
+              MIN(pct) AS lo,
+              MAX(pct) AS hi,
+              (ARRAY_AGG(pct ORDER BY created_at ASC, id ASC) FILTER (WHERE pct IS NOT NULL))[1] AS first_pct,
+              (ARRAY_AGG(pct ORDER BY created_at DESC, id DESC) FILTER (WHERE pct IS NOT NULL))[1] AS last_pct,
+              MIN(threshold) AS threshold,
+              MIN(created_at) AS from_at,
+              MAX(created_at) AS to_at
+         FROM (
+           SELECT fs.id,
+                  fs.created_at,
+                  fs.flagged,
+                  fs.aligned_mismatch_percent AS pct,
+                  (r.summary ->> 'threshold') AS threshold,
+                  width_bucket(
+                    EXTRACT(EPOCH FROM fs.created_at)::float8,
+                    EXTRACT(EPOCH FROM $4::timestamptz)::float8,
+                    EXTRACT(EPOCH FROM $5::timestamptz)::float8,
+                    $6
+                  ) AS b
+             FROM frame_stats fs
+             JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
+            WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3
+              AND fs.created_at >= $4::timestamptz AND fs.created_at <= $5::timestamptz
+         ) t
+        GROUP BY b
+        ORDER BY b`,
+      [args.orgId, args.repoId, args.frame, from.toISOString(), to.toISOString(), buckets]
+    )
+  ).rows;
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const width = (to.getTime() - from.getTime()) / buckets;
+  const out: OverviewBucket[] = rows.map((row) => {
+    const index = Math.max(0, Math.min(buckets - 1, Number(row.b) - 1));
+    const runs = Number(row.runs);
+    const flagged = Number(row.flagged);
+    const num = (v: string | number | null) => (v === null ? null : Number(v));
+    return {
+      index,
+      from: new Date(from.getTime() + index * width).toISOString(),
+      to: new Date(from.getTime() + (index + 1) * width).toISOString(),
+      runs,
+      skipped: Number(row.skipped),
+      flagged,
+      lo: num(row.lo),
+      hi: num(row.hi),
+      first: num(row.first_pct),
+      last: num(row.last_pct),
+      threshold: threshold(row.threshold),
+      // Runs inside one bucket that disagree. This is the fact a coarse chart
+      // most easily loses: a single flagged run inside an otherwise clean hour.
+      crossing: flagged > 0 && flagged < runs,
+    };
+  });
+
+  const peaks = out.map((b) => b.hi).filter((v): v is number => v !== null);
+  return {
+    frame: args.frame,
+    days: args.days,
+    retentionDays: args.retentionDays,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    buckets: out,
+    bucketCount: buckets,
+    totalRuns: out.reduce((n, b) => n + b.runs, 0),
+    peak: peaks.length > 0 ? Math.max(...peaks) : null,
+  };
+}
+
 /**
  * One frame's trend, ready to draw.
  *
@@ -450,7 +869,14 @@ function threshold(value: string | null): number | null {
  */
 export async function frameTrend(
   db: Db,
-  args: { orgId: string; repoId: string; frame: string; limit?: number }
+  args: {
+    orgId: string;
+    repoId: string;
+    frame: string;
+    limit?: number;
+    /** A brushed selection. Narrows the points drawn, never first drift. */
+    span?: { from: Date; to: Date } | null;
+  }
 ): Promise<FrameTrend | null> {
   const limit = trendLimit(args.limit);
   // One extra row, only to answer "is there more history than this?" honestly.
@@ -523,5 +949,6 @@ export function assembleTrend(
     skipped: points.filter((p) => p.alignedMismatchPercent === null).length,
     truncated,
     limit,
+    dense: points.length > MAX_INTERACTIVE_POINTS,
   };
 }
