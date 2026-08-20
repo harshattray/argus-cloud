@@ -2,7 +2,20 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-20** — **the Cloud pages explain themselves, and there
+Last updated: **2026-08-21** — **storage is real, and Phase J's one-off greps
+are suites now.** R2 exists (bucket `normascope-cloud`, private, Eastern North
+America beside the `us-east-1` database and `iad1` functions), and the suite has
+run against it: **1085 checks across thirty-two suites on real R2**, 1055 on the
+filesystem driver. J2.1, J2.2, J3.1, J3.2 and J3.3 are met; the preview's *code*
+is deleted from the portfolio (11 → 10 functions). Two Phase J items are not
+met and are named in `FinishedSPEC.md` §3y: no real run has uploaded to R2, so
+J2.3's "the bucket prefix is empty" is untested, and the preview's `norma_*`
+tables and `normascope-cloud-*` objects still exist. Three checks that were
+written as go-live-day actions now run on every push — `test/bundleSecrets.test.mjs`,
+a CI job against a real S3 API, and `scripts/golive-check.mjs`, which reads what
+the deployment returns over the wire rather than what the build contains.
+
+Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
 is a tenant of real runs to show in them.** Every figure on `/r/` and `/repos/`
 is a defined term that opens a plain-language definition from the same glossary
 the public `/report` page prints; hovering a point on either chart names its run;
@@ -332,7 +345,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Retention sweep + run/repo/org deletion, rows **and** objects (Pathway 1 item 9) | ✅ | 55 checks; 20 processes contend for one deletion job and exactly one claims it; dry run is the default — §3j. **Open decision:** org deletion cascades its usage and revenue rows |
 | **Encrypted backups, a rehearsed restore, operational alerts** (Pathway 1 item 10) | ✅ built, ✅ **production backed up 2026-08-15**, ❌ not scheduled | 91 checks; both failure paths watched — §3k. **Production Neon was dumped, encrypted, restored and compared table by table on 2026-08-15** (32 tables). The nightly workflow exists and is inert; scheduling is **deferred to the first paying organization**, with hand backups covering the waitlist meanwhile. Switch-on checklist: `PATHWAYS.md` Pathway 1 item 10 |
 | **Alerts reach a person, not a log line** | ✅ | The explain routes alert through a real webhook/email channel; an alert claimed but never delivered is itself an alert — §3k |
-| **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-7) | ✅ built and run end to end, ❌ never against R2 | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Item 7 (2026-08-19) makes the default send full artifacts for flagged frames and a thumbnail for each clean one, and closed an unvalidated client-supplied `contentType` on the way — `PATHWAYS.md` Pathway 2. Filesystem driver only |
+| **Artifact upload: declare → transfer → commit** (Pathway 2 items 1-7) | ✅ built and run end to end, ✅ **the protocol suite runs against real R2 (2026-08-21)**, ❌ no customer run has uploaded there | Migrations 015-018, `norma-scope upload` in Argus. The portfolio capture uploaded from the CLI through presigned PUTs and committed after size and content-hash verification; deduplication, quota release and org deletion all exercised on real artifacts. Item 7 (2026-08-19) makes the default send full artifacts for flagged frames and a thumbnail for each clean one, and closed an unvalidated client-supplied `contentType` on the way — `PATHWAYS.md` Pathway 2. The 50 protocol checks now run on whichever driver the environment selects — filesystem by default, MinIO in CI, R2 when pointed at it (§3y) |
 | **Hosted explain is crop-grounded** (BuildV5 G3) | ✅ 2026-08-19 | Crops are cut in the **CLI**, not on the server — BuildV5 G3 says otherwise and is superseded, because cropping means decoding and the 2026-08-19 sharp decision exists precisely to keep uploaded bytes out of an image library in our own process. Proven on the real capture with a real key: the crop-grounded answer names the region `compare` recorded and the element missing from it; the metadata answer could not locate the difference. **Crops cost exactly one credit** — an analysis is 3 credits without them and 4 with, and the 1.5M-pixel budget is sized by the deep pass, which is what binds first. (An earlier line here said crops changed no price; that was computed against a Sonnet price that turns out never to take effect — see §3.) The server measures every image from its own header, so a client cannot decide what a call costs us. 50 checks here, 12 in Argus — §3r |
 | **Nothing secret reaches the provider** (Pathway 2 item 8) | ✅ 2026-08-19 | The scan lives in `promptAssembly.ts`, the one function both hosted paths call, so an unscanned payload cannot be assembled. A hit blocks and names the field — never a silent redaction. Interactive explain returns `secret_blocked` and releases both reservations; a poisoned frame in a CI batch is skipped before it reserves anything and the clean frames still run. 42 checks, including the naive path run through the same harness — §3q. It also found the same rule flagging ordinary file paths, fixed here and **still live in the CLI's copy** |
 | **The hosted run report renders** | ✅ **fixed 2026-08-15, verified in production 2026-08-19** | It rendered blank because the `/r/` CSP blocked the inline scripts Next uses to deliver page content. `middleware.ts` now issues a per-request nonce with `strict-dynamic` — not `unsafe-inline`; the strictness is deliberate on a page that renders model output. Checked against `normascope.com`: the page renders, **27 scripts and 27 nonces**, hydrated, fonts loaded, no console errors, and the nonce differs on every request. **No longer blocks Pathway 3** |
@@ -824,7 +837,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 2 | Artifact pipeline | both | 1 | ✅ **Done 2026-08-19** — `norma-scope upload` ships, hosted explain is crop-grounded, re-calibrated |
 | 3 | The report page | argus-cloud | 2 | ✅ **Built 2026-08-19** — images, findings, history and share UI; the gate's "a prospect can compare" needs Step 5 |
 | 4 | Trends | argus-cloud | 2 | ✅ **Built 2026-08-20** — repo view, frame trend chart, trends API; the "publish a real dogfood trend" claim under it needs Step 5 |
-| 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | Own DB, storage, preview URL; lab deleted; G suite green on real R2 |
+| 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | ◐ **G suite green on real R2 2026-08-21**; database and URL live; preview code deleted. Open: one real upload (J2.3), the preview org (J3.4), the preview's tables and objects |
 | 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
 | 8 | Launch gates | both | 7 | E1, E6, legal pages, trademark, refund runbook |
@@ -890,9 +903,13 @@ issued, and there is no session layer until Step 6. Nothing about that is a gap
 in the trends work — it is Step 6 arriving after Step 4 in this order, which was
 the plan.
 
-**Next is Step 5, cloud infrastructure go-live.** It is now the only thing
-standing between four built steps and the gates that would validate three of
-them.
+**Step 5 is most of the way through, as of 2026-08-21.** Storage is real and the
+suite has run against it; the deployment passes its own header, gate and secret
+checks. What is left is not infrastructure — it is **one real upload**. J2.3 asks
+that deleting a run empties its prefix in the bucket, and no run has put anything
+there yet. That same upload is what would validate Steps 3 and 4, whose gates ask
+what a prospect can see rather than what the code does. `FinishedSPEC.md` §3y
+carries the evidence and the open list.
 
 ### The capture test applied to this path
 
@@ -1133,21 +1150,42 @@ Step 6.
 
 ---
 
-### Step 5 — Go live → `BuildV5.md` Phase J
+### Step 5 — Go live → `BuildV5.md` Phase J ◐ mostly met 2026-08-21
 
 The first step needing accounts. Postgres, R2, a URL, and deleting the portfolio
 preview.
 
 **Re-run the entire G suite against real R2.** Presigning, `Content-Length`
 pinning, and TTL behave differently against a real service than a local stub,
-and abuse controls proven only against a stub are not proven.
+and abuse controls proven only against a stub are not proven. **Done 2026-08-21
+— 1085 checks across thirty-two suites against the real bucket.** Evidence, and
+the three checks that were rewritten so they run on every push instead of once:
+`FinishedSPEC.md` §3y.
 
 **normascope.com** is the destination, and it is **registered as of
-2026-08-13** — earlier than this step required. DNS is not delegated yet, so a
-free `*.vercel.app` still covers this step; the domain becomes mandatory at
-Step 7, because Paddle production checkout requires an approved domain.
+2026-08-13** — earlier than this step required. It serves today, on `www` with
+the apex redirecting to it; `scripts/golive-check.mjs` passes against it. The
+domain becomes mandatory at Step 7, because Paddle production checkout requires
+an approved domain.
 
-**Needs from Harsha:** items 1–5 and 7 of `BuildV5.md`'s handover table.
+**What is still open, and why each is not paperwork:**
+
+1. **J2.3 — no real run has uploaded to R2.** Deleting a run and then an org and
+   finding both prefixes empty *in the bucket* is the check that stops us paying
+   to store bytes nobody can reach, and it cannot be run on data that does not
+   exist. This needs one genuine upload against the deployment.
+2. **J3.4 — the private-preview org is not provisioned.** It has to be a real
+   `team` org so the entitlement path runs rather than being switched off.
+3. **J4 — the preview's data outlives its code.** The routes, handlers and
+   `_lib/norma.ts` are deleted (portfolio branch `retire-normascope-cloud-preview`,
+   1131 lines, functions 11 → 10), but the `norma_*` tables are still in the
+   portfolio's **shared** Turso database and the `normascope-cloud-*` objects in
+   its shared bucket. Shared is the word that matters: a wrong `DROP` or a wrong
+   prefix takes out the articles, claps and admin data beside them.
+
+**Needs from Harsha:** ~~items 1–5~~ **provided** (Vercel, Neon 2026-08-13, R2
+2026-08-21, secrets) · item 7 was given for the code and is still needed for the
+tables and objects.
 
 ---
 
@@ -1397,7 +1435,7 @@ Figma plugins, auto-fix PRs, CI blocking by default.
 | Needed at | Item |
 |---|---|
 | Step 2 | `ANTHROPIC_API_KEY` + small balance (~$0.20 for G4) |
-| Step 5 | Vercel project · ~~Postgres (Neon/Supabase)~~ **provided 2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · R2 bucket + credentials · `NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET` · confirmation to delete the portfolio preview |
+| Step 5 | ~~Vercel project~~ · ~~Postgres (Neon/Supabase)~~ **2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · ~~R2 bucket + credentials~~ **2026-08-21 — `normascope-cloud`, private, ENAM, bucket-scoped Object Read & Write token** · ~~`NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET`~~ · confirmation to drop the preview's `norma_*` tables and `normascope-cloud-*` objects — the code is deleted, the data is not |
 | Step 5 (now) | `DATABASE_URL` set in the Vercel project itself — the local `web/.env.local` copy does not travel, and the guard in `src/db.ts:61` makes a deploy without it fail rather than lose signups |
 | ~~Step 5 (optional)~~ | ~~`normascope.com` early~~ **provided 2026-08-13** — registered at Spaceship; **DNS still on the registrar's parking nameservers**, so delegation to Vercel is the remaining step |
 | Step 7 | Paddle sandbox account; then business verification for production (the domain is in hand) |

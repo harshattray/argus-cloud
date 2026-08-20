@@ -2316,6 +2316,90 @@ every density figure above is a measurement of a fixture, not of a customer.
 
 ---
 
+### 3y. Storage against real R2, and checks that outlive go-live day — BuildV5 Phase J, partial ✅ (2026-08-21)
+
+**R2 exists and the suite has run against it.** Bucket `normascope-cloud`,
+private, Eastern North America to sit beside the Neon database in `us-east-1`
+and the Vercel functions in `iad1`. An Object Read & Write account token scoped
+to that one bucket; five variables in Vercel Production.
+
+**Suite: 1085 checks across 32 suites against real R2**, 1055 on the filesystem
+driver. The two numbers differ because 30 checks only exist when a real S3 API
+is present.
+
+| Phase J check | Result |
+|---|---|
+| J1.1 fresh production database migrated | ✅ already true — Neon, 20 migrations, 2026-08-13 |
+| J2.1 full G suite against real R2 | ✅ storage 66, uploadPipeline 50 |
+| J2.2 unsigned bucket read denied | ✅ `golive-check` L7 — 400 on a listing and on an object |
+| J3.1 no private route serves data anonymously | ✅ L4 — `/admin` → `/admin/unlock`, the rest 404 |
+| J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request |
+| J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
+| J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
+| J2.3 delete a run then an org, prefixes empty **in the bucket** | ❌ needs a real uploaded run |
+| J3.4 upload from the private-preview org as a real `team` org | ❌ the org is not provisioned |
+| J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+
+**The timing is the evidence that it was R2 and not the local stand-in.** The
+storage suite takes 4.6s against MinIO on `localhost` and **71.3s** against
+Cloudflare; `uploadPipeline` goes from 2.2s to 28.2s. Those are round trips.
+
+**Three of these were plans to grep something once.** J2.1, J3.3 and J2.2 are
+written in `BuildV5.md` as go-live-day actions, and each checks a property that
+can break afterwards without anything going red — a header dropped in a config
+edit, a route that stops being gated when auth lands, a bucket opened at 1am to
+debug something. Doing them by hand proves the deployment was correct on the day
+it was done.
+
+- **The upload protocol was proven only against local disk.** `commitUpload`
+  accepts or refuses a run on what `head()` and `get()` report, and those are
+  the *driver's* answer: a local file always has the size the filesystem states,
+  while S3 reports what the client declared at PUT time and signals a missing
+  object by error name rather than by null. The suite now takes whichever driver
+  the environment selects. Against a real S3 API the counter-tests still fire —
+  U6b watches the naive commit accept 5000 stored bytes declared as 9.
+- **CI gained a third suite job on a real S3 API**, so the checks that skipped
+  themselves on every push now run: unauthenticated PUT, an upload exceeding the
+  pinned `Content-Length`, an expired URL, `deletePrefix` past the 1000-key
+  boundary.
+- **`test/bundleSecrets.test.mjs`** replaces J3.3's one-off grep: credential
+  shapes, server-only variables read or assigned, an allowlist of the
+  `NEXT_PUBLIC_` names, no `.env` inside `.next`.
+- **`scripts/golive-check.mjs <url>`** reads what the server returns over the
+  wire — the headers no build artifact contains, the nonce, the private routes,
+  the bucket's answer to an unsigned read. Production passes all of it.
+
+**Two of these checks were wrong first, and both failures are the useful part.**
+
+| Check | What it did | Why it mattered |
+|---|---|---|
+| `golive-check` L4 | Pointed at the apex domain, which 308s to `www`. Every request came back 308 and the gate checks read that as "not served anonymously" | **Six passes that never reached the application.** A check a redirect satisfies proves nothing |
+| `golive-check` L3 | Looked for a CSP nonce on `/`, which is served the inline policy by design | Reported a correct deployment as broken. Two policies exist; asking the wrong one is how this goes green while meaning nothing |
+| `bundleSecrets` B3 | Plain name matching flagged `ANTHROPIC_API_KEY` on `/commands`, which *explains* that the CLI needs one | A check that cries wolf is one people learn to ignore. B3 now needs a value beside the name, and B7 proves the loosening did not break it |
+
+**One claim that had never been checked against the service.** `storageImageOrigin`
+builds the artifact host by prefixing the bucket onto the endpoint, and the only
+test used a made-up endpoint — it proved the function agrees with itself. Get it
+wrong and nothing fails: the suite stays green, the deploy succeeds, and report
+images silently do not render, blocked by a policy naming a host that was never
+used. S5.7 signs a real GET and compares origins. Proven against MinIO's
+path-style URLs; **virtual-hosted addressing, which is what R2 uses, is
+unconfirmed** — the check exists but that run has not been reported back.
+
+**A number in the plan was wrong.** `BuildV5.md` J4.1 expects the portfolio's
+function count to fall from 11 to 7. Vercel does not turn underscore-prefixed
+paths into functions, so `api/_norma/*` never counted; the real drop is 11 → 10.
+
+**What this does not prove.** No artifact has been uploaded to R2 by a real run,
+so J2.3 — deleting a run and then an org and finding both prefixes empty *in the
+bucket* — is untested against R2, and it is the check that protects against
+paying to store bytes nobody can reach. The private-preview org does not exist,
+so J3.4's entitlement path is unexercised. And the preview's data outlives its
+code: the `norma_*` tables are still in the portfolio's shared Turso database and
+the `normascope-cloud-*` objects are still in its bucket.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six

@@ -480,10 +480,18 @@ No paid Cloud launch is verified until the relevant pathways have evidence for:
   threshold. Three high-severity advisories are recorded and **unconfirmed**;
   see `FinishedSPEC.md` §9;
 - [ ] tenant-isolation and authorization probes;
-- [ ] stored-XSS and sandbox/CSP probes;
+- [ ] stored-XSS and sandbox/CSP probes — **the CSP half is probed against the
+  live deployment**, not only against the config: `scripts/golive-check.mjs`
+  (2026-08-21) checks the served headers, that `/r/` carries a nonce, that the
+  nonce differs between two requests, and that the strict policy does not also
+  allow inline scripts. Stored XSS is still unprobed;
 - [ ] prompt-injection and hostile-content suites;
 - [ ] SSRF, redirect, DNS-rebinding, and capture containment suites;
-- [ ] rate-limit, quota, concurrency, replay, and abuse tests;
+- [ ] rate-limit, quota, concurrency, replay, and abuse tests — **the storage
+  half is now proven against a real S3 API rather than a local stub** (2026-08-21):
+  an upload exceeding the pinned `Content-Length`, an unsigned read, an expired
+  URL, and the upload protocol's own size and hash verification. CI runs them on
+  every push against MinIO; they have been run once against R2. `FinishedSPEC.md` §3y;
 - [ ] webhook signature, session, CSRF, and key-revocation tests;
 - [ ] backup restore, retention, deletion, and incident-drill evidence —
   **three of four.** Retention and deletion are proven (`FinishedSPEC.md` §3j),
