@@ -474,6 +474,9 @@ const shotTerms = [
     check("X4.1e",
       !/alignedMismatch|commitSha|runId|threshold|flagged|createdAt|\bpoints\b|\bbuckets\b/.test(brush),
       "and it holds no history — no measurement, commit, run id or time reaches the client here");
+    check("X4.1f",
+      /occupied: \[number, number\]\[\]/.test(brush),
+      "the one array it does take is pairs of numbers — positions already drawn in the SVG under it, which is why a drag can know it has selected nothing");
   }
 
   const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");

@@ -323,5 +323,58 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   }
 }
 
+// ═══ S7 — the empty states, and the figures in them ═══
+//
+// A Cloud page with nothing to draw used to render nothing, and on the frame
+// trend that deleted the control the reader had just used. The replacement is a
+// panel with a twin in it, which brings two things that can be wrong quietly:
+// a pose with no animation, and a drawing that only suits one ground.
+{
+  const twins = await readFile(path.join(WEB, "app/(site)/_components/twins.tsx"), "utf-8");
+  const css = await readFile(path.join(WEB, "app/globals.css"), "utf-8");
+
+  const union = twins.match(/export type TwinPose =([\s\S]*?);/);
+  const poses = union === null ? [] : [...union[1].matchAll(/"([a-z]+)"/g)].map((m) => m[1]);
+
+  // Not vacuous: an empty or truncated list would make every check below pass
+  // by having nothing to check.
+  check("S7.1", poses.length >= 11 && poses.includes("lantern") && poses.includes("hourglass"),
+    `${poses.length} poses declared, including the two the Cloud surface uses (${poses.join(", ")})`);
+
+  // TypeScript already forces `ARMS` and `MOTION` to hold every pose — they are
+  // `Record<TwinPose, …>`. Nothing forces the CSS, and a pose whose class is
+  // missing renders a figure that simply never moves, which reads as a design
+  // choice rather than as a bug.
+  const unanimated = poses.filter(
+    (p) => !new RegExp(`@keyframes tw-${p}\\b`).test(css) || !new RegExp(`\\.tw-${p}\\s*\\{`).test(css)
+  );
+  check("S7.2", unanimated.length === 0,
+    `every pose has both its keyframes and its class in globals.css${unanimated.length ? ` — missing: ${unanimated.join(", ")}` : ""}`);
+
+  // The prop is what stops a new pose reading as an existing one: a silhouette
+  // is recognised before a limb is, so a pose that only moves an elbow is the
+  // same drawing at a glance (`normascopeWeb.md` §5).
+  const propless = ["lantern", "hourglass"].filter(
+    (p) => !new RegExp(`case "${p}":`).test(twins)
+  );
+  check("S7.3", propless.length === 0,
+    `both Cloud poses carry a drawn prop${propless.length ? ` — missing: ${propless.join(", ")}` : ""}`);
+
+  // Decommented: the doc block above `CloudEmpty` explains at length why it is
+  // *not* a `TwinLink`, and a check reading the raw file finds that sentence and
+  // reports the opposite of what the code does.
+  const empty = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/empty-state.tsx"), "utf-8")
+  );
+
+  check("S7.4",
+    /tone="ink"/.test(empty) && /tone="cream"/.test(empty) &&
+      /surface\.onLight/.test(empty) && /surface\.onDark/.test(empty),
+    "the figure is drawn for both grounds and one is hidden by the same cascade the wordmark uses — the auto theme leaves the server unable to know which it will be");
+
+  check("S7.5", !/TwinLink/.test(empty) && !/\bsign\b/.test(empty),
+    "and it is a plain Twin: no `get cloud` sticker, because everyone reading this page has already bought it");
+}
+
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

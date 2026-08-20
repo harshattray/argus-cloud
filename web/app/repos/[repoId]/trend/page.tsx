@@ -7,6 +7,7 @@ import {
   frameTrend,
   MAX_INTERACTIVE_POINTS,
   MAX_TREND_POINTS,
+  occupiedSpans,
   overviewRange,
   overviewRanges,
   parseSpan,
@@ -23,6 +24,7 @@ import {
 import { getDb } from "../../../../lib/db";
 import { readTheme } from "../../../../lib/theme";
 import { CloudFooter, CloudMasthead } from "../../../_components/cloud/cloud-shell";
+import { CloudEmpty, CloudTwin } from "../../../_components/cloud/empty-state";
 import { Explainer } from "../../../_components/cloud/explainer";
 import { Brush } from "../../brush";
 import { OverviewChart } from "../../overview-chart";
@@ -42,6 +44,23 @@ import styles from "../../trends.module.css";
  * changed definition mid-history — each of those has its own sentence here,
  * because a chart that quietly omits any of them is a chart that reads as more
  * certain than the data is.
+ *
+ * **"Nothing to draw" is four different answers and they are not interchangeable
+ * (2026-08-20).** This page used to conflate them, and two of the four were
+ * bugs:
+ *
+ *   1. *This frame is not here, or is not yours.* A real dead end, and the only
+ *      one that gets the bare `NotFound` page.
+ *   2. *The chosen range holds no runs.* The overview section was rendered as
+ *      `{overview && …}`, so choosing 7d on a repository whose last run was a
+ *      fortnight ago deleted the section — and with it the range control that
+ *      had just been used. It keeps its heading and its buttons now.
+ *   3. *The brushed selection holds no runs.* `frameTrend` returns null for an
+ *      empty span exactly as it does for an absent frame, so a drag across the
+ *      blank part of the overview — which is most of it — took the whole page
+ *      to "Not found", with no masthead, no breadcrumb and no way back. The
+ *      span is dropped and said out loud instead.
+ *   4. *Every run in the range measured nothing.* Already handled, in words.
  */
 
 export const dynamic = "force-dynamic";
@@ -51,12 +70,32 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-function NotFound({ theme }: { theme?: string }) {
+/**
+ * The dead end, and only the dead end.
+ *
+ * It answers exactly one question now — *is this frame here, and is it yours* —
+ * having previously also been the answer to "did your drag select a period with
+ * no runs in it", which is not a dead end at all and had no business losing the
+ * masthead over.
+ *
+ * **`back` is passed whenever the repository is known.** The two cases that
+ * cannot pass it are the feature flag being off and a repository that does not
+ * resolve, and in neither of those is there a page to offer. Everything else
+ * gets a way out, because a page with no navigation and no link is the same
+ * mistake the site's 404 exists to avoid.
+ */
+function NotFound({ theme, back }: { theme?: string; back?: string }) {
   return (
     <div className={styles.page} data-theme={theme}>
       <main className={styles.notFound}>
+        <CloudTwin pose="lantern" className={styles.notFoundTwin} />
         <h1>Not found</h1>
         <p>This frame has no history here, or you don&apos;t have access to it.</p>
+        {back && (
+          <Link className={styles.notFoundBack} href={back}>
+            ← Back to the repository
+          </Link>
+        )}
       </main>
     </div>
   );
@@ -96,33 +135,33 @@ export default async function TrendPage({
   const range = overviewRange(days, plan.retentionDays);
   const span = parseSpan(from, to);
 
-  const [overview, trend] = await Promise.all([
-    frameOverview(db, {
-      orgId: owner.orgId,
-      repoId: owner.id,
-      frame,
-      days: range,
-      retentionDays: plan.retentionDays,
-    }),
-    frameTrend(db, {
-      orgId: owner.orgId,
-      repoId: owner.id,
-      frame,
-      limit: trendLimit(limit),
-      span,
-    }),
-  ]);
-  if (!trend) {
-    return <NotFound theme={theme ?? undefined} />;
-  }
+  const where = { orgId: owner.orgId, repoId: owner.id, frame };
+  const repoHref = `/repos/${owner.id}`;
 
-  const runs = await frameRuns(db, {
-    orgId: owner.orgId,
-    repoId: owner.id,
-    frame,
-    span,
-    page: pageNumber(page),
-  });
+  const [overview, selected] = await Promise.all([
+    frameOverview(db, { ...where, days: range, retentionDays: plan.retentionDays }),
+    frameTrend(db, { ...where, limit: trendLimit(limit), span }),
+  ]);
+
+  /*
+   * A brushed span holding no runs is not a missing frame, and telling them
+   * apart costs one query in the one case where it happens.
+   *
+   * `frameTrend` returns null for both, because `frameHistory` returns null on
+   * an empty result set and cannot know why the set was empty. Asking again
+   * without the span is the whole test: history without it means the frame is
+   * real and the selection was the empty thing.
+   */
+  const trend = selected ?? (span ? await frameTrend(db, { ...where, limit: trendLimit(limit) }) : null);
+  if (!trend) {
+    return <NotFound theme={theme ?? undefined} back={repoHref} />;
+  }
+  /** The span was asked for, holds nothing, and has been dropped. Said below. */
+  const spanEmpty = span !== null && selected === null;
+  /** The span actually in force. Everything downstream reads this, not `span`. */
+  const shown = spanEmpty ? null : span;
+
+  const runs = await frameRuns(db, { ...where, span: shown, page: pageNumber(page) });
 
   const latest = trend.points[trend.points.length - 1];
   const modes = [...new Set(trend.points.map((p) => `${p.mode}/${p.source}`))];
@@ -131,7 +170,7 @@ export default async function TrendPage({
   const keep =
     (limit ? `&limit=${encodeURIComponent(limit)}` : "") +
     (days ? `&days=${encodeURIComponent(days)}` : "") +
-    (span ? `&from=${encodeURIComponent(span.from.toISOString())}&to=${encodeURIComponent(span.to.toISOString())}` : "");
+    (shown ? `&from=${encodeURIComponent(shown.from.toISOString())}&to=${encodeURIComponent(shown.to.toISOString())}` : "");
   const path = base + keep;
 
   return (
@@ -198,60 +237,96 @@ export default async function TrendPage({
           <Caveats trend={trend} modes={modes} />
         </section>
 
-        {overview && (
-          <section className={styles.section}>
-            <div className={styles.sectionHead}>
-              <h2 className={styles.sectionTitle}>
-                <Explainer term="overview" scope="ov">
-                  History at a glance
-                </Explainer>
-              </h2>
-              <p className={styles.sectionNote}>
-                {overview.totalRuns} run{overview.totalRuns === 1 ? "" : "s"} over {overview.days} days.
-                Drag to inspect a period.
-              </p>
-            </div>
-
-            <Ranges base={base} limit={limit} days={range} retentionDays={plan.retentionDays} />
-
+        {/*
+          Rendered whether or not there is anything in the range. The section
+          owns the range control, so hiding the section on an empty range hid
+          the only way back to a range that is not empty.
+        */}
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>
+              <Explainer term="overview" scope="ov">
+                History at a glance
+              </Explainer>
+            </h2>
             {/*
-              The brush sits on top of an inert chart rather than replacing it.
-              With JavaScript off — or before it loads — the picture is complete
-              and the range links still work; only the drag is missing.
+              The empty form is the same sentence with the count in it and the
+              instruction dropped — there is nothing to drag. It deliberately
+              does not repeat the panel's own line below, which said "No runs in
+              the last 7 days" in both places until this was noticed on a phone,
+              where the two sit four lines apart.
             */}
-            <div className={styles.overviewWrap}>
-              <OverviewChart overview={overview} />
-              <Brush
-                from={overview.from}
-                to={overview.to}
-                href={`${base}${limit ? `&limit=${encodeURIComponent(limit)}` : ""}&days=${range}`}
-              />
-            </div>
-            <ul className={styles.legend}>
-              <li>
-                <span className={`${styles.swatch} ${styles.swatchBand}`} />{" "}
-                <Explainer term="overview-band" scope="ovlegend">
-                  range recorded in each period
-                </Explainer>
-              </li>
-              <li>
-                <span className={`${styles.swatch} ${styles.swatchTransition}`} />{" "}
-                <Explainer term="overview-crossing" scope="ovlegend">
-                  flagged and clean runs in the same period
-                </Explainer>
-              </li>
-            </ul>
+            <p className={styles.sectionNote}>
+              {overview
+                ? `${overview.totalRuns} run${overview.totalRuns === 1 ? "" : "s"} over ${overview.days} days. Drag to inspect a period.`
+                : `0 runs over ${range} days.`}
+            </p>
+          </div>
 
-            {span && (
-              <p className={styles.caveat}>
-                Showing {span.from.toISOString().slice(0, 16).replace("T", " ")} to{" "}
-                {span.to.toISOString().slice(0, 16).replace("T", " ")} UTC.{" "}
-                <Link href={`${base}&days=${range}`}>Clear the selection</Link> to go back to the
-                most recent runs.
-              </p>
-            )}
-          </section>
-        )}
+          <Ranges base={base} limit={limit} days={range} retentionDays={plan.retentionDays} />
+
+          {overview ? (
+            <>
+              {/*
+                The brush sits on top of an inert chart rather than replacing
+                it. With JavaScript off — or before it loads — the picture is
+                complete and the range links still work; only the drag is
+                missing.
+              */}
+              <div className={styles.overviewWrap}>
+                <OverviewChart overview={overview} />
+                <Brush
+                  from={overview.from}
+                  to={overview.to}
+                  href={`${base}${limit ? `&limit=${encodeURIComponent(limit)}` : ""}&days=${range}`}
+                  occupied={occupiedSpans(overview)}
+                />
+              </div>
+              <ul className={styles.legend}>
+                <li>
+                  <span className={`${styles.swatch} ${styles.swatchBand}`} />{" "}
+                  <Explainer term="overview-band" scope="ovlegend">
+                    range recorded in each period
+                  </Explainer>
+                </li>
+                <li>
+                  <span className={`${styles.swatch} ${styles.swatchTransition}`} />{" "}
+                  <Explainer term="overview-crossing" scope="ovlegend">
+                    flagged and clean runs in the same period
+                  </Explainer>
+                </li>
+              </ul>
+              <OverviewShape overview={overview} />
+            </>
+          ) : (
+            <EmptyRange
+              base={base}
+              days={range}
+              /* Only when nothing is narrowing the page, or "last measured"
+                 would name the newest run *in the selection* and read as the
+                 newest run there is. */
+              lastRunAt={shown ? null : latest.createdAt}
+              retentionDays={plan.retentionDays}
+            />
+          )}
+
+          {spanEmpty && span && (
+            <p className={styles.caveat}>
+              No runs between {span.from.toISOString().slice(0, 16).replace("T", " ")} and{" "}
+              {span.to.toISOString().slice(0, 16).replace("T", " ")} UTC — so that selection has
+              been dropped, and everything below is the most recent runs instead.
+            </p>
+          )}
+
+          {shown && (
+            <p className={styles.caveat}>
+              Showing {shown.from.toISOString().slice(0, 16).replace("T", " ")} to{" "}
+              {shown.to.toISOString().slice(0, 16).replace("T", " ")} UTC.{" "}
+              <Link href={`${base}&days=${range}`}>Clear the selection</Link> to go back to the
+              most recent runs.
+            </p>
+          )}
+        </section>
 
         <section className={styles.section}>
           <div className={styles.sectionHead}>
@@ -314,7 +389,7 @@ export default async function TrendPage({
               */}
               <a
                 className={styles.exportLink}
-                href={`/repos/${owner.id}/trend/export?frame=${encodeURIComponent(frame)}${span ? `&from=${encodeURIComponent(span.from.toISOString())}&to=${encodeURIComponent(span.to.toISOString())}` : ""}`}
+                href={`/repos/${owner.id}/trend/export?frame=${encodeURIComponent(frame)}${shown ? `&from=${encodeURIComponent(shown.from.toISOString())}&to=${encodeURIComponent(shown.to.toISOString())}` : ""}`}
               >
                 Export CSV
               </a>
@@ -393,6 +468,89 @@ export default async function TrendPage({
         </CloudFooter>
       </main>
     </div>
+  );
+}
+
+/**
+ * The range holds no runs — said in the place the chart would have been.
+ *
+ * **It offers the smallest range that would actually help, or none.** A "try a
+ * wider range" line that leads to a second empty chart is worse than no line,
+ * so the step offered is the smallest one that reaches back past the newest run
+ * this frame has. When retention has swept past that run there is no such step,
+ * and the sentence says so rather than pointing at a button that does nothing —
+ * the same rule `windowOptions` follows for the size ladder.
+ */
+function EmptyRange({
+  base,
+  days,
+  lastRunAt,
+  retentionDays,
+}: {
+  base: string;
+  days: number;
+  /** Null when a selection is narrowing the page; see the call site. */
+  lastRunAt: string | null;
+  retentionDays: number;
+}) {
+  const ago =
+    lastRunAt === null
+      ? null
+      : Math.max(0, Math.ceil((Date.now() - new Date(lastRunAt).getTime()) / (24 * 3600 * 1000)));
+  const wider = overviewRanges(retentionDays).find((n) => n > days && (ago === null || n >= ago));
+  return (
+    <CloudEmpty pose="hourglass" title={`No runs in the last ${days} days.`}>
+      {lastRunAt !== null && (
+        <>
+          This frame was last measured on {lastRunAt.slice(0, 10)}
+          {ago !== null && ago > days ? `, ${ago} day${ago === 1 ? "" : "s"} ago` : ""}.{" "}
+        </>
+      )}
+      {wider !== undefined ? (
+        <>
+          <Link href={`${base}&days=${wider}`}>Widen the range to {wider}d</Link> to bring it into
+          view.
+        </>
+      ) : (
+        <>Nothing has been uploaded for it inside the {retentionDays} days this plan retains.</>
+      )}
+    </CloudEmpty>
+  );
+}
+
+/**
+ * Why this chart is a block today and a line on the next repository.
+ *
+ * **The encoding never changes; the data does, and that is not obvious.** Each
+ * bucket draws a band from its lowest recorded value to its highest, and a line
+ * joins the buckets' last values. Six runs in one afternoon land in a single
+ * bucket, so there is one band and no line — a `path` of one `M` draws nothing,
+ * correctly, because a line through one point would be inventing the second.
+ * Four runs across a fortnight land in four buckets whose bands are a pixel
+ * tall, so the line is all you see.
+ *
+ * Two readers comparing screenshots concluded the product had two charts. It
+ * has one, and the case that causes the confusion is cheap to name.
+ */
+function OverviewShape({ overview }: { overview: FrameOverview }) {
+  const measured = overview.buckets.filter((b) => b.last !== null);
+  if (measured.length !== 1) {
+    return null;
+  }
+  const only = measured[0];
+  const lo = only.lo;
+  const hi = only.hi;
+  return (
+    <p className={styles.caveat}>
+      All {overview.totalRuns} run{overview.totalRuns === 1 ? "" : "s"} in this range fall inside
+      one period, so the chart is a single band and no line — a line needs two periods to join.
+      {lo !== null && hi !== null
+        ? lo === hi
+          ? ` Every one of them measured ${hi.toFixed(2)}%.`
+          : ` The band is their full spread, ${lo.toFixed(2)}% to ${hi.toFixed(2)}%.`
+        : ""}{" "}
+      Narrow the range, or read the exact runs below.
+    </p>
   );
 }
 

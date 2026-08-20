@@ -33,6 +33,8 @@ const WEB = path.join(ROOT, "web");
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const {
   frameOverview,
+  frameTrend,
+  occupiedSpans,
   overviewRanges,
   overviewRange,
   parseSpan,
@@ -264,6 +266,90 @@ async function run(frame, at, pct, { threshold = 0.5 } = {}) {
     check(id, /peak\.toFixed\(2\)/.test(chart) && !/\{top\.toFixed/.test(chart),
       `${rel.split("/").pop()} labels its axis with a value some run recorded, never with the headroom constant`);
   }
+}
+
+// ═══ O8 — the brush cannot be dragged onto nothing ═══
+//
+// The overview is 180 uniform slices of time and a real tenant fills a handful
+// of them, so most of that chart is blank. Dragging across the blank part was
+// the *likely* gesture, not an edge case, and it navigated to a span with no
+// runs in it — which took the whole page to "Not found".
+{
+  const frame = "afternoon.png";
+  // Six runs in four minutes, the shape the real repository had.
+  for (let i = 0; i < 6; i++) {
+    await run(frame, new Date(daysAgo(15).getTime() + i * 48 * 1000), 0.02 + i * 0.01);
+  }
+
+  const ov = await frameOverview(db, { orgId, repoId, frame, days: 90, retentionDays: 90, now: NOW });
+  const spans = occupiedSpans(ov);
+
+  check("O8.1", spans.length === 1,
+    `six runs from one afternoon are one occupied span, not six (got ${spans.length})`);
+  check("O8.2", spans.every(([lo, hi]) => lo >= 0 && hi <= 1 && hi > lo),
+    "every span is a real slice of the chart's own width");
+
+  // The counter-test, in the sense of CLAUDE.md rule 3: how much of the chart
+  // *is* empty. Without the check, this fraction is the chance a drag works.
+  const covered = spans.reduce((n, [lo, hi]) => n + (hi - lo), 0);
+  check("O8.3", covered < 0.05,
+    `${(covered * 100).toFixed(2)}% of this chart holds runs — so ${(100 - covered * 100).toFixed(0)}% of drags used to land on an empty span and 404 the page`);
+
+  // Contiguity: runs spread over consecutive buckets merge into one span rather
+  // than one per bucket, or a busy fortnight would ship 60 pairs to the client.
+  const dense = "dense.png";
+  for (let h = 0; h < 48; h++) {
+    await run(dense, new Date(daysAgo(2).getTime() + h * 3600 * 1000), 1);
+  }
+  const denseOv = await frameOverview(db, { orgId, repoId, frame: dense, days: 90, retentionDays: 90, now: NOW });
+  const denseSpans = occupiedSpans(denseOv);
+  check("O8.4", denseSpans.length < denseOv.buckets.length,
+    `48 runs across ${denseOv.buckets.length} buckets merge to ${denseSpans.length} span(s)`);
+}
+
+// ═══ O9 — an empty selection is not a missing frame ═══
+//
+// `frameHistory` returns null on an empty result set and cannot know why the
+// set was empty, so `frameTrend` says null for both. The page used to render
+// its bare "Not found" for either — losing the masthead, the breadcrumb, the
+// range control and the export link because a drag selected blank chart.
+//
+// Asking again without the span is the whole test, and this is it.
+{
+  const frame = "afternoon.png";
+  const empty = { from: daysAgo(60), to: daysAgo(50) };
+
+  const spanned = await frameTrend(db, { orgId, repoId, frame, span: empty });
+  const whole = await frameTrend(db, { orgId, repoId, frame });
+  const absent = await frameTrend(db, { orgId, repoId, frame: "no-such-frame.png" });
+
+  check("O9.1", spanned === null, "a span holding no runs comes back null");
+  check("O9.2", whole !== null && whole.points.length === 6,
+    `and the same frame without the span has its ${whole?.points.length} runs — so the frame is real and the selection was the empty thing`);
+  check("O9.3", absent === null, "a frame that does not exist is null either way, which is the case that is a real dead end");
+}
+
+// ═══ O10 — the page does not delete its own controls ═══
+//
+// Both of these are structure, not wording. The failures they lock down were
+// invisible in review and obvious on screen: a section that vanished, and a
+// dead end reached by dragging.
+{
+  const page = decomment(
+    await readFile(path.join(WEB, "app/repos/[repoId]/trend/page.tsx"), "utf-8")
+  );
+
+  check("O10.1", !/\{overview &&\s*\(?\s*</.test(page),
+    "the overview section is not gated on there being an overview — it owns the range control, so hiding it on an empty range hid the way back to a range that is not empty");
+  check("O10.2", /<Ranges[\s\S]{0,400}overview \?/.test(page),
+    "the range control renders before the fork, so it is there in both states");
+  check("O10.3", /spanEmpty/.test(page) && /shown = spanEmpty \? null : span/.test(page),
+    "an empty span is named, dropped, and everything downstream reads the span in force rather than the one in the URL");
+  check("O10.4", /span: shown/.test(page) && !/encodeURIComponent\(span\./.test(page),
+    "the runs table and the CSV export are built from the span in force, never from the one still sitting in the URL — or the chart would show the whole history under a table saying `0 in range`");
+  check("O10.5", /occupied=\{occupiedSpans\(overview\)\}/.test(page),
+    "and the brush is told where the runs are, so a drag across blank chart never becomes a URL");
+
 }
 
 await db.query("DELETE FROM orgs WHERE id = $1", [orgId]);

@@ -33,18 +33,33 @@ import styles from "./trends.module.css";
  * memory is neither. It also keeps the detail chart, the runs table and the
  * export reading one span from one place, instead of three components agreeing
  * to be consistent.
+ *
+ * **A selection holding no runs does not navigate, and says so while you
+ * drag.** Most of the overview is blank — 180 buckets of uniform time, a
+ * handful of them holding anything — so dragging across empty space is the
+ * ordinary gesture rather than a mistake, and it used to send the reader to a
+ * page that said "Not found". The occupied spans arrive as fractions from
+ * `occupiedSpans`, so this is a comparison rather than a second date
+ * calculation that has to agree with the server's.
+ *
+ * That is the cue, not the guard. The server still handles a hand-edited or
+ * pasted URL that names an empty span, because this component is not in that
+ * path at all.
  */
 
 export function Brush({
   from,
   to,
   href,
+  occupied,
 }: {
   /** Bounds of the overview, ISO. A drag is interpolated between these. */
   from: string;
   to: string;
   /** Where to send the reader, with `from`/`to` appended. */
   href: string;
+  /** Parts of the width holding runs, as 0–1 fractions. See `occupiedSpans`. */
+  occupied: [number, number][];
 }) {
   const router = useRouter();
   const box = useRef<HTMLDivElement | null>(null);
@@ -101,14 +116,20 @@ export function Brush({
       if (hi - lo < 0.01) {
         return;
       }
+      // Nor is a drag across blank chart. The selection has been labelled "no
+      // runs here" for the whole gesture, so staying put is the answer to it.
+      if (!holdsRuns(lo, hi, occupied)) {
+        return;
+      }
       const at = (f: number) => new Date(fromMs + (toMs - fromMs) * f).toISOString();
       router.push(`${href}&from=${encodeURIComponent(at(lo))}&to=${encodeURIComponent(at(hi))}`);
     },
-    [drag, fromMs, toMs, href, router]
+    [drag, fromMs, toMs, href, occupied, router]
   );
 
   const lo = drag === null ? 0 : Math.min(drag.a, drag.b);
   const hi = drag === null ? 0 : Math.max(drag.a, drag.b);
+  const barren = drag !== null && !holdsRuns(lo, hi, occupied);
 
   return (
     <div
@@ -121,11 +142,28 @@ export function Brush({
       role="presentation"
     >
       {drag !== null && hi - lo >= 0.002 && (
-        <div
-          className={styles.brushSelection}
-          style={{ left: `${lo * 100}%`, width: `${(hi - lo) * 100}%` }}
-        />
+        <>
+          <div
+            className={barren ? `${styles.brushSelection} ${styles.brushBarren}` : styles.brushSelection}
+            style={{ left: `${lo * 100}%`, width: `${(hi - lo) * 100}%` }}
+          />
+          {/*
+            Only once the selection is wide enough to be a real drag, so the
+            label does not flicker on under a pointer that is still moving off
+            a tap. Same 0.01 threshold `onUp` uses to tell the two apart.
+          */}
+          {barren && hi - lo >= 0.01 && (
+            <span className={styles.brushHint} style={{ left: `${((lo + hi) / 2) * 100}%` }}>
+              no runs here
+            </span>
+          )}
+        </>
       )}
     </div>
   );
+}
+
+/** Does `[lo, hi]` overlap any part of the chart that holds runs? */
+function holdsRuns(lo: number, hi: number, occupied: [number, number][]): boolean {
+  return occupied.some(([a, b]) => b > lo && a < hi);
 }

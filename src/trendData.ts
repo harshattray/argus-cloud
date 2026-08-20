@@ -882,6 +882,46 @@ export async function frameOverview(
 }
 
 /**
+ * Where the overview actually holds runs, as fractions of its own width.
+ *
+ * **This is what stops the brush selecting nothing.** The overview is 180
+ * buckets of uniform time and a real tenant fills a handful of them, so most of
+ * that chart is blank — on a repository with six runs from one afternoon,
+ * roughly 95% of the width is empty. Dragging across the empty part is
+ * therefore the *likely* gesture, not an edge case, and it used to navigate to
+ * a span with no runs in it, which took the whole page to "Not found".
+ *
+ * Fractions rather than timestamps because that is what a pointer position is.
+ * The brush converts x to a 0–1 fraction of the plot area and interpolates the
+ * dates from it; handing it the same units means the check is a comparison
+ * rather than a second date calculation that has to agree with the first.
+ *
+ * Contiguous buckets are merged, so a busy fortnight is one span and not 60.
+ */
+export function occupiedSpans(overview: FrameOverview): [number, number][] {
+  const from = new Date(overview.from).getTime();
+  const to = new Date(overview.to).getTime();
+  const width = Math.max(1, to - from);
+  const out: [number, number][] = [];
+  // `frameOverview` returns buckets in index order, which is what makes the
+  // merge below a single pass rather than a sort.
+  for (const bucket of overview.buckets) {
+    if (bucket.runs === 0) {
+      continue;
+    }
+    const lo = (new Date(bucket.from).getTime() - from) / width;
+    const hi = (new Date(bucket.to).getTime() - from) / width;
+    const last = out[out.length - 1];
+    if (last !== undefined && lo - last[1] <= 1e-9) {
+      last[1] = hi;
+    } else {
+      out.push([lo, hi]);
+    }
+  }
+  return out;
+}
+
+/**
  * One frame's trend, ready to draw.
  *
  * The numbers all come from `frameHistory()`. What is added here is position:

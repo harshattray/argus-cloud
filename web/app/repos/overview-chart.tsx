@@ -57,6 +57,18 @@ export function OverviewChart({ overview }: { overview: FrameOverview }) {
   const width = Math.max(1.2, inner.w / overview.bucketCount);
 
   const measured = overview.buckets.filter((b) => b.last !== null);
+  /*
+   * One measured bucket draws no line — a path of a single `M` renders nothing,
+   * and it should: a line needs two points, and interpolating one run into a
+   * stroke would be inventing the second.
+   *
+   * That is why the same chart reads as a bar for one repository and a
+   * sparkline for another. Six runs in one afternoon land in one bucket and
+   * come out as a single band with no line through it; four runs across a
+   * fortnight come out as four bands so short they read as the line joining
+   * them. Same rule, two pictures, and the page says which one you are looking
+   * at rather than leaving the reader to work it out.
+   */
   const line = measured
     .map((b, i) => `${i === 0 ? "M" : "L"}${x(b.from).toFixed(1)},${y(b.last as number).toFixed(1)}`)
     .join(" ");
