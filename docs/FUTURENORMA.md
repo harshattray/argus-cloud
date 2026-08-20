@@ -910,7 +910,13 @@ project: three captures, its numbers, its history, images served from R2 through
 presigned URLs the live CSP allows. That is the sentence Steps 3 and 4 have been
 waiting for, and it needed a deployment rather than more code.
 
-What remains of Phase J is J2.3's deletion half and the preview's leftover data.
+**J2.3 is proven too**, against production R2 and in both directions: deleting a
+run whose blobs another run shares removes rows and no objects, while deleting a
+run of genuinely unique bytes empties the prefix — checked by sweeping the whole
+prefix, not by re-heading keys we already knew about. `norma-scope@0.8.1` is on
+npm and is the build that was tested.
+
+**All that remains of Phase J is the preview's leftover data.**
 `FinishedSPEC.md` §3y carries the evidence and the open list.
 
 ### The capture test applied to this path

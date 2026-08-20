@@ -2337,8 +2337,27 @@ is present.
 | J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
 | J3.4 upload from the private-preview org as a real `team` org | ✅ org provisioned, `canUpload=true` through the real entitlement path, 5 files uploaded |
 | J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
-| J2.3 delete a run then an org, prefixes empty **in the bucket** | ◐ the data now exists; the deletion has not been run |
+| J2.3 delete a run then an org, prefixes empty **in the bucket** | ✅ proven against production R2 — see below |
 | J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+
+**J2.3, in two halves, because deletion has two ways to be wrong.**
+
+The first is deleting too much. `norma-scope@0.8.1` from npm re-uploaded the same
+run into the preview org: **5 files already stored, 0 re-sent** — content
+addressing, so a second run of identical artifacts costs no transfer and no
+storage. Two runs, ten artifact rows, **five distinct objects**, `bytes_stored`
+unchanged at 357,971. Deleting that second run removed 6 rows and **0 objects**,
+because every blob was still referenced by the run that stayed, and all five
+survived.
+
+The second is deleting too little — the expensive one, since bytes nobody can
+reach are bytes we keep paying for. A throwaway org uploaded a synthetic run of
+**random pixels**, deliberately unique so nothing could deduplicate onto blobs
+the preview org owns. Deleting it removed **3 objects, 4 rows, 336,714 bytes**;
+a re-check found 0 of 3 present, and a `deletePrefix` sweep over the whole org
+prefix returned **0** — the claim is that the bucket holds nothing under it, not
+that the keys we happened to record are gone. The org delete then took its row,
+and the preview org's five objects were untouched throughout.
 
 **The private preview uploaded a real run, and it is Harsha's own.** The
 portfolio's `.bridge/` holds a genuine comparison from 2026-07-31 — three frames,
@@ -2430,13 +2449,16 @@ unconfirmed** — the check exists but that run has not been reported back.
 function count to fall from 11 to 7. Vercel does not turn underscore-prefixed
 paths into functions, so `api/_norma/*` never counted; the real drop is 11 → 10.
 
-**What this does not prove.** J2.3 has its data now but has not been run: nothing
-has deleted a run and then an org and confirmed both prefixes are empty *in the
-bucket*, which is the check that protects against paying to store bytes nobody
-can reach. It is deliberately not run yet — run `a52bdc55` is the only real run
-in production, and it is the one that would validate Steps 3 and 4.
+**The published CLI is the one that was tested, not the local build.**
+`norma-scope@0.8.1` went to npm on 2026-08-21 and was installed fresh into an
+empty project — 5 packages, no `@anthropic-ai/sdk`, so the optional peer stays
+optional. Its `--dry-run` reported exactly what `COMMANDS.md` now claims: three
+files for the flagged frame, one thumbnail each for the two that passed. That
+release also fixed docs which had described the pre-thumbnail behaviour since
+`773ac3d` — the wrong thing to be stale about, since it is a statement of what
+leaves a user's machine.
 
-The preview's data also outlives its code: the `norma_*` tables are still in the
+**What this does not prove.** The preview's data outlives its code: the `norma_*` tables are still in the
 portfolio's shared Turso database and the `normascope-cloud-*` objects are still
 in its bucket.
 
