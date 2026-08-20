@@ -31,6 +31,8 @@ const REAL_PG = Boolean(process.env.DATABASE_URL?.trim());
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { createFilesystemStorage } = await import(path.join(DIST, "storage/filesystem.js"));
+const { createStorage } = await import(path.join(DIST, "storage.js"));
+const { orgPrefix } = await import(path.join(DIST, "storage/keys.js"));
 const {
   declareUpload,
   commitUpload,
@@ -60,17 +62,38 @@ async function refusal(fn) {
   }
 }
 
-console.log(`mode: ${REAL_PG ? "REAL POSTGRES (DATABASE_URL set)" : "PGlite (in-process)"}\n`);
-
 const db = await createDb();
 await migrate(db);
 
 const ROOT = await mkdtemp(path.join(HERE, ".tmp-upload-"));
-const storage = createFilesystemStorage({
-  root: path.join(ROOT, "blobs"),
-  publicBaseUrl: "http://localhost:3000/api/blob",
-  signingSecret: "upload-suite",
-});
+
+// The protocol is driver-agnostic by design, so the suite proving it must be
+// able to run on either driver — `createStorage()` picks from the environment
+// exactly as the deployment does.
+//
+// **This is what BuildV5's J2.1 asks for and the filesystem cannot give.**
+// `commitUpload` decides whether to accept an upload by heading the object and
+// reading it back, and both of those are *the driver's* answer: a local file
+// always has the size the filesystem reports, while S3 reports a size the
+// client declared at PUT time, and a missing object is `null` from one driver
+// and a thrown error name from the other. A guard proven only against local
+// disk is a guard proven against the easier of the two.
+//
+// Filesystem stays the default so `npm test` needs nothing installed. Set the
+// env from `scripts/test-s3.sh` and the same checks run against MinIO — and,
+// when the credentials exist, against R2.
+const storage = process.env.NORMA_STORAGE_BUCKET?.trim()
+  ? await createStorage()
+  : createFilesystemStorage({
+      root: path.join(ROOT, "blobs"),
+      publicBaseUrl: "http://localhost:3000/api/blob",
+      signingSecret: "upload-suite",
+    });
+
+console.log(
+  `mode: ${REAL_PG ? "REAL POSTGRES (DATABASE_URL set)" : "PGlite (in-process)"}` +
+    `, storage: ${storage.driver}${storage.driver === "s3" ? ` (${process.env.NORMA_STORAGE_ENDPOINT ?? "aws"})` : ""}\n`
+);
 
 const bytesOf = (s) => new TextEncoder().encode(s);
 const sha256 = (s) => createHash("sha256").update(bytesOf(s)).digest("hex");
@@ -1013,6 +1036,13 @@ check(
 
 await rm(ROOT, { recursive: true, force: true });
 for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg, statsOrg]) {
+  // Dropping the rows is enough on the filesystem driver — `ROOT` has just gone
+  // with everything under it. A bucket outlives the process, so the objects are
+  // removed by the same call the product uses to erase an organization, or a
+  // second run of this suite would be reading the first one's leftovers.
+  if (storage.driver === "s3") {
+    await storage.deletePrefix(orgPrefix(id));
+  }
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();
