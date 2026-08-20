@@ -250,8 +250,8 @@ deliberately: an index of legal documents is not a place to sell.
 
 Two identical figures in dark glasses, each reading its own copy of the same
 page. Traced from a frame of Harsha's own generated footage — the still is not
-in the repo. `web/app/(site)/_components/twins.tsx`, one character, nine poses,
-two tones (charcoal line on paper, cream line on ink).
+in the repo. `web/app/(site)/_components/twins.tsx`, one character, twelve
+poses, two tones (charcoal line on paper, cream line on ink).
 
 They are not general decoration. **Nine placements, nine poses, no pose twice
 on the site**, and the count is a ceiling: a new placement takes a new pose or
@@ -268,6 +268,37 @@ an existing placement's slot.
 | `/cloud` | the waitlist | wave (cream) |
 | `/legal` | the document index | stack |
 | 404 | "Nothing here to compare" | empty |
+
+**Two more live on the Cloud surface, not the site (2026-08-20).** They are
+the same rule applied to a second product: a new placement takes a new pose,
+and `empty` already belongs to the 404.
+
+| Page | Where | Pose |
+|---|---|---|
+| `/repos/…/trend` | frame not found, or not yours | lantern |
+| `/repos/…/trend` | a range holding no runs | hourglass |
+
+`lantern` hangs a lamp low beside the figure, arm down — the only prop in the
+set *below* the body, which is what keeps it out of `magnify`'s silhouette when
+both sweep an arm. The figure already wears dark glasses, so a lamp it is
+carrying is the existing joke continuing rather than a new one, and down at the
+ground is what the gesture means: we went and looked where it should have been.
+
+`hourglass` is held in both hands, almost run through. It is the narrowest prop
+in the set and the only tall one, which is the whole separation — it shares the
+both-hands-in-front silhouette with four other poses. Deliberately tipped and
+set back down rather than turned: **an hourglass rotating on a page of charts
+reads as a loading spinner**, and "wait, it's coming" is the one thing that
+state must not say.
+
+Both are rendered twice and hidden by CSS, because the Cloud theme has three
+states and the *auto* one leaves the server unable to know which ground the
+drawing will land on. That is the same cascade the wordmark and the Yutic
+endorsement already use, in `_styles/surface.module.css`.
+
+**Neither carries a sticker or links to `/cloud`.** Everyone who reaches these
+pages is signed into Cloud already; the offer would be selling something they
+have bought. Same call the 404 makes, for the neighbouring reason.
 
 **`empty` was added 2026-08-16 with the 404 page**, and it is the rule working
 rather than an exception to it: a new placement took a new pose. `shrug` was
@@ -325,9 +356,11 @@ camera and a measuring tape.
 **Each pose animates as the thing it is for.** The camera takes a photograph —
 kick and flash. The tape is drawn out and springs back. The glass sweeps. The
 sheets are tapped square. The page turns. Shoulders shrug, a hand waves, a
-finger jabs twice, the held cloud drifts. Nine poses, nine animations, in
-`globals.css` under "The twins"; `twins.tsx` holds the map of which parts of
-each drawing move.
+finger jabs twice, the held cloud drifts. The lantern sweeps out along the
+ground; the hourglass is tipped and set down while one grain falls through it.
+Twelve poses, twelve idle animations, plus two that ride a pose — the
+camera's flash and the hourglass's grain — in `globals.css` under "The twins";
+`twins.tsx` holds the map of which parts of each drawing move.
 
 **Every cycle is mostly rest.** The action sits in the last fifth of a 4–6
 second loop, so a figure acts about ten times a minute. Continuous motion beside
