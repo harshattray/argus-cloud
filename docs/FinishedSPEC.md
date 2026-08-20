@@ -2332,13 +2332,46 @@ is present.
 | J1.1 fresh production database migrated | ✅ already true — Neon, 20 migrations, 2026-08-13 |
 | J2.1 full G suite against real R2 | ✅ storage 66, uploadPipeline 50 |
 | J2.2 unsigned bucket read denied | ✅ `golive-check` L7 — 400 on a listing and on an object |
-| J3.1 no private route serves data anonymously | ✅ L4 — `/admin` → `/admin/unlock`, the rest 404 |
-| J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request |
+| J3.1 no private route serves data anonymously | ✅ L4 — `/admin` → `/admin/unlock`, the rest 404 — **but see the deployment note below** |
+| J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request — **same caveat** |
 | J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
+| J3.4 upload from the private-preview org as a real `team` org | ✅ org provisioned, `canUpload=true` through the real entitlement path, 5 files uploaded |
 | J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
-| J2.3 delete a run then an org, prefixes empty **in the bucket** | ❌ needs a real uploaded run |
-| J3.4 upload from the private-preview org as a real `team` org | ❌ the org is not provisioned |
+| J2.3 delete a run then an org, prefixes empty **in the bucket** | ◐ the data now exists; the deletion has not been run |
 | J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+
+**The private preview uploaded a real run, and it is Harsha's own.** The
+portfolio's `.bridge/` holds a genuine comparison from 2026-07-31 — three frames,
+one flagged. `norma-scope upload` sent it to `https://www.normascope.com` through
+the presigned path: **5 files, 0.36MB, run `a52bdc55`**, and the artifact mix is
+what Pathway 2 item 7 promised — build, reference and diff for the one flagged
+frame, a thumbnail each for the two clean ones. All five objects are in
+`normascope-cloud` with sizes matching the database byte for byte, and
+`frame_stats` carries the three frames at 0.26%, 0.03% and 0%.
+
+`scripts/provision-preview-org.mjs` makes the org reproducible. It is a real
+`team` org with an active subscription, because the entitlement check that
+refuses uploads from unpaid plans is the one control between "free" and the
+thing we charge for, and granting the preview an exception is the easiest way to
+stop testing it.
+
+**The deployment is ninety commits behind this branch, and that changes what the
+J3 results mean.** `main` is at `e42810d`, the website merge. Everything since —
+the rebuilt report page, trends, the Cloud shell, the storage origin in the CSP,
+and the Phase J checks above — is unreleased. So:
+
+- **J2.1 and J2.2 stand.** The suite ran this branch's code against the real
+  bucket, and bucket privacy is a property of R2 rather than of any build.
+- **J3.1, J3.2 and J3.3 describe `main`, not what we are about to ship.** They
+  are true of the live site and they do not prove the branch behaves the same.
+  They have to be re-run after a deploy.
+
+**One consequence is already visible.** The shared report renders and carries the
+real numbers, but `img-src` on the live page is `'self' data:` — no R2 origin,
+because `storageImageOrigin` and `src/storage/origin.ts` do not exist on `main`.
+Every uploaded screenshot would be blocked by the policy. This is exactly the
+failure S5.7 was written to catch, arriving through the one route S5.7 cannot
+see: the check is correct, the code is correct, and the deployment is old.
 
 **The timing is the evidence that it was R2 and not the local stand-in.** The
 storage suite takes 4.6s against MinIO on `localhost` and **71.3s** against
@@ -2390,13 +2423,20 @@ unconfirmed** — the check exists but that run has not been reported back.
 function count to fall from 11 to 7. Vercel does not turn underscore-prefixed
 paths into functions, so `api/_norma/*` never counted; the real drop is 11 → 10.
 
-**What this does not prove.** No artifact has been uploaded to R2 by a real run,
-so J2.3 — deleting a run and then an org and finding both prefixes empty *in the
-bucket* — is untested against R2, and it is the check that protects against
-paying to store bytes nobody can reach. The private-preview org does not exist,
-so J3.4's entitlement path is unexercised. And the preview's data outlives its
-code: the `norma_*` tables are still in the portfolio's shared Turso database and
-the `normascope-cloud-*` objects are still in its bucket.
+**What this does not prove.** J2.3 has its data now but has not been run: nothing
+has deleted a run and then an org and confirmed both prefixes are empty *in the
+bucket*, which is the check that protects against paying to store bytes nobody
+can reach. It is deliberately not run yet — run `a52bdc55` is the only real run
+in production, and it is the one that would validate Steps 3 and 4.
+
+**And Steps 3 and 4 still cannot be validated, for a reason that is not about
+them.** Their gates ask what a prospect can see. The prospect would see `main`,
+which does not contain either of them. Nothing is wrong with the work; it has
+simply never been released.
+
+The preview's data also outlives its code: the `norma_*` tables are still in the
+portfolio's shared Turso database and the `normascope-cloud-*` objects are still
+in its bucket.
 
 ---
 

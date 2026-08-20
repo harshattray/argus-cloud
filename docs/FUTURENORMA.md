@@ -1168,14 +1168,25 @@ the apex redirecting to it; `scripts/golive-check.mjs` passes against it. The
 domain becomes mandatory at Step 7, because Paddle production checkout requires
 an approved domain.
 
+**J3.4 is met and a real run is uploaded.** The private-preview org exists as a
+genuine `team` org — `scripts/provision-preview-org.mjs`, no entitlement
+exception — and the portfolio's own comparison from 2026-07-31 went up through
+the presigned path: 5 files, run `a52bdc55`, all five objects in the bucket with
+sizes matching the database.
+
 **What is still open, and why each is not paperwork:**
 
-1. **J2.3 — no real run has uploaded to R2.** Deleting a run and then an org and
-   finding both prefixes empty *in the bucket* is the check that stops us paying
-   to store bytes nobody can reach, and it cannot be run on data that does not
-   exist. This needs one genuine upload against the deployment.
-2. **J3.4 — the private-preview org is not provisioned.** It has to be a real
-   `team` org so the entitlement path runs rather than being switched off.
+1. **The branch has never been released.** `main` is at `e42810d` and this
+   branch is **ninety commits ahead**. The report page, trends, the Cloud shell
+   and the storage origin in the CSP are all unreleased, so Steps 3 and 4 cannot
+   be validated no matter how good they are — a prospect would be looking at
+   `main`. The visible symptom today: the shared report renders the real numbers
+   but `img-src` is `'self' data:`, so every uploaded screenshot would be
+   blocked. **This is the next decision, and it is Harsha's.**
+2. **J2.3 — the deletion half is unrun.** The data exists now, but nothing has
+   deleted a run and then an org and confirmed both prefixes are empty *in the
+   bucket*. Held deliberately: `a52bdc55` is the only real run in production and
+   it is the one that would demonstrate Steps 3 and 4.
 3. **J4 — the preview's data outlives its code.** The routes, handlers and
    `_lib/norma.ts` are deleted (portfolio branch `retire-normascope-cloud-preview`,
    1131 lines, functions 11 → 10), but the `norma_*` tables are still in the
