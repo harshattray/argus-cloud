@@ -94,10 +94,10 @@ const cleanEvidence = (frame = "hero-desktop.png") => ({
     ["S1", "AKIAIOSFODNN7EXAMPLE", "an AWS access key id"],
     ["S2", "sk-ant-api03-Zx9WqLmT4vNbHy2Rd8Kf", "an Anthropic key"],
     ["S3", "sk-proj-QwErTyUiOpAsDfGhJkLzXcVbNm12", "a generic sk- provider key"],
-    ["S4", "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8", "a GitHub personal access token"],
+    ["S4", "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8", "a GitHub personal access token"], // gitleaks:allow — fixture, see .gitleaksignore
     ["S5", "xoxb-2481-3920-AbCdEfGhIjKlMnOp", "a Slack bot token"],
     ["S6", "-----BEGIN RSA PRIVATE KEY-----", "a private key header"],
-    ["S7", 'FIGMA_TOKEN="figd-9182hjkasd"', "a named token assignment"],
+    ["S7", 'FIGMA_TOKEN="figd-9182hjkasd"', "a named token assignment"], // gitleaks:allow — fixture, see .gitleaksignore
     ["S8", "qX7vLp2ZmR9tKw4YbN6cHs1EdU3aJgFo", "a 32-char high-entropy string"],
   ];
   for (const [rule, payload, what] of planted) {
@@ -162,7 +162,7 @@ const cleanEvidence = (frame = "hero-desktop.png") => ({
   let statsThrew = null;
   try {
     const evidence = cleanEvidence();
-    evidence.stats.skipReason = 'GITHUB_TOKEN="ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"';
+    evidence.stats.skipReason = 'GITHUB_TOKEN="ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"'; // gitleaks:allow — fixture
     buildUserContent(evidence, null);
   } catch (err) {
     statsThrew = err;
@@ -251,7 +251,7 @@ const cleanEvidence = (frame = "hero-desktop.png") => ({
 
   const evidenceByFrame = new Map([
     ["clean-a.png", cleanEvidence("clean-a.png")],
-    ["poisoned.png", { ...cleanEvidence("poisoned.png"), label: "Hero ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8" }],
+    ["poisoned.png", { ...cleanEvidence("poisoned.png"), label: "Hero ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8" }], // gitleaks:allow — fixture
     ["clean-b.png", cleanEvidence("clean-b.png")],
   ]);
   // The same shape web/lib/provider.ts `makeScan` produces.
