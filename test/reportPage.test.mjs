@@ -403,7 +403,7 @@ const repoA = await makeRepo(orgA, "web");
       NORMA_STORAGE_BUCKET: "normascope-cloud",
       NORMA_STORAGE_ENDPOINT: "https://acct.r2.cloudflarestorage.com",
     }) === "https://normascope-cloud.acct.r2.cloudflarestorage.com",
-    "virtual-hosted prefixes the bucket onto the endpoint host (unproven against real R2 until J2)");
+    "virtual-hosted prefixes the bucket onto the endpoint host — and storage.test.mjs S5.7 checks that answer against the URL R2 actually signs");
 }
 
 await rm(root, { recursive: true, force: true });
