@@ -63,7 +63,7 @@ export function asFindings(value: unknown): Finding[] {
 interface Shot {
   src: string;
   caption: string;
-  /** Glossary key for the caption's "?". */
+  /** Glossary key for the caption. */
   term: string;
   /** Overlay rectangles, drawn on the diff only. */
   regions: Region[];
@@ -301,8 +301,9 @@ function SyncedShots({
         <figure key={shot.caption} className={styles.shotFrame}>
           <figcaption>
             <span className={styles.shotTag}>
-              {shot.caption}
-              <Explainer term={shot.term} scope={anchor} />
+              <Explainer term={shot.term} scope={anchor}>
+                {shot.caption}
+              </Explainer>
             </span>
             <span className={styles.shotZoom} aria-hidden="true">
               click to zoom
@@ -424,32 +425,33 @@ function FindingsList({
             <li key={index} className={injection ? `${styles.finding} ${styles.injection}` : styles.finding}>
               {injection && (
                 <p className={styles.injectionNote}>
-                  Possible injected instruction in the captured content — this is a warning about
-                  the page&apos;s content, not a visual finding.
-                  <Explainer term="injection-suspected" scope={`${anchor}-f${index}`} />
+                  <Explainer term="injection-suspected" scope={`${anchor}-f${index}`}>
+                    Possible injected instruction in the captured content
+                  </Explainer>{" "}
+                  — this is a warning about the page&apos;s content, not a visual finding.
                 </p>
               )}
-              {/* `.findingHead` wraps too, so each "?" is grouped with what it
-                  explains rather than left to wrap on its own. */}
               <div className={styles.findingHead}>
-                <span className={styles.controlGroup}>
-                  <span className={`${styles.badge} ${badge}`}>{finding.confidence ?? "unrated"}</span>
-                  <Explainer term="confidence" scope={`${anchor}-f${index}`} />
+                {/* The badge *is* the trigger. Confidence is the word on this row
+                    most likely to be read as a verdict, and it is one click from
+                    the sentence saying it is not. */}
+                <span className={`${styles.badge} ${badge}`}>
+                  <Explainer term="confidence" scope={`${anchor}-f${index}`}>
+                    {finding.confidence ?? "unrated"}
+                  </Explainer>
                 </span>
                 <span className={styles.findingCat}>{finding.category ?? "finding"}</span>
                 {finding.region && (
-                  <span className={styles.controlGroup}>
-                    <button
-                      type="button"
-                      className={styles.findingRegion}
-                      aria-pressed={active === index}
-                      onClick={() => onHighlight(index)}
-                    >
-                      {finding.region.x},{finding.region.y} · {finding.region.width}×
-                      {finding.region.height}
-                    </button>
-                    <Explainer term="region-box" scope={`${anchor}-f${index}`} />
-                  </span>
+                  <button
+                    type="button"
+                    className={styles.findingRegion}
+                    aria-pressed={active === index}
+                    onClick={() => onHighlight(index)}
+                    title="Highlight this rectangle on the difference image"
+                  >
+                    {finding.region.x},{finding.region.y} · {finding.region.width}×
+                    {finding.region.height}
+                  </button>
                 )}
               </div>
               <p className={styles.findingObs}>{finding.observation ?? ""}</p>
@@ -527,8 +529,9 @@ function ExplainControls({
   return (
     <>
       <p className={styles.controlsHead}>
-        Hosted AI
-        <Explainer term="credits" scope={`${anchor}-ctl`} label="What are credits?" />
+        <Explainer term="credits" scope={`${anchor}-ctl`}>
+          Hosted AI
+        </Explainer>
       </p>
       <div className={styles.controls}>
         <input
@@ -539,19 +542,18 @@ function ExplainControls({
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
         />
-        {/* Button and "?" in one group, so a narrow viewport wraps them together. */}
-        <span className={styles.controlGroup}>
-          <button type="button" className={styles.button} onClick={() => explain(false)} disabled={busy || !apiKey}>
-            {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
-          </button>
-          <Explainer term="explain" scope={`${anchor}-ctl`} />
-        </span>
-        <span className={styles.controlGroup}>
-          <button type="button" className={styles.button} onClick={() => explain(true)} disabled={busy || !apiKey}>
-            {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
-          </button>
-          <Explainer term="deep-explain" scope={`${anchor}-ctl`} />
-        </span>
+        {/*
+          The buttons carry no explainer. A trigger *is* its text now, and this
+          text already belongs to a click that spends money — one control cannot
+          be two. Their definitions are reachable from "Hosted AI" above, and
+          both buttons state their own price.
+        */}
+        <button type="button" className={styles.button} onClick={() => explain(false)} disabled={busy || !apiKey}>
+          {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
+        </button>
+        <button type="button" className={styles.button} onClick={() => explain(true)} disabled={busy || !apiKey}>
+          {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
+        </button>
         {error && <span className={styles.error}>{error}</span>}
       </div>
     </>

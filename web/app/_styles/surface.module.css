@@ -316,7 +316,7 @@
 
 /* ---------- explainers ----------
  *
- * The "?" beside a number and the bubble it opens. `_components/cloud/explainer.tsx`
+ * A defined term and the bubble it opens. `_components/cloud/explainer.tsx`
  * carries the reasoning; this is the part that has to survive three grounds and
  * two positioning models.
  *
@@ -328,48 +328,48 @@
  * exactly where nobody would look for the cause.
  */
 
-.explainer {
-  display: inline-flex;
-  vertical-align: baseline;
-  margin-left: 5px;
-}
-
-.explainerTrigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
+/*
+ * The trigger is the word itself, so almost everything here is an *undo*: a
+ * `<button>` arrives with its own font, colour, padding, border and background,
+ * and every one of those would make a defined term look unlike the sentence it
+ * sits in. `font: inherit` alone is not enough — `letter-spacing` and
+ * `text-transform` are not part of the shorthand, and these triggers sit inside
+ * uppercase tracked labels as often as they sit in body text.
+ *
+ * `display: inline` rather than the button default of `inline-block`, so a term
+ * that lands at the end of a line wraps like text instead of jumping whole to
+ * the next line.
+ */
+.explainerTerm {
+  display: inline;
+  margin: 0;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--frame-bg);
-  color: var(--ink-faint);
+  border: 0;
+  background: none;
   font: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
   cursor: help;
-  /* An icon-sized control is an easy one to miss on a phone. The button stays
-     15px to the eye and 24px to a finger. */
-  position: relative;
+  /* The affordance, and the only mark this adds to the page. Dotted, drawn in
+     the text's own colour at low strength, so it reads as an underline on that
+     word rather than as an element sitting next to it. */
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 38%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
 }
 
-.explainerTrigger::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
+.explainerTerm:hover {
+  color: var(--clay-deep);
+  text-decoration-color: var(--clay);
 }
 
-.explainerTrigger:hover {
-  border-color: var(--clay);
-  background: var(--clay);
-  color: var(--card);
-}
-
-.explainerTrigger:focus-visible {
+.explainerTerm:focus-visible {
   outline: 2px solid var(--clay-deep);
   outline-offset: 2px;
+  border-radius: 3px;
 }
 
 /*
@@ -415,7 +415,7 @@
   display: block;
 }
 
-.explainerTerm {
+.explainerHead {
   display: block;
   margin-bottom: 4px;
   font-size: 11px;

@@ -95,7 +95,6 @@ export default async function ReportPage({
       <main className={styles.sheet}>
         <CloudMasthead
           title="Run report"
-          explain="run"
           crumbs={crumbs}
           theme={theme}
           path={path}
@@ -203,10 +202,7 @@ function FrameNav({ frames }: { frames: FrameReport[] }) {
   }
   return (
     <nav className={styles.frameNav} aria-label="Frames in this run">
-      <span className={styles.frameNavLabel}>
-        Jump to
-        <Explainer term="frame" scope="nav" />
-      </span>
+      <span className={styles.frameNavLabel}>Jump to</span>
       <ul>
         {frames.map((frame, index) => (
           <li key={frame.frame}>
@@ -241,8 +237,13 @@ function Stat({
     <div className={tone ? `${styles.stat} ${tone}` : styles.stat}>
       <span className={styles.statValue}>{value}</span>
       <span className={styles.statLabel}>
-        {label}
-        {explain && <Explainer term={explain} scope="run" />}
+        {explain ? (
+          <Explainer term={explain} scope="run">
+            {label}
+          </Explainer>
+        ) : (
+          label
+        )}
       </span>
     </div>
   );
@@ -267,33 +268,34 @@ function Frame({
         <h2 className={styles.frameName}>{frame.frame}</h2>
         <span className={`${styles.status} ${frame.flagged ? styles.flagged : styles.clean}`}>
           {frame.flagged ? "flagged" : "pass"}
-          <Explainer term={frame.flagged ? "flagged" : "clean"} scope={anchor} />
         </span>
       </div>
       {/*
         Three quantities on one line, and a reader has no way to tell which one
-        is the headline. Each gets its own "?" rather than one for the line: the
-        question people actually have is "what is SSIM", not "what is this row".
+        is the headline. Each is its own defined term rather than one definition
+        for the line: the question people actually have is "what is SSIM", not
+        "what is this row".
       */}
       <p className={styles.frameNumbers}>
-        aligned mismatch{" "}
-        {frame.alignedMismatchPercent === null ? "n/a" : `${frame.alignedMismatchPercent.toFixed(2)}%`}
-        <Explainer term="aligned-diff" scope={anchor} /> · SSIM{" "}
-        {frame.structuralSimilarity === null ? "n/a" : frame.structuralSimilarity.toFixed(3)}
-        <Explainer term="ssim" scope={anchor} /> · {frame.mode}/{frame.source}
+        <Explainer term="aligned-diff" scope={anchor}>
+          aligned mismatch{" "}
+          {frame.alignedMismatchPercent === null ? "n/a" : `${frame.alignedMismatchPercent.toFixed(2)}%`}
+        </Explainer>{" "}
+        ·{" "}
+        <Explainer term="ssim" scope={anchor}>
+          SSIM {frame.structuralSimilarity === null ? "n/a" : frame.structuralSimilarity.toFixed(3)}
+        </Explainer>{" "}
+        ·{" "}
         <Explainer
           term={frame.mode === "fidelity" ? "fidelity-mode" : "baseline-mode"}
           scope={anchor}
-        />
+        >
+          {frame.mode}/{frame.source}
+        </Explainer>
       </p>
 
       {frame.alignedMismatchPercent !== null && threshold !== null && (
-        <Meter
-          value={frame.alignedMismatchPercent}
-          threshold={threshold}
-          flagged={frame.flagged}
-          anchor={anchor}
-        />
+        <Meter value={frame.alignedMismatchPercent} threshold={threshold} flagged={frame.flagged} />
       )}
 
       {frame.history !== null && (
@@ -326,17 +328,7 @@ function Frame({
  * line" without having to compare two numbers. Copied from the CLI report's
  * meter (`Argus/src/report.ts`) rather than re-derived.
  */
-function Meter({
-  value,
-  threshold,
-  flagged,
-  anchor,
-}: {
-  value: number;
-  threshold: number;
-  flagged: boolean;
-  anchor: string;
-}) {
+function Meter({ value, threshold, flagged }: { value: number; threshold: number; flagged: boolean }) {
   const pct = threshold > 0 ? Math.min(100, (value / threshold) * 50) : value > 0 ? 100 : 0;
   return (
     <div className={styles.meter}>
@@ -352,16 +344,12 @@ function Meter({
         <div className={styles.meterMark} style={{ left: "50%" }} />
       </div>
       {/*
-        The "?" moved out of the `role="img"` element and the label moved with
-        it. A button inside an image role is not reachable as a button — the
-        element is announced as one graphic with an alt text, and its children
-        stop existing for a screen reader. The bar keeps the role; the legend
-        beside it is ordinary text.
+        `role="img"` stayed on the bar rather than the whole meter. Anything
+        interactive inside an image role is unreachable — the element is
+        announced as one graphic with alt text and its children stop existing —
+        so the bar keeps the role and the legend beside it is ordinary text.
       */}
-      <span className={styles.meterLegend}>
-        threshold {threshold}%
-        <Explainer term="threshold" scope={`${anchor}-meter`} />
-      </span>
+      <span className={styles.meterLegend}>threshold {threshold}%</span>
     </div>
   );
 }

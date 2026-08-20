@@ -277,6 +277,14 @@
   fill: var(--danger);
 }
 
+/* The hover target under each sparkline dot. `fill: transparent` still paints,
+   so it takes pointer events; `fill: none` would not, and the <title> inside it
+   would only show on the 1.8px dot itself. */
+.sparkHit {
+  fill: transparent;
+  cursor: pointer;
+}
+
 /* ---------- the trend chart (I2) ---------- */
 
 .chartWrap {
@@ -329,10 +337,88 @@
   fill: var(--success);
   stroke: var(--card);
   stroke-width: 1.5;
+  /* The dot is 3.5px. `.dotHit` beneath it is the thing a pointer actually
+     finds; letting the dot take events as well would make the group flicker as
+     the cursor crossed the boundary between them. */
+  pointer-events: none;
 }
 
 .dot.over {
   fill: var(--danger);
+}
+
+/* ---------- point tooltips ----------
+ *
+ * `trend-chart.tsx` carries the reasoning. Two rules do the work: a transparent
+ * circle big enough to hit, and a card that is a sibling of it inside one `<g>`
+ * so plain `:hover` can reveal it — no script on a page that has none.
+ */
+
+.dotHit {
+  fill: transparent;
+  /* `transparent` still paints, so the circle is a hit target. `fill: none`
+     would not be, and the tooltip would only open on the 3.5px dot itself. */
+  cursor: pointer;
+}
+
+.tip {
+  opacity: 0;
+  /* The card must never take the pointer. It overlaps its neighbours' hit
+     circles, and a card that could be hovered would keep itself open while
+     stealing the point the reader was moving towards. */
+  pointer-events: none;
+  transition: opacity 90ms ease-out;
+}
+
+.point:hover .tip,
+.point:focus-within .tip {
+  opacity: 1;
+}
+
+/* Enlarged on hover so the point being described is obvious when two are close
+   together — the card names a commit, and the reader has to know which mark it
+   belongs to. */
+.point:hover .dot {
+  r: 5;
+}
+
+.tipBox {
+  fill: var(--card);
+  stroke: var(--line);
+  stroke-width: 1;
+  /* SVG has no box-shadow. A filter would need a <defs> and a unique id per
+     chart; a solid card on a 1px border reads well enough on both grounds. */
+}
+
+.tipCommit {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.tipValue {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.tipMeta {
+  font-size: 11px;
+  fill: var(--ink-soft);
+}
+
+.tipMeta.over {
+  fill: var(--danger);
+}
+
+/*
+ * Reduced motion: the fade is decoration, the card is the content.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transition: none;
+  }
 }
 
 .driftMark {

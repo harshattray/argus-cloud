@@ -1922,12 +1922,24 @@ by *username*" line in the report header — was **deferred to Step 6 by decisio
 on the same day**; the reasoning and the settled policy are in `PATHWAYS.md`
 Pathway 5.
 
-**Every number on a Cloud page can now explain itself.** A small "?" beside each
-figure opens a plain-language definition: 103 of them on a seven-frame report,
-covering the stat strip, each frame's aligned mismatch / SSIM / mode, the meter,
-the history facts, both charts and their legends, the findings' confidence and
-region, the Explain prices, the share panel, and every column header on both
-tables.
+**Every number on a Cloud page can now explain itself.** A defined term — the
+word itself, under a dotted underline — opens a plain-language definition:
+26 on a seven-frame report, covering the stat strip, each frame's aligned
+mismatch / SSIM / mode, the history facts, both charts and their legends, the
+findings' confidence, hosted-AI credits, the share panel, and every column header
+on both tables.
+
+> **The first cut put a circled "?" beside each label, and Harsha rejected it.**
+> It came to **103** question marks on that same report — a page speckled with
+> query glyphs reads as a page unsure of itself, and the count scaled with the
+> number of *frames* rather than with the number of ideas. Wrapping the word adds
+> no glyph at all, and it fixed an alignment problem that kept recurring: a
+> separate icon is its own flex item, so in a wrapping row it broke onto the next
+> line away from the thing it explained. A trigger that *is* the text cannot come
+> apart from it. The count fell to 26 in the same pass, because per-frame
+> repetition was most of the noise — the badge, the meter legend, the region
+> button and both Explain buttons lost theirs, and none of them was the word a
+> reader was stuck on.
 
 The text is not written in the pages. It comes from `web/lib/glossary.ts`, which
 the public `/report` page already prints as a list — so the definition a prospect
@@ -1944,18 +1956,44 @@ Three constraints shaped the implementation, in this order:
 | No new inline styles — `style-src-attr 'unsafe-inline'` is a carried-forward item, not an invitation | positioning from a `style` attribute; also `anchor-name`, which would need to be unique per instance and so could only come from one | CSS anchor positioning off the popover's *implicit* anchor, behind `@supports`, with the UA's centred popover as the fallback |
 | `.card` is `overflow: hidden` and `.tableWrap` scrolls | a positioned `<div>`, which would be clipped in a card and drag a scrollbar in a table header | the top layer, which escapes both |
 
-Two defects found by opening the page rather than by a test:
+The typography has to work in both directions and the two are opposites: the
+**trigger** inherits everything (it is a word inside a stat label, a table header
+or body text) and the **bubble** resets everything (it is a paragraph in the top
+layer). Getting the second wrong shipped once — the definitions rendered in
+capitals, because a popover inherits down the *DOM* and every trigger hangs off a
+label styled `text-transform: uppercase`; the `font` shorthand resets size,
+weight and family and touches neither `text-transform` nor `letter-spacing`.
 
-- **The definitions rendered in capitals.** A popover sits in the top layer but
-  inherits down the *DOM*, and every trigger hangs off a label styled
-  `text-transform: uppercase` with tracking. The `font` shorthand resets size,
-  weight and family and touches neither of those.
-- **Three "?" wrapped away from their buttons.** `.controls` and `.findingHead`
-  are wrapping flex rows, and a bare explainer is a flex item in its own right —
-  so at a narrow width the question marks broke onto the next line together and
-  sat under the row belonging to nothing. Each is now grouped with what it
-  explains. The Explain row also gained a **"Hosted AI"** heading, because it
-  previously opened with an unlabelled password field.
+The Explain row also gained a **"Hosted AI"** heading, because it previously
+opened with an unlabelled password field — and because the credits definition
+needed somewhere to hang that was not a button. A trigger *is* its own text now,
+and those words already belong to a click that spends money.
+
+**Hovering a point on either chart says which run it is.** "Which run is that
+spike?" is a question about a *point*, and answering it by asking someone to
+match an x-position against the table below is not answering it. The trend chart
+draws a card — commit, measurement, the threshold that run was judged at, the
+verdict, the mode pair and the date — from a 13px transparent hit circle under
+the 3.5px dot, revealed by plain `:hover` on the group. Still no JavaScript.
+
+The two sparklines cannot do that, and the reason is one attribute:
+`preserveAspectRatio="none"`. They are 200 units wide and stretch to whatever the
+row gives them, so anything drawn in their coordinate system arrives horizontally
+smeared. They use `<title>`, which the browser renders outside the SVG's
+coordinate system entirely.
+
+Two things the card had to be told, both of which are one-word bugs:
+
+- **`fill: transparent`, never `fill: none`.** `none` does not paint and
+  therefore takes no pointer events, so the tooltip would open only on the 3.5px
+  dot — invisible *and* untouchable.
+- **`pointer-events: none` on the card.** It overlaps its neighbours' hit
+  circles, and a card that could be hovered would hold itself open while
+  stealing the point the reader was moving towards.
+
+Hover does not exist on a touch screen, so this is an enhancement and not the
+only route: every point is also a row in the Runs table, with the same facts and
+a link.
 
 **`npm run seed:real` — a second tenant, and every number in it is a
 measurement.** Ten runs that actually happened, read out of the summaries
@@ -1993,18 +2031,39 @@ Four things it deliberately does not do:
   87% and falls back to 0.4%, which reads as "it broke and somebody fixed it"
   and is a story about a codebase that never existed.
 
-> **Real data found a real bug in a page that had shipped.** The diff overlay
-> keyed its region boxes on `x,y,w,h` — unique until two findings name the same
-> rectangle, which case 03's `norma-hero.png` does: an `injection-suspected`
-> finding and a `layout` finding on the identical box. React saw duplicate keys
-> and reserved the right to drop one of the overlays. Keyed on position now,
-> which is also what the highlight compares against.
+> **Real data found two real bugs in pages that had shipped.**
+>
+> **The diff overlay's region keys.** Keyed on `x,y,w,h` — unique until two
+> findings name the same rectangle, which case 03's `norma-hero.png` does: an
+> `injection-suspected` finding and a `layout` finding on the identical box.
+> React saw duplicate keys and reserved the right to drop one of the overlays.
+> Keyed on position now, which is also what the highlight compares against.
+>
+> **"First drifted at" said "never exceeded the threshold" beside "Times flagged:
+> 4 runs".** `firstDriftCommit` was one field carrying two facts, and a null
+> meant both "it never drifted" and "we have no commit for the run where it
+> did" — the second being *every* run uploaded from a laptop, since `upload`
+> reads the SHA from `GITHUB_SHA`. Split into `firstDriftAt` (whether) and
+> `firstDriftCommit` (where), and the pages print the three states apart. The
+> same change moved the chart's marker from matching on a commit to matching on
+> a **run id**: a commit is ambiguous when two runs share it, and useless when
+> every run's is empty — which is why no marker appeared on those charts at all.
+> `test/trends.test.mjs` T5.5, T5.5b, T5.6 and the T5.6b counter-test, which runs
+> the one-field reading over both histories and shows it calling them the same
+> thing.
 
-**`npm run capture:cloud` — the pages, both themes, one command.** 20 shots into
+**`npm run capture:cloud` — the pages, both themes, one command.** 24 shots into
 `docs/screenshots/cloud/` with a generated manifest: repository view, frame
-trend, a flagged run report, a clean one, a definition open, and the share view,
-each in light and dark. Playwright driving the Chrome already on the machine —
-`playwright-core`, no 150 MB browser download.
+trend, a point hovered on the trend chart, a flagged run report, a clean one, a
+definition open, and the share view, each in light and dark. Playwright driving
+the Chrome already on the machine — `playwright-core`, no 150 MB browser
+download.
+
+The two interaction shots exist because the ordinary full-page capture can never
+contain them: a popover is closed and a hover card does not exist until a pointer
+is over a dot. The script opens one and hovers the other — picking the *middle
+flagged* point rather than the first, because hovering point zero puts the card
+over the y-axis and photographs the least informative run in the history.
 
 They go to `docs/`, **not** `web/public/`: anything under `public/` is served by
 the deployed site at a guessable URL, and these are pictures of a surface that
@@ -2029,9 +2088,9 @@ a missing background, and no Explain buttons, because the page only offers those
 on a flagged frame. They now hang off the last run where `home.png` is over its
 threshold, inside the regression the series was written to tell.
 
-**Evidence.** `test/explainers.test.mjs` (31 checks) and
-`test/realSeed.test.mjs` (21). Suite totals: **930 on PGlite, 958 against a real
-Postgres server**, across 30 suites.
+**Evidence.** `test/explainers.test.mjs` (52 checks) and
+`test/realSeed.test.mjs` (21), plus 4 new checks in `trends`. Suite totals:
+**955 on PGlite, 983 against a real Postgres server**, across 30 suites.
 Guards watched failing before being trusted:
 
 | Break | Went red |
@@ -2039,13 +2098,18 @@ Guards watched failing before being trusted:
 | `text-transform: none` and `letter-spacing: normal` dropped from the bubble | X3.1, X3.2, X3.1b |
 | One term misspelled in a page | X2.2, naming the file |
 | A per-frame explainer's `scope` removed | X2.4 |
+| A `?` glyph put back inside the trigger | X2b.1, X2b.2 |
+| `fill: none` on the chart's hover target | X6.4, X6.4b |
+| `pointer-events: all` on the hover card | X6.5 |
+| Points drawn before the trend line | X6.7 |
 | `branch: "main"` invented on runs that recorded none | V2.4 |
 | `flagged` recomputed as `pct > threshold` instead of copied | V2.5b |
 | A capture directory renamed | V1.1 |
 
-Checked in a browser in both themes: 103 triggers and 103 popovers on the real
+Checked in a browser in both themes: 26 triggers and 26 popovers on the real
 seven-frame report, no duplicate ids, no unresolved targets, anchor positioning
-active, and a bubble opening flush under its trigger.
+active, a bubble opening flush under its trigger, and a hover card opening beside
+its point and flipping to the left half of the chart past the middle.
 
 **What this does not prove.** Same standing as §3u and §3v — seeded data on a
 laptop, `/repos/` still 404s in production. Two limits specific to this work:
@@ -2054,9 +2118,16 @@ laptop, `/repos/` still 404s in production. Two limits specific to this work:
   reset, the `@supports` split and the absence of client components; it cannot
   show a bubble appearing in the right place. That was a browser check and is
   recorded as one.
-- **X2.2's scan is static.** Five terms are reached through an expression and
-  are listed by hand in the suite. A sixth would not be covered — X2.6 fails if
-  the count grows, which converts a silent gap into a failing check.
+- **X2.2's scan is static.** Two terms are reached through a ternary and are
+  listed by hand in the suite; the image captions are extracted. A third
+  expression form would not be covered — X2.6 fails if the count grows, which
+  converts a silent gap into a failing check.
+- **Hover cannot be sized on the server.** SVG text has no measurable width
+  there, so the tooltip is a fixed box and every line has to fit the widest value
+  it can ever carry. The first cut put the verdict, the mode pair and the date on
+  one line, which fitted `flagged · baseline/baseline` and ran straight out
+  through the edge on `under threshold · fidelity/baseline · 2026-08-13`. The
+  budget is written out above `TIP`; adding a field means redoing that sum.
 - **V2.5b is a counter-test that does not bite, and says so.** Recomputing
   `flagged` instead of copying it agrees on all 59 rows, because no recorded
   value sits exactly on its threshold. The check asserts the code rather than

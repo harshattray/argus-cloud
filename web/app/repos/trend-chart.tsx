@@ -162,14 +162,22 @@ export function TrendChart({ trend }: { trend: FrameTrend }) {
         </g>
       )}
 
+      {/*
+        Points last, so nothing is drawn over a tooltip that is open.
+        See `PointMarker` for what hovering one says and why it needs no script.
+      */}
       {points.map((p, i) =>
         p.alignedMismatchPercent === null ? null : (
-          <circle
+          <PointMarker
             key={`d-${i}`}
-            className={p.flagged ? `${styles.dot} ${styles.over}` : styles.dot}
+            point={p}
+            label={labels[i]}
             cx={x(i)}
             cy={y(p.alignedMismatchPercent)}
-            r={3.5}
+            firstDrift={i === trend.firstDriftIndex}
+            /* Flip the card to the left of the point once past the middle, or
+               the last few runs open theirs past the right edge of the SVG. */
+            flip={points.length > 1 && i / (points.length - 1) > 0.6}
           />
         )
       )}
@@ -188,6 +196,115 @@ export function TrendChart({ trend }: { trend: FrameTrend }) {
         ) : null
       )}
     </svg>
+  );
+}
+
+/**
+ * Tooltip geometry, and it is a budget rather than a preference.
+ *
+ * SVG text cannot be measured on the server, so the box cannot size itself to
+ * its contents — which means every line has to fit the *widest* value it can
+ * ever hold. The first cut put the verdict, the mode pair and the date on one
+ * line: fine at `flagged · baseline/baseline`, and `under threshold ·
+ * fidelity/baseline · 2026-08-13` ran straight out through the right-hand edge.
+ *
+ * Four short lines at 210 wide, with the longest each one can carry:
+ *
+ *   commit + " · first drift"       26 chars of 11px mono   ≈ 172px
+ *   "100.00% · threshold 100%"      24 chars of 12px        ≈ 139px
+ *   "under threshold"               15 chars of 11px        ≈  80px
+ *   "fidelity/baseline · 2026-08-13" 30 chars of 11px       ≈ 159px
+ *
+ * against 190px of inner width. Add a field and redo that sum.
+ */
+const TIP = { w: 210, h: 78, gap: 12, pad: 10, line: 15 };
+
+/**
+ * One point on the chart, and what it says when you hover it.
+ *
+ * **What the reader gets.** The commit, when the run happened, the measurement
+ * and the threshold it was judged against, and whether it was flagged. That is
+ * the row of the table below, brought to the mark — because "which run is that
+ * spike?" is a question about a *point*, and answering it by asking someone to
+ * match an x-position against a table is not answering it.
+ *
+ * **No JavaScript, again.** The card is a sibling of an invisible hit target
+ * inside one `<g>`, and `:hover` on the group reveals it. `/repos/` renders
+ * entirely on the server (`FinishedSPEC.md` §3v) and this does not change that.
+ *
+ * Three details that are not arbitrary:
+ *
+ *   - **The hit target is r=13, the dot is r=3.5.** A 3.5px circle is a hostile
+ *     hover target with a mouse and an impossible one with a finger. The target
+ *     is transparent and takes the pointer events; the dot takes none.
+ *   - **The card flips past the middle of the chart.** SVG has no viewport-aware
+ *     positioning, so the side is chosen from the point's index at render time.
+ *     Without it the last few runs open their cards past the right edge.
+ *   - **Text is `<text>`, not `<foreignObject>`.** Three short lines need no
+ *     wrapping, and foreignObject drags HTML layout into an inert graphic for no
+ *     gain.
+ *
+ * **What it is not.** Hover is not available on a touch screen, so this is an
+ * enhancement rather than the only route to the information: every point is also
+ * a row in the Runs table below, with the same four facts and a link.
+ */
+function PointMarker({
+  point,
+  label,
+  cx,
+  cy,
+  flip,
+  firstDrift,
+}: {
+  point: FrameTrend["points"][number];
+  /** The commit label the x-axis uses, so the card and the axis agree. */
+  label: string;
+  cx: number;
+  cy: number;
+  flip: boolean;
+  firstDrift: boolean;
+}) {
+  const pct = point.alignedMismatchPercent as number;
+  const tipX = flip ? cx - TIP.gap - TIP.w : cx + TIP.gap;
+  // Keep the card inside the plot vertically as well: a point near the top would
+  // otherwise open its card above the chart's own frame.
+  const tipY = Math.max(PAD.top, Math.min(H - PAD.bottom - TIP.h, cy - TIP.h / 2));
+  const textX = tipX + TIP.pad;
+
+  const verdict = point.flagged ? "flagged" : "under threshold";
+  const against = point.threshold === null ? "no threshold recorded" : `threshold ${point.threshold}%`;
+  const line = (n: number) => tipY + TIP.pad + 9 + TIP.line * n;
+
+  return (
+    <g className={styles.point}>
+      <circle className={styles.dotHit} cx={cx} cy={cy} r={13} />
+      <circle
+        className={point.flagged ? `${styles.dot} ${styles.over}` : styles.dot}
+        cx={cx}
+        cy={cy}
+        r={3.5}
+      />
+      <g className={styles.tip}>
+        <rect className={styles.tipBox} x={tipX} y={tipY} width={TIP.w} height={TIP.h} rx={7} />
+        <text className={styles.tipCommit} x={textX} y={line(0)}>
+          {point.commitSha ? label : "no commit recorded"}
+          {firstDrift ? " · first drift" : ""}
+        </text>
+        <text className={styles.tipValue} x={textX} y={line(1)}>
+          {pct.toFixed(2)}% · {against}
+        </text>
+        <text
+          className={point.flagged ? `${styles.tipMeta} ${styles.over}` : styles.tipMeta}
+          x={textX}
+          y={line(2)}
+        >
+          {verdict}
+        </text>
+        <text className={styles.tipMeta} x={textX} y={line(3)}>
+          {point.mode}/{point.source} · {point.createdAt.slice(0, 10)}
+        </text>
+      </g>
+    </g>
   );
 }
 

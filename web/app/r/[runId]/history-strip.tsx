@@ -59,27 +59,37 @@ export function HistoryStrip({
     <section className={styles.history} aria-label={`History for ${frame}`}>
       <div className={styles.historyHead}>
         <span className={styles.historyLabel}>
-          History
-          <Explainer term="history" scope={anchor} />
+          <Explainer term="history" scope={anchor}>
+            History
+          </Explainer>
         </span>
       </div>
       <dl className={styles.historyFacts}>
-        {history.firstDriftCommit !== null && (
+        {/* Shown whenever the frame *has* drifted. A run with no recorded
+            commit still drifted, and hiding the fact because the SHA is missing
+            loses the more important half of it. */}
+        {history.firstDriftAt !== null && (
           <div className={styles.historyFact}>
             <dt>
-              First drifted at
-              <Explainer term="first-drift" scope={anchor} />
+              <Explainer term="first-drift" scope={anchor}>
+                First drifted at
+              </Explainer>
             </dt>
             <dd>
-              <code>{history.firstDriftCommit.slice(0, 10)}</code>
+              {history.firstDriftCommit === null ? (
+                <time dateTime={history.firstDriftAt}>{history.firstDriftAt.slice(0, 10)}</time>
+              ) : (
+                <code>{history.firstDriftCommit.slice(0, 10)}</code>
+              )}
             </dd>
           </div>
         )}
         {history.recurrence > 0 && (
           <div className={styles.historyFact}>
             <dt>
-              Times flagged
-              <Explainer term="recurrence" scope={anchor} />
+              <Explainer term="recurrence" scope={anchor}>
+                Times flagged
+              </Explainer>
             </dt>
             <dd>
               {history.recurrence} run{history.recurrence === 1 ? "" : "s"}
@@ -88,8 +98,9 @@ export function HistoryStrip({
         )}
         <div className={styles.historyFact}>
           <dt>
-            Prior runs
-            <Explainer term="prior-runs" scope={anchor} />
+            <Explainer term="prior-runs" scope={anchor}>
+              Prior runs
+            </Explainer>
           </dt>
           <dd>{history.trend.length}</dd>
         </div>
@@ -97,15 +108,28 @@ export function HistoryStrip({
 
       {measured.length >= 2 && (
         <>
-          <Sparkline points={points} breaks={breaks} threshold={threshold} frame={frame} />
+          <Sparkline
+            points={points}
+            breaks={breaks}
+            threshold={threshold}
+            frame={frame}
+            labels={rows.map((row) =>
+              row.alignedMismatchPercent === null
+                ? undefined
+                : `${row.commitSha ? row.commitSha.slice(0, 10) : "no commit"} · ${row.createdAt.slice(0, 10)} · ${row.alignedMismatchPercent.toFixed(2)}%${row.flagged ? " · flagged" : ""}`
+            )}
+          />
           {/*
-            The chart's own "?" sits under it rather than in the heading. The
-            heading explains what history is; this explains how to read a line
-            with gaps and breaks in it, which is the question the picture raises.
+            The caption under the chart explains how to read a line with gaps
+            and breaks in it — the question the picture raises, which is not the
+            one the "History" heading answers. Per-point detail is on the dots
+            themselves.
           */}
           <p className={styles.sparkGapNote}>
-            Aligned mismatch on each prior run, oldest first.
-            <Explainer term="sparkline" scope={`${anchor}-spark`} />
+            <Explainer term="sparkline" scope={`${anchor}-spark`}>
+              Aligned mismatch on each prior run, oldest first.
+            </Explainer>{" "}
+            Hover a point for its run.
           </p>
         </>
       )}
@@ -151,11 +175,22 @@ function Sparkline({
   breaks,
   threshold,
   frame,
+  labels,
 }: {
   points: (number | null)[];
   breaks: number[];
   threshold: number | null;
   frame: string;
+  /**
+   * One line per point, shown when its dot is hovered.
+   *
+   * A `<title>`, not a drawn card: this SVG is `preserveAspectRatio="none"` and
+   * stretches to its container, so anything composed in its coordinate system
+   * arrives horizontally smeared. `repos/sparkline.tsx` carries the same note —
+   * the two charts stay separate because Doctrine 6 keeps this page's renderer
+   * out of the published package, and `segments()` is the rule they do share.
+   */
+  labels: (string | undefined)[];
 }) {
   const measured = points.filter((p): p is number => p !== null);
   // The threshold is part of the scale so the line is visible against it, and
@@ -194,15 +229,20 @@ function Sparkline({
       ))}
       {points.map((value, index) =>
         value === null ? null : (
-          <circle
-            key={index}
-            className={
-              threshold !== null && value > threshold ? `${styles.sparkDot} ${styles.over}` : styles.sparkDot
-            }
-            cx={x(index)}
-            cy={y(value)}
-            r={2}
-          />
+          <g key={index}>
+            {/* A 2px dot is not a hover target; this is. */}
+            <circle className={styles.sparkHit} cx={x(index)} cy={y(value)} r={7}>
+              {labels[index] && <title>{labels[index]}</title>}
+            </circle>
+            <circle
+              className={
+                threshold !== null && value > threshold ? `${styles.sparkDot} ${styles.over}` : styles.sparkDot
+              }
+              cx={x(index)}
+              cy={y(value)}
+              r={2}
+            />
+          </g>
         )
       )}
     </svg>

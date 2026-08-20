@@ -79,8 +79,24 @@ export interface FrameHistory {
      */
     threshold: number | null;
   }[];
-  /** Commit where this frame first exceeded threshold, or null if it never has. */
+  /**
+   * Commit where this frame first exceeded threshold.
+   *
+   * **Null means "no commit recorded", which is not the same as "never
+   * drifted".** A run uploaded from a laptop has no SHA — `upload` reads it from
+   * `GITHUB_SHA` — so a frame can have drifted five times and have this be null
+   * throughout. `firstDriftRunId` is the field that answers *whether* it ever
+   * drifted; this one answers *where*, when we know.
+   *
+   * The two were one field until 2026-08-20, and the trend page read a null here
+   * as "never exceeded the threshold" — printed directly beside "Times flagged:
+   * 4 runs". Found by seeding real captures, none of which recorded a SHA.
+   */
   firstDriftCommit: string | null;
+  /** The run where it first exceeded threshold, or null if it never has. */
+  firstDriftRunId: string | null;
+  /** When that run happened. Non-null exactly when `firstDriftRunId` is. */
+  firstDriftAt: string | null;
   /** Committed runs in which this frame was flagged, this one included. */
   recurrence: number;
   /** The first observation from the most recent stored findings, or null. */
@@ -128,8 +144,8 @@ export async function frameHistory(
   }
 
   const first = (
-    await db.query<{ commit_sha: string }>(
-      `SELECT r.commit_sha
+    await db.query<{ run_id: string; commit_sha: string; created_at: string | Date }>(
+      `SELECT fs.run_id, r.commit_sha, fs.created_at
        FROM frame_stats fs JOIN runs r ON r.id = fs.run_id AND r.state = 'committed'
        WHERE fs.org_id = $1 AND fs.repo_id = $2 AND fs.frame = $3 AND fs.flagged = true
        ORDER BY fs.created_at ASC, fs.id ASC
@@ -179,6 +195,12 @@ export async function frameHistory(
       threshold: asThreshold(row.threshold),
     })),
     firstDriftCommit: first?.commit_sha?.trim() ? first.commit_sha : null,
+    firstDriftRunId: first?.run_id ?? null,
+    firstDriftAt: first
+      ? first.created_at instanceof Date
+        ? first.created_at.toISOString()
+        : String(first.created_at)
+      : null,
     recurrence: Number(flaggedCount?.n ?? 0),
     lastObservation,
   };

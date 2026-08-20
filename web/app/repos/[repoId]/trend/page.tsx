@@ -107,17 +107,30 @@ export default async function TrendPage({
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <h2 className={styles.sectionTitle}>
-              History
-              <Explainer term="history" scope="trend" />
+              <Explainer term="history" scope="trend">
+                History
+              </Explainer>
             </h2>
             <p className={styles.sectionNote}>
               Computed from runs we hold. A local run only knows about itself.
             </p>
           </div>
           <dl className={styles.facts}>
+            {/*
+              Three states, not two. "No commit recorded" is not "never
+              drifted" — a run uploaded from a laptop has no SHA, so a frame
+              flagged four times can have no commit for any of them. Printing
+              "never exceeded the threshold" beside "Times flagged: 4 runs" is
+              what this used to do, and real captures are what found it.
+            */}
             <Fact term="First drifted at" explain="first-drift">
-              {trend.firstDriftCommit === null ? (
+              {trend.firstDriftAt === null ? (
                 <span className={styles.muted}>never exceeded the threshold</span>
+              ) : trend.firstDriftCommit === null ? (
+                <>
+                  <time dateTime={trend.firstDriftAt}>{trend.firstDriftAt.slice(0, 10)}</time>{" "}
+                  <span className={styles.muted}>· no commit recorded</span>
+                </>
               ) : (
                 <code>{trend.firstDriftCommit.slice(0, 10)}</code>
               )}
@@ -136,36 +149,39 @@ export default async function TrendPage({
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <h2 className={styles.sectionTitle}>
-              Aligned mismatch over commits
-              <Explainer term="aligned-diff" scope="chart" />
+              <Explainer term="aligned-diff" scope="chart">
+                Aligned mismatch over commits
+              </Explainer>
             </h2>
-            <p className={styles.sectionNote}>
-              Oldest first.
-              <Explainer term="sparkline" scope="chart" />
-            </p>
+            <p className={styles.sectionNote}>Oldest first. Hover a point for that run.</p>
           </div>
           <div className={styles.chartWrap}>
             <TrendChart trend={trend} />
             {/*
-              The legend is where a reader decides what each stroke means, so it
-              is where the definitions belong — a "?" on the chart itself would
-              have to explain three unrelated things at once.
+              The legend defines the strokes; the chart itself answers about
+              points, on hover. Two questions, two places: "what is this line"
+              is a vocabulary question and belongs to a word, "what is this
+              point" is a data question and belongs to the point.
             */}
             <ul className={styles.legend}>
               <li>
-                <span className={`${styles.swatch} ${styles.swatchTrend}`} /> aligned mismatch
-                <Explainer term="aligned-diff" scope="legend" />
+                <span className={`${styles.swatch} ${styles.swatchTrend}`} />{" "}
+                <Explainer term="aligned-diff" scope="legend">
+                  aligned mismatch
+                </Explainer>
               </li>
               <li>
-                <span className={`${styles.swatch} ${styles.swatchThreshold}`} /> threshold, as each
-                run set it
-                <Explainer term="threshold-line" scope="legend" />
+                <span className={`${styles.swatch} ${styles.swatchThreshold}`} />{" "}
+                <Explainer term="threshold-line" scope="legend">
+                  threshold, as each run set it
+                </Explainer>
               </li>
               {trend.transitions.length > 0 && (
                 <li>
-                  <span className={`${styles.swatch} ${styles.swatchTransition}`} /> measurement
-                  changed
-                  <Explainer term="measurement-change" scope="legend" />
+                  <span className={`${styles.swatch} ${styles.swatchTransition}`} />{" "}
+                  <Explainer term="measurement-change" scope="legend">
+                    measurement changed
+                  </Explainer>
                 </li>
               )}
             </ul>
@@ -182,21 +198,25 @@ export default async function TrendPage({
               <thead>
                 <tr>
                   <th>
-                    Commit
-                    <Explainer term="commit" scope="trendruns" />
+                    <Explainer term="commit" scope="trendruns">
+                      Commit
+                    </Explainer>
                   </th>
                   <th>When</th>
                   <th>
-                    Measured as
-                    <Explainer term="fidelity-mode" scope="trendruns" />
+                    <Explainer term="fidelity-mode" scope="trendruns">
+                      Measured as
+                    </Explainer>
                   </th>
                   <th className={styles.num}>
-                    Aligned mismatch
-                    <Explainer term="aligned-diff" scope="trendruns" />
+                    <Explainer term="aligned-diff" scope="trendruns">
+                      Aligned mismatch
+                    </Explainer>
                   </th>
                   <th className={styles.num}>
-                    Threshold
-                    <Explainer term="threshold" scope="trendruns" />
+                    <Explainer term="threshold" scope="trendruns">
+                      Threshold
+                    </Explainer>
                   </th>
                   <th />
                 </tr>
@@ -266,8 +286,13 @@ function Fact({
   return (
     <div className={styles.fact}>
       <dt>
-        {term}
-        {explain && <Explainer term={explain} scope="fact" />}
+        {explain ? (
+          <Explainer term={explain} scope="fact">
+            {term}
+          </Explainer>
+        ) : (
+          term
+        )}
       </dt>
       <dd>{children}</dd>
     </div>
@@ -283,9 +308,13 @@ function Fact({
  */
 function Caveats({ trend, modes }: { trend: FrameTrend; modes: string[] }) {
   const lines: string[] = [];
-  if (trend.firstDriftCommit !== null && trend.firstDriftIndex === null) {
+  if (trend.firstDriftAt !== null && trend.firstDriftIndex === null) {
+    const where =
+      trend.firstDriftCommit === null
+        ? `on ${trend.firstDriftAt.slice(0, 10)}`
+        : `at ${trend.firstDriftCommit.slice(0, 10)}`;
     lines.push(
-      `This frame first drifted at ${trend.firstDriftCommit.slice(0, 10)}, which is older than the ${trend.limit} runs shown — so there is no marker on the chart. Raise the window with ?limit= (up to ${MAX_TREND_POINTS}) to bring it into view.`
+      `This frame first drifted ${where}, which is older than the ${trend.limit} runs shown — so there is no marker on the chart. Raise the window with ?limit= (up to ${MAX_TREND_POINTS}) to bring it into view.`
     );
   }
   if (trend.truncated) {

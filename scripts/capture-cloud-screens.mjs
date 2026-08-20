@@ -207,6 +207,17 @@ for (const tenant of TENANTS) {
       url: `/repos/${repo.id}/trend?frame=${encodeURIComponent(frame.frame)}`,
       caption: `${org.name} — frame trend (${frame.frame}, ${frame.runs} runs)`,
     });
+    shots.push({
+      kind: "trend",
+      slug: `${tenant.slug}-trend-hover`,
+      url: `/repos/${repo.id}/trend?frame=${encodeURIComponent(frame.frame)}`,
+      // The chart's per-point card only exists while a pointer is over a dot, so
+      // the ordinary full-page shot can never contain it. Without this the
+      // feature has no picture at all.
+      hoverPoint: true,
+      viewportOnly: true,
+      caption: `${org.name} — hovering a point on the trend chart names its run`,
+    });
   }
   if (run) {
     /*
@@ -397,6 +408,40 @@ for (const shot of wanted) {
         document.querySelector(`button[popovertarget="${id}"]`)?.click();
       }, shot.openPopover);
       await page.waitForTimeout(150);
+    }
+
+    if (shot.hoverPoint) {
+      /*
+       * Hover a point on the trend chart, and pick one that is *interesting*.
+       *
+       * The flagged points are what the chart is about, so the shot hovers the
+       * worst of them and falls back to the middle of the series. Hovering the
+       * first point would put the card over the y-axis and photograph the least
+       * informative run in the history.
+       */
+      const box = await page.evaluate(() => {
+        const groups = [...document.querySelectorAll('svg[class*="chart"] g[class*="point"]')];
+        if (groups.length === 0) {
+          return null;
+        }
+        const flagged = groups.filter((g) => g.querySelector('circle[class*="over"]'));
+        const pick = flagged.length > 0 ? flagged[Math.floor(flagged.length / 2)] : groups[Math.floor(groups.length / 2)];
+        const r = pick.querySelector("circle").getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      if (!box) {
+        console.error(`${BASE}${shot.url} has no chart points to hover.`);
+        await context.close();
+        await browser.close();
+        process.exit(1);
+      }
+      await page.mouse.move(box.x, box.y);
+      // The card fades in over 90ms. Screenshotting immediately catches it
+      // half-transparent, which looks like a rendering bug rather than a feature.
+      await page.waitForTimeout(250);
+      // The chart sits below the fold at some widths; scrolling now would move
+      // the element out from under the cursor and close the card, so the
+      // viewport-only shot is taken where it is.
     }
 
     const height = await page.evaluate(() => document.documentElement.scrollHeight);

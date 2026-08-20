@@ -113,8 +113,9 @@ export function SharePanel({ runId }: { runId: string }) {
   return (
     <section className={styles.share}>
       <h2 className={styles.shareHead}>
-        Share this report
-        <Explainer term="share-link" scope="panel" />
+        <Explainer term="share-link" scope="panel">
+          Share this report
+        </Explainer>
       </h2>
       <p className={styles.shareNote}>
         A share link opens this one run, read-only, with no account and no Explain button. The URL

@@ -422,36 +422,90 @@ const orgB = await makeOrg(`trend-b-${randomUUID().slice(0, 8)}`);
 
 // ═══ T5 — placement rules, on fixed histories ═══
 {
-  const row = (commit, pct, flagged, mode = "baseline", source = "baseline") => ({
-    runId: randomUUID(), commitSha: commit, alignedMismatchPercent: pct, flagged,
+  const row = (id, commit, pct, flagged, mode = "baseline", source = "baseline") => ({
+    runId: id, commitSha: commit, alignedMismatchPercent: pct, flagged,
     createdAt: new Date().toISOString(), mode, source, threshold: 0.1,
   });
   // `assembleTrend` takes history newest-first, as `frameHistory` returns it.
+  const [rA, rB, rC] = ["run-a", "run-b", "run-c"];
   const history = {
-    trend: [row("ccc", 0.4, true), row("bbb", 0.3, true), row("aaa", 0.01, false)],
+    trend: [row(rC, "ccc", 0.4, true), row(rB, "bbb", 0.3, true), row(rA, "aaa", 0.01, false)],
     firstDriftCommit: "bbb",
+    firstDriftRunId: rB,
+    firstDriftAt: new Date().toISOString(),
     recurrence: 2,
     lastObservation: null,
   };
   const t = assembleTrend("f.png", history, false, 30);
   check("T5.1", t.points.map((p) => p.commitSha).join(",") === "aaa,bbb,ccc",
     "assemble reverses newest-first history into oldest-first points");
-  check("T5.2", t.firstDriftIndex === 1, "and finds the named commit's position");
+  check("T5.2", t.firstDriftIndex === 1, "and finds the named run's position");
 
-  const orphan = assembleTrend("f.png", { ...history, firstDriftCommit: "zzz" }, true, 30);
+  const orphan = assembleTrend(
+    "f.png",
+    { ...history, firstDriftCommit: "zzz", firstDriftRunId: "run-older-than-the-window" },
+    true,
+    30
+  );
   check("T5.3", orphan.firstDriftIndex === null && orphan.firstDriftCommit === "zzz",
-    "a first-drift commit that is not in the window keeps the commit and drops the marker");
+    "a first drift outside the window keeps the commit and drops the marker");
 
-  // Two runs on the same commit — a re-run. The marker belongs on the earlier
-  // one, which is where the drift actually started.
+  // Two runs on the same commit — a re-run. Matching on the commit could land
+  // on either; matching on the run id names exactly one, and it is the one
+  // `enrichment.ts` chose.
   const dup = assembleTrend(
     "f.png",
-    { ...history, trend: [row("bbb", 0.5, true), row("bbb", 0.3, true), row("aaa", 0.01, false)] },
+    {
+      ...history,
+      trend: [row("rerun", "bbb", 0.5, true), row(rB, "bbb", 0.3, true), row(rA, "aaa", 0.01, false)],
+    },
     false,
     30
   );
   check("T5.4", dup.firstDriftIndex === 1,
-    "when a commit was run twice the marker lands on the older of the two");
+    "when a commit was run twice the marker lands on the run enrichment named, not on whichever came first");
+
+  /*
+   * T5.5 — "no commit recorded" is not "never drifted", and they used to be the
+   * same null.
+   *
+   * `firstDriftCommit` is null whenever the SHA is unrecorded, which is *every*
+   * run uploaded from a laptop (`upload` reads it from GITHUB_SHA). Reading that
+   * as "never exceeded the threshold" put exactly that sentence on the trend
+   * page beside "Times flagged: 4 runs". Found by seeding real captures, none of
+   * which recorded a SHA — not by a test.
+   */
+  const noSha = assembleTrend(
+    "f.png",
+    {
+      ...history,
+      trend: [row(rC, "", 0.4, true), row(rB, "", 0.3, true), row(rA, "", 0.01, false)],
+      firstDriftCommit: null,
+    },
+    false,
+    30
+  );
+  check("T5.5", noSha.firstDriftCommit === null && noSha.firstDriftAt !== null,
+    "a drift with no recorded commit keeps the fact that it drifted");
+  check("T5.5b", noSha.firstDriftIndex === 1,
+    "and still places the marker, because the run id is known even when the commit is not");
+
+  const never = assembleTrend(
+    "f.png",
+    { ...history, firstDriftCommit: null, firstDriftRunId: null, firstDriftAt: null },
+    false,
+    30
+  );
+  check("T5.6", never.firstDriftAt === null && never.firstDriftIndex === null,
+    "a frame that never drifted has no date and no marker — the answer the page prints as \'never\'");
+
+  // The counter-test for this pair: the old single-field reading, run over the
+  // same two histories. It cannot tell them apart.
+  const oldReading = (trend) => (trend.firstDriftCommit === null ? "never drifted" : "drifted");
+  check("T5.6b",
+    oldReading(noSha) === oldReading(never) &&
+      (noSha.firstDriftAt === null) !== (never.firstDriftAt === null),
+    `the one-field reading calls both "${oldReading(noSha)}"; the two-field one separates them`);
 }
 
 // ═══ T6 — the frame list is bounded ═══

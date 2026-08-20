@@ -8,6 +8,7 @@ import {
   SPARK_POINTS,
   type FrameSummary,
   type RepoOverview,
+  type SparkPoint,
 } from "argus-cloud/trendData.js";
 import { getDb } from "../../../lib/db";
 import { readTheme } from "../../../lib/theme";
@@ -111,9 +112,9 @@ export default async function RepoPage({
           {/*
             Frames whose *own* most recent run flagged them — not the flagged
             count of the newest run, which is a different number whenever a
-            frame was skipped. The label says which one it is, and now the "?"
-            says it again in the one place a reader who doubts the number will
-            look.
+            frame was skipped. The label says which one it is, and the label is
+            also the thing you click for the longer answer — which is the one
+            place a reader who doubts the number will look.
           */}
           <Stat
             value={String(flaggedNow)}
@@ -129,13 +130,15 @@ export default async function RepoPage({
           <section className={styles.section}>
             <div className={styles.sectionHead}>
               <h2 className={styles.sectionTitle}>
-                Frames
-                <Explainer term="frame" scope="frames" />
+                <Explainer term="frame" scope="frames">
+                  Frames
+                </Explainer>
               </h2>
               <p className={styles.sectionNote}>
-                Up to the last {SPARK_POINTS} runs of each frame, oldest first. Open one for its
-                full trend.
-                <Explainer term="sparkline" scope="frames" />
+                <Explainer term="sparkline" scope="frames">
+                  Up to the last {SPARK_POINTS} runs of each frame, oldest first.
+                </Explainer>{" "}
+                Hover a point for its run; open one for its full trend.
               </p>
             </div>
             <div className={styles.frames}>
@@ -184,8 +187,13 @@ function Stat({
     <div className={tone ? `${styles.stat} ${tone}` : styles.stat}>
       <span className={styles.statValue}>{value}</span>
       <span className={styles.statLabel}>
-        {label}
-        {explain && <Explainer term={explain} scope="repo" />}
+        {explain ? (
+          <Explainer term={explain} scope="repo">
+            {label}
+          </Explainer>
+        ) : (
+          label
+        )}
       </span>
     </div>
   );
@@ -219,12 +227,15 @@ function Runs({ overview }: { overview: RepoOverview }) {
     <section className={styles.section}>
       <div className={styles.sectionHead}>
         <h2 className={styles.sectionTitle}>
-          Runs
-          <Explainer term="run" scope="runs" />
+          <Explainer term="run" scope="runs">
+            Runs
+          </Explainer>
         </h2>
         <p className={styles.sectionNote}>
-          Newest first. Pending uploads are not listed.
-          <Explainer term="pending-run" scope="runs" />
+          Newest first.{" "}
+          <Explainer term="pending-run" scope="runs">
+            Pending uploads are not listed.
+          </Explainer>
         </p>
       </div>
       <div className={styles.tableWrap}>
@@ -232,18 +243,21 @@ function Runs({ overview }: { overview: RepoOverview }) {
           <thead>
             <tr>
               <th>
-                Commit
-                <Explainer term="commit" scope="runs" />
+                <Explainer term="commit" scope="runs">
+                  Commit
+                </Explainer>
               </th>
               <th>Branch</th>
               <th>When</th>
               <th className={styles.num}>
-                Compared
-                <Explainer term="frames-compared" scope="runs" />
+                <Explainer term="frames-compared" scope="runs">
+                  Compared
+                </Explainer>
               </th>
               <th className={styles.num}>
-                Flagged
-                <Explainer term="flagged" scope="runs" />
+                <Explainer term="flagged" scope="runs">
+                  Flagged
+                </Explainer>
               </th>
               <th />
             </tr>
@@ -311,6 +325,27 @@ function Runs({ overview }: { overview: RepoOverview }) {
   );
 }
 
+/**
+ * What one sparkline dot says when it is hovered.
+ *
+ * Built here rather than in `Sparkline` because the two charts that use it know
+ * different things — the repository view has each run's commit and date, and the
+ * report page's history strip has its own set. The component takes the finished
+ * line and never has to learn either shape.
+ *
+ * A run with no `frame_stats` row is `undefined` here rather than an entry with
+ * empty fields, and gets no tooltip. A tooltip reading "— · 0.00%" is worse than
+ * none: it looks like an answer.
+ */
+function sparkLabel(at: SparkPoint | undefined, value: number | null): string | undefined {
+  if (!at || value === null) {
+    return undefined;
+  }
+  const commit = at.commitSha ? at.commitSha.slice(0, 10) : "no commit";
+  const against = at.threshold === null ? "no threshold" : `threshold ${at.threshold}%`;
+  return `${commit} · ${at.createdAt.slice(0, 10)} · ${value.toFixed(2)}% · ${against}${at.flagged ? " · flagged" : ""}`;
+}
+
 function FrameRow({ repoId, frame }: { repoId: string; frame: FrameSummary }) {
   const measured = frame.points.filter((p): p is number => p !== null);
   return (
@@ -336,6 +371,7 @@ function FrameRow({ repoId, frame }: { repoId: string; frame: FrameSummary }) {
           breaks={frame.breaks}
           threshold={frame.threshold}
           frame={frame.frame}
+          labels={frame.points.map((value, i) => sparkLabel(frame.runsAt[i], value))}
         />
       ) : (
         <span className={styles.muted}>needs 2 runs</span>

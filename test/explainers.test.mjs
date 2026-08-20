@@ -1,4 +1,5 @@
-// The "?" popovers on the Cloud pages, and the glossary behind them.
+// Defined terms on the Cloud pages, the glossary behind them, and the per-point
+// tooltips on the two charts.
 //
 // Run: npm test
 // Run one suite:  node test/explainers.test.mjs
@@ -12,12 +13,16 @@
 //     but only when that page renders, so a typo in a rarely-visited branch
 //     ships and is found by a customer.
 //   - two popovers sharing an element id. `popovertarget` resolves by id, so the
-//     second "?" on a page would open the first one's definition — a wrong
+//     second term on a page would open the first one's definition — a wrong
 //     answer, confidently given, with nothing in any log.
-//   - the typography reset. A popover inherits down the DOM, and every trigger
-//     on these pages hangs off an uppercased label. Without the reset the
-//     definition renders in all caps, which shipped once.
+//   - the typography reset, in both directions. The trigger has to inherit its
+//     surroundings (it is a word in a sentence) and the bubble has to reset them
+//     (it is a paragraph in the top layer). Getting the second wrong shipped a
+//     definition in capitals; getting the first wrong would make every defined
+//     term look unlike the text around it.
 //   - a frame label reaching an id. Labels are upload-supplied.
+//   - `fill: none` on a chart's hover target, which is invisible *and* untouchable
+//     — the tooltip would then open only on the 3.5px dot.
 //
 // One counter-test, in the sense of CLAUDE.md rule 3:
 //
@@ -136,13 +141,8 @@ const entries = [...glossarySrc.matchAll(/^\s{4}id:\s*"([^"]+)",\n\s{4}term:\s*"
  * this file quietly not covering it.
  */
 const DYNAMIC_TERMS = [
-  "flagged",
-  "clean", // page.tsx — the frame's pass/fail badge
   "fidelity-mode",
   "baseline-mode", // page.tsx — how the frame was measured
-  "build",
-  "reference",
-  "diff-overlay", // frame-view.tsx — the Shot table's captions
 ];
 
 const pages = await tsxUnder(path.join(WEB, "app"));
@@ -212,11 +212,11 @@ const shotTerms = [
   );
 
   // If another computed term appears, this file stops covering it — and the
-  // symptom would be a "?" that throws when somebody opens that one page.
+  // symptom would be a term that throws when somebody opens that one page.
   check(
     "X2.6",
-    dynamicSites === 3,
-    `${dynamicSites} explainer terms are computed rather than written (expected 3; add them to DYNAMIC_TERMS if this grew)`
+    dynamicSites === 2,
+    `${dynamicSites} explainer terms are computed rather than written (expected 2; add them to DYNAMIC_TERMS if this grew)`
   );
 
   // The other direction is a warning, not a failure: a term can legitimately be
@@ -243,8 +243,11 @@ const shotTerms = [
   let scoped = 0;
   let unscoped = 0;
   for (const rel of perFrame) {
-    const src = await readFile(path.join(WEB, rel), "utf-8");
-    for (const m of src.matchAll(/<Explainer\s[^>]*?\/>/gs)) {
+    const src = decomment(await readFile(path.join(WEB, rel), "utf-8"));
+    // An `<Explainer …>` opening tag. It wraps its children now, so the old
+    // self-closing pattern matched nothing and this check passed vacuously for
+    // one commit — which is the failure mode the check itself is about.
+    for (const m of src.matchAll(/<Explainer\s[^>]*?>/gs)) {
       if (/scope=/.test(m[0])) scoped++;
       else unscoped++;
     }
@@ -290,6 +293,70 @@ const shotTerms = [
   );
 }
 
+// ═══ X2b — the trigger is the term, and there is no icon ═══
+//
+// The first version appended a circled "?" to every label: 103 of them on a
+// seven-frame report. Harsha's verdict was that a page speckled with query
+// glyphs reads as a page unsure of itself, and the count scaled with frames
+// rather than with ideas. These checks are what stop one creeping back.
+
+{
+  const component = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8")
+  );
+
+  check(
+    "X2b.1",
+    !/["'>]\s*\?\s*["'<]/.test(component) && !component.includes("aria-hidden"),
+    "the component renders no glyph of its own — the trigger's content is whatever it wraps"
+  );
+  check(
+    "X2b.2",
+    /<button[^>]*>\s*\{children\}\s*<\/button>/.test(component),
+    "the button *is* the term: `children` is its entire content"
+  );
+  check(
+    "X2b.3",
+    component.includes("children: ReactNode"),
+    "and children are required, so a term cannot be rendered with nothing to click"
+  );
+
+  // Every call site passes something to wrap. A self-closing `<Explainer />`
+  // would render an empty button — invisible, focusable, and impossible to open
+  // with a mouse.
+  const selfClosing = [];
+  for (const file of pages) {
+    const src = decomment(await readFile(file, "utf-8"));
+    if (/<Explainer\s[^>]*\/>/s.test(src)) {
+      selfClosing.push(path.relative(ROOT, file));
+    }
+  }
+  check(
+    "X2b.4",
+    selfClosing.length === 0,
+    `no call site renders an empty trigger${selfClosing.length ? `: ${selfClosing.join(", ")}` : ""}`
+  );
+
+  const css = decomment(await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8"));
+  const trigger = css.slice(css.indexOf(".explainerTerm {"), css.indexOf(".explainerBubble"));
+  check(
+    "X2b.5",
+    trigger.includes("text-decoration: underline dotted"),
+    "the only mark it adds is a dotted underline on the word"
+  );
+  // The trigger has to *inherit* everything the bubble resets. It is a word in
+  // whatever sentence it sits in — a stat label, a table header, body text —
+  // and a <button> arrives with its own font, colour and spacing.
+  for (const [id, prop] of [
+    ["X2b.6", "font: inherit"],
+    ["X2b.7", "color: inherit"],
+    ["X2b.8", "letter-spacing: inherit"],
+    ["X2b.9", "text-transform: inherit"],
+  ]) {
+    check(id, trigger.includes(prop), `the trigger inherits ${prop.split(":")[0]} from the text it sits in`);
+  }
+}
+
 // ═══ X3 — the stylesheet, where the failures are invisible ═══
 
 {
@@ -332,7 +399,7 @@ const shotTerms = [
   check(
     "X3.6",
     css.slice(supportsAt).includes("position-try-fallbacks"),
-    "fallback positions exist, so a '?' at the foot or the right edge does not open off-screen"
+    "fallback positions exist, so a term at the foot or the right edge does not open off-screen"
   );
 
   // No `anchor-name`. It would have to be unique per instance, which a CSS
@@ -396,6 +463,82 @@ const shotTerms = [
   check("X5.2", /\.tableWrap\s*\{[^}]*overflow-x:\s*auto/.test(trends), ".tableWrap really does scroll, and carries explainers in its headers");
   const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
   check("X5.3", component.includes('popover="auto"'), "so the bubble is a popover, which renders outside both");
+}
+
+// ═══ X6 — hovering a chart point says which run it is ═══
+//
+// "Which run is that spike?" is a question about a *point*, and answering it by
+// asking someone to match an x-position against the table below is not answering
+// it. The two charts answer it differently, and the difference is one attribute.
+
+{
+  const chart = decomment(await readFile(path.join(WEB, "app/repos/trend-chart.tsx"), "utf-8"));
+  const trends = decomment(await readFile(path.join(WEB, "app/repos/trends.module.css"), "utf-8"));
+
+  check("X6.1", chart.includes("function PointMarker"), "the trend chart draws a card per point");
+  check(
+    "X6.2",
+    /commitSha \? label/.test(chart) && chart.includes("point.threshold") && chart.includes("point.createdAt"),
+    "and the card carries the commit, the threshold and the date — the row of the table, at the mark"
+  );
+
+  // The hit target, and the bug it exists to prevent twice over.
+  check("X6.3", chart.includes("dotHit") && /r=\{13\}/.test(chart), "a 13px hit target sits under the 3.5px dot");
+  check(
+    "X6.4",
+    /\.dotHit\s*\{[^}]*fill:\s*transparent/.test(trends),
+    "it is `fill: transparent`, which paints and therefore takes pointer events"
+  );
+  check(
+    "X6.4b",
+    !/\.dotHit\s*\{[^}]*fill:\s*none/.test(trends),
+    "and not `fill: none`, which would be untouchable — the tooltip would open only on the dot itself"
+  );
+  check(
+    "X6.5",
+    /\.tip\s*\{[^}]*pointer-events:\s*none/.test(trends),
+    "the card never takes the pointer: it overlaps its neighbours' hit targets"
+  );
+  check(
+    "X6.6",
+    /\.point:hover\s+\.tip/.test(trends),
+    "it opens on plain :hover, so the page still ships no JavaScript"
+  );
+
+  // Points are drawn last so an open card is not painted over by a later dot.
+  const pointsAt = chart.indexOf("<PointMarker");
+  check(
+    "X6.7",
+    pointsAt > chart.indexOf("thresholdPath(points") && pointsAt > chart.indexOf("trend.transitions.map"),
+    "points render after the lines and markers, so nothing is drawn over an open card"
+  );
+
+  // The sparklines cannot draw a card, and the reason is `preserveAspectRatio`.
+  for (const [id, rel] of [
+    ["X6.8", "app/repos/sparkline.tsx"],
+    ["X6.9", "app/r/[runId]/history-strip.tsx"],
+  ]) {
+    const src = await readFile(path.join(WEB, rel), "utf-8");
+    const stripped = decomment(src);
+    const stretched = stripped.includes('preserveAspectRatio="none"');
+    check(
+      id,
+      stretched && stripped.includes("<title>") && stripped.includes("sparkHit"),
+      `${rel.split("/").pop()} uses <title>, not a drawn card — its SVG is stretched, so drawn text would smear`
+    );
+  }
+
+  const report = decomment(await readFile(path.join(WEB, "app/r/[runId]/report.module.css"), "utf-8"));
+  for (const [id, css, where] of [
+    ["X6.10", trends, "repository view"],
+    ["X6.11", report, "report page"],
+  ]) {
+    check(
+      id,
+      /\.sparkHit\s*\{[^}]*fill:\s*transparent/.test(css),
+      `the ${where}'s sparkline dots have a hit target that actually takes the pointer`
+    );
+  }
 }
 
 console.log(`\n${failures === 0 ? "explainers: all checks green" : `explainers: ${failures} FAILED`}`);

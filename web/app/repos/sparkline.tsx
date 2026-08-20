@@ -12,6 +12,18 @@ import styles from "./trends.module.css";
  *
  * Server-rendered inert SVG, like the report page's history strip, so it needs
  * no nonce and arrives in the first byte of HTML.
+ *
+ * **Hovering a dot names its run — through `<title>`, not a drawn card.** The
+ * trend chart draws its own tooltip; this cannot, and the reason is one
+ * attribute: `preserveAspectRatio="none"`. This chart is 200 units wide and
+ * stretches to whatever the row gives it, so every drawn shape is horizontally
+ * scaled by an amount only the browser knows. A card composed here would arrive
+ * with its text smeared to that ratio.
+ *
+ * A `<title>` is rendered by the browser as an ordinary tooltip, outside the
+ * SVG's coordinate system entirely, so it is immune to that — and it costs no
+ * layout, no script and no risk in a 40px-tall graphic. It is slower to appear
+ * than a CSS tooltip, which is the trade.
  */
 
 const CHART = { width: 200, height: 40, padX: 3, padY: 5 };
@@ -21,6 +33,7 @@ export function Sparkline({
   breaks = [],
   threshold,
   frame,
+  labels = [],
 }: {
   /** Oldest → newest. `null` is a run with no measurement. */
   points: (number | null)[];
@@ -28,6 +41,15 @@ export function Sparkline({
   breaks?: number[];
   threshold: number | null;
   frame: string;
+  /**
+   * One line per point, in the same order, shown when that dot is hovered.
+   *
+   * Optional and defaulted, because the two callers know different amounts: the
+   * repository view has each run's commit and date, and the report page's
+   * history strip has its own. A missing entry means the dot has no tooltip,
+   * which is what this chart did before and is never worse than a wrong one.
+   */
+  labels?: (string | undefined)[];
 }) {
   const measured = points.filter((p): p is number => p !== null);
   if (measured.length < 2) {
@@ -70,15 +92,21 @@ export function Sparkline({
       ))}
       {points.map((value, i) =>
         value === null ? null : (
-          <circle
-            key={i}
-            className={
-              threshold !== null && value > threshold ? `${styles.sparkDot} ${styles.over}` : styles.sparkDot
-            }
-            cx={x(i)}
-            cy={y(value)}
-            r={1.8}
-          />
+          <g key={i}>
+            {/* A 1.8px dot is not a hover target. The transparent circle over it
+                is, and it is what carries the title. */}
+            <circle className={styles.sparkHit} cx={x(i)} cy={y(value)} r={7}>
+              {labels[i] && <title>{labels[i]}</title>}
+            </circle>
+            <circle
+              className={
+                threshold !== null && value > threshold ? `${styles.sparkDot} ${styles.over}` : styles.sparkDot
+              }
+              cx={x(i)}
+              cy={y(value)}
+              r={1.8}
+            />
+          </g>
         )
       )}
     </svg>

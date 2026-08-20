@@ -82,6 +82,16 @@ export interface FrameSummary {
   /** Oldest → newest. `null` is a run that recorded no measurement — a gap, never a zero. */
   points: (number | null)[];
   /**
+   * What each point *was*, in the same order — commit, date and the threshold
+   * that run was judged at.
+   *
+   * Carried so a sparkline dot can say which run it is. Reading the shape and
+   * then having to match an x-position against a table to find out which commit
+   * caused it is not answering the question the picture raises, and the answer
+   * is already in this query.
+   */
+  runsAt: SparkPoint[];
+  /**
    * Indices where the measurement changed definition, so the sparkline breaks
    * there rather than drawing a stroke between two incomparable numbers. The
    * large chart does the same thing from `FrameTrend.transitions`; a small chart
@@ -90,6 +100,15 @@ export interface FrameSummary {
   breaks: number[];
   threshold: number | null;
   runs: number;
+}
+
+/** One point's identity on the repository view's sparkline. */
+export interface SparkPoint {
+  runId: string;
+  commitSha: string;
+  createdAt: string;
+  threshold: number | null;
+  flagged: boolean;
 }
 
 export interface RepoOverview {
@@ -126,8 +145,16 @@ export interface FrameTrend {
   frame: string;
   /** Oldest → newest, which is the direction a trend is read and drawn. */
   points: TrendPoint[];
-  /** Straight from `frameHistory()`. Never recomputed from `points`. */
+  /**
+   * Straight from `frameHistory()`. Never recomputed from `points`.
+   *
+   * Null means the commit was not recorded, **not** that the frame never
+   * drifted — `firstDriftAt` is the field that answers that. See the note on
+   * `FrameHistory.firstDriftCommit`.
+   */
   firstDriftCommit: string | null;
+  /** When it first exceeded threshold, or null if it never has. */
+  firstDriftAt: string | null;
   /**
    * Where `firstDriftCommit` lands in `points`, or null when it is older than
    * the window. Null is not "it never drifted" — that is `firstDriftCommit`
@@ -308,11 +335,16 @@ export async function repoOverview(
       aligned_mismatch_percent: number | null;
       flagged: boolean;
       threshold: string | null;
+      run_id: string;
+      commit_sha: string;
+      created_at: string | Date;
       rn: string | number;
       fr: string | number;
     }>(
-      `SELECT frame, mode, source, aligned_mismatch_percent, flagged, threshold, rn, fr FROM (
+      `SELECT frame, mode, source, aligned_mismatch_percent, flagged, threshold,
+              run_id, commit_sha, created_at, rn, fr FROM (
          SELECT fs.frame, fs.mode, fs.source, fs.aligned_mismatch_percent, fs.flagged,
+                fs.run_id, r.commit_sha, fs.created_at,
                 (r.summary ->> 'threshold') AS threshold,
                 ROW_NUMBER() OVER (
                   PARTITION BY fs.frame ORDER BY fs.created_at DESC, fs.id DESC
@@ -344,6 +376,7 @@ export async function repoOverview(
         flagged: false,
         alignedMismatchPercent: null,
         points: [],
+        runsAt: [],
         breaks: [],
         threshold: null,
         runs: 0,
@@ -356,6 +389,13 @@ export async function repoOverview(
       summary.breaks.push(summary.points.length);
     }
     summary.points.push(value);
+    summary.runsAt.push({
+      runId: row.run_id,
+      commitSha: row.commit_sha,
+      createdAt: new Date(row.created_at).toISOString(),
+      threshold: threshold(row.threshold),
+      flagged: row.flagged,
+    });
     summary.runs += 1;
     // The last row for a frame is its newest run, so these end up describing
     // the current state rather than whatever came first.
@@ -448,15 +488,20 @@ export function assembleTrend(
       threshold: row.threshold,
     }));
 
-  // The annotation is placed by matching the commit `enrichment.ts` named, not
-  // by looking for the first flagged point. When the frame first drifted before
-  // the window starts there is no point to annotate, and `null` here says so —
-  // which is a different fact from "it never drifted", and the page prints them
-  // differently.
+  // The annotation is placed from what `enrichment.ts` named, not by looking for
+  // the first flagged point. When the frame first drifted before the window
+  // starts there is no point to annotate, and `null` here says so — which is a
+  // different fact from "it never drifted", and the page prints them differently.
+  //
+  // **Matched on the run, not on the commit.** A commit was the obvious key and
+  // it is wrong twice: every run of a laptop-uploaded frame has an empty SHA, so
+  // the match would land on whichever point came first; and two runs can share a
+  // commit legitimately — a re-run — so even with real SHAs it is ambiguous. A
+  // run id names exactly one point.
   const found =
-    history.firstDriftCommit === null
+    history.firstDriftRunId === null
       ? -1
-      : points.findIndex((p) => p.commitSha === history.firstDriftCommit);
+      : points.findIndex((p) => p.runId === history.firstDriftRunId);
 
   const transitions: Transition[] = [];
   for (let i = 1; i < points.length; i++) {
@@ -471,6 +516,7 @@ export function assembleTrend(
     frame,
     points,
     firstDriftCommit: history.firstDriftCommit,
+    firstDriftAt: history.firstDriftAt,
     firstDriftIndex: found === -1 ? null : found,
     recurrence: history.recurrence,
     transitions,
