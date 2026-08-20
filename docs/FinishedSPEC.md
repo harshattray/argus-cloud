@@ -2204,9 +2204,24 @@ in the export. What is bounded is how many *interactive* elements exist:
 | Size | What it gives |
 |---|---|
 | 200 runs | fully interactive — marks and hover cards |
-| 1k, 5k | the exact line; select a range to inspect it |
+| 1k, 5k, All | the exact line; select a range to inspect it |
 | Runs table | 25 rows a page |
 | Export | the complete span, exact, as CSV |
+
+**The ladder is built from the real count, and its top step is *all of them*.**
+The first cut keyed off `truncated`, which offered "200 / 1k / 5k" to a
+forty-seven-run frame — three buttons returning the same forty-seven points.
+Harsha caught it by asking what happens below 200. The count is free: the runs
+table already does a `COUNT(*)` for its pager. So sizes are offered only where
+they would show something different, the last step is every run in scope rather
+than an implementation number, and a frame whose whole history fits in one view
+gets **"Showing all 12 runs · fully interactive"** instead of a control. That is
+every real tenant today.
+
+`MAX_TREND_POINTS` is 20,000, sized above what retention can produce — 200 runs
+a day for 90 days is 18,000 — so "All" is the truth for every plan that exists,
+and the cap still bounds the one query whose cost would otherwise be a
+customer's choice.
 
 5,000 interactive points would be ~40,000 DOM nodes in the first byte, aimed at
 0.14-unit targets. Bounding a view is only honest while the whole dataset stays
@@ -2242,9 +2257,44 @@ shape to break, and never on the chart, which does.
 messages are upload-supplied — the same argument that made `contentType` an
 allowlist in `artifactUploads.ts`. Fields are quoted and such values prefixed.
 
-**Evidence.** `test/overview.test.mjs` (42 checks) plus additions to `explainers`
-and `trends`. Suite totals: **1,012 on PGlite, 1,040 against a real Postgres
-server**, across 31 suites. Guards watched failing before being trusted:
+### The waiting indicator, and a brand rule it had to work around
+
+Harsha asked for the Yutic logo as an animated loading symbol. The brand book
+forbids precisely that, in one sentence:
+
+> `yutic-brand-rules.txt` §01 — *"A fan of five peacock feathers, each with an
+> eye. **Never rotated, reordered, stretched, recoloured or given effects.**
+> Clearspace = one eye diameter. Minimum 28px wide."*
+
+A spinning mark is a rotation *and* an effect. **So the mark holds still and a
+ring turns around it** — the identity is the logo, the motion is not applied to
+it. It renders at the 28px floor (the rule says to drop the quill and base below
+that, and there is no reduced asset, so it is never smaller), keeps one eye
+diameter of clearspace, and is served as-is with no recolour.
+
+`prefers-reduced-motion` stops the rotation and leaves a ring that still reads as
+waiting, because it is visibly incomplete. The label is real text inside
+`role="status"`, so the wait is announced rather than drawn.
+
+**This is an overridable rule and §09 is the precedent for how**: it read "never
+in product headers or app UI" until Harsha decided otherwise on 2026-08-20, and
+the rules file was edited in the same change. S6.6 is the check that would need
+deleting, deliberately, alongside that edit.
+
+Loading states are on the three routes where a wait is visible — the repository
+view, the trend page and the run report. All three are `force-dynamic`, every
+control on the trend page is a navigation, and the brush pushes a URL on every
+drag. The report's wait is not the database: it presigns a URL per artifact, so a
+twenty-frame run is sixty signatures before the first byte. Explain and the share
+panel show the same indicator inline, beside the controls rather than inside a
+button label — swapping a label to "Explaining…" resized the button mid-click and
+left the other one still offering its price during a call that had already
+reserved credits.
+
+**Evidence.** `test/overview.test.mjs` (42 checks), 14 in `cloudShell` for the
+brand rule and the loading routes, plus additions to `explainers` and `trends`.
+Suite totals: **1,028 on PGlite, 1,056 against a real Postgres server**, across
+31 suites. Guards watched failing before being trusted:
 
 | Break | Went red |
 |---|---|
@@ -2254,6 +2304,9 @@ server**, across 31 suites. Guards watched failing before being trusted:
 | Points drawn before the trend line | X6.7 |
 | The whole detail ladder shown regardless of what exists | T5b.1, T5b.3, T5b.5 |
 | A second client component added to `/repos/` | X4.1 |
+| The Yutic mark animated instead of the ring | S6.5 |
+| The reduced-motion guard removed | S6.9 |
+| The ladder keyed off truncation rather than the count | T5b.1, T5b.9 |
 
 **What this does not prove.** The brush was driven with a synthetic pointer in
 one browser at one width; touch has not been tried, and `touch-action: pan-y` is

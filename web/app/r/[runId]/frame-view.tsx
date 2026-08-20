@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Explainer } from "../../_components/cloud/explainer";
+import { Loading } from "../../_components/cloud/loading";
 import styles from "./report.module.css";
 
 /**
@@ -549,11 +550,21 @@ function ExplainControls({
           both buttons state their own price.
         */}
         <button type="button" className={styles.button} onClick={() => explain(false)} disabled={busy || !apiKey}>
-          {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
+          {`Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
         </button>
         <button type="button" className={styles.button} onClick={() => explain(true)} disabled={busy || !apiKey}>
           {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
         </button>
+        {/*
+          The wait is its own element rather than the button's label.
+          
+          Swapping the label to "Explaining…" resized the button mid-click and
+          left the *other* button still offering its price during a call that
+          had already reserved credits. This says one thing is running, beside
+          both of them, and says how long it may take — a model call is seconds,
+          and a control that looks stuck for five seconds gets clicked again.
+        */}
+        {busy && <Loading label="Asking the model — this takes a few seconds" />}
         {error && <span className={styles.error}>{error}</span>}
       </div>
     </>

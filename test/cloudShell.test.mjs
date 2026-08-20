@@ -243,5 +243,85 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
     "and it states the one surface where the demo label does not appear");
 }
 
+// ═══ S6 — the waiting indicator, and the brand rule it had to work around ═══
+//
+// Harsha asked for the Yutic logo as an animated loading symbol. The brand book
+// forbids exactly that, in one sentence:
+//
+//   yutic-brand/yutic-brand-orange/yutic-brand-rules.txt §01
+//   "A fan of five peacock feathers, each with an eye. Never rotated,
+//    reordered, stretched, recoloured or given effects."
+//
+// A spinning mark is a rotation *and* an effect. So the mark holds still and a
+// ring turns around it — the identity is the logo, the motion is not applied to
+// it. These checks are what stop that quietly eroding: the tempting "fix" for a
+// static logo inside a spinner is to spin the logo.
+//
+// **It is an overridable rule and there is a precedent for how.** §09 read
+// "never in product headers or app UI" until 2026-08-20, when Harsha decided
+// otherwise and the rules file was edited in the same change. If a turning mark
+// is wanted, that is the route — and S6.6 is the check that would need deleting,
+// deliberately, at the same time.
+{
+  const css = decomment(await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8"));
+  const component = await readFile(path.join(WEB, "app/_components/cloud/loading.tsx"), "utf-8");
+  const mark = css.slice(css.indexOf(".spinMark"), css.indexOf(".spinRing"));
+  const ring = css.slice(css.indexOf(".spinRing"));
+
+  check("S6.1", css.includes(".spinRing") && /animation:\s*spin/.test(ring),
+    "the ring is what animates");
+  check("S6.2", component.includes("/yutic-mark.svg"),
+    "and the mark inside it is the brand file, served as-is");
+
+  // The rule, as four separate checks, because they are four separate verbs in
+  // the book and a future change is likely to reach for exactly one of them.
+  for (const [id, prop, verb] of [
+    ["S6.3", "transform", "rotated or stretched"],
+    ["S6.4", "filter", "given effects"],
+    ["S6.5", "animation", "animated"],
+  ]) {
+    check(id, !new RegExp(`${prop}\\s*:`).test(mark),
+      `the mark itself is never ${verb} — brand rules §01`);
+  }
+  check("S6.6", !/\.spinMark[^{]*\{[^}]*rotate/.test(css) && !/\.spinMark:.*\{[^}]*animation/.test(css),
+    "nothing anywhere rotates it, which is the check to delete if that rule is ever overridden");
+
+  // §01 also sets a floor: "Minimum 28px wide; below that drop the quill and
+  // base." There is no reduced asset, so the mark is never rendered under it —
+  // the `sm` variant shrinks the ring's padding instead.
+  const spinner = css.slice(css.indexOf(".spinner {"), css.indexOf(".spinMark"));
+  check("S6.7", /--yutic-mark:\s*28px/.test(spinner),
+    "the mark renders at the 28px floor and never below it");
+  check("S6.8", /--yutic-clearspace:.*23\s*\/\s*144\.5/.test(spinner),
+    "and the ring keeps one eye diameter of clearspace, which §01 defines as 23 of 144.5 units");
+
+  // A spinner that keeps spinning for someone who asked it not to is the one
+  // accessibility failure that is also a health issue.
+  const reduced = css.slice(css.indexOf("prefers-reduced-motion"));
+  check("S6.9", /\.spinRing\s*\{\s*animation:\s*none/.test(reduced),
+    "reduced motion stops the rotation and leaves a ring that still reads as waiting");
+
+  check("S6.10", /role="status"/.test(component) && /aria-live/.test(component),
+    "the wait is announced, not just drawn");
+  check("S6.11", /alt=""/.test(component) && /aria-hidden/.test(component),
+    "and the mark is decorative to a screen reader — the label carries the meaning");
+
+  // Every route where a wait is actually visible has one. All three are
+  // force-dynamic and every control on them is a navigation.
+  for (const [id, rel] of [
+    ["S6.12", "app/repos/[repoId]/loading.tsx"],
+    ["S6.13", "app/repos/[repoId]/trend/loading.tsx"],
+    ["S6.14", "app/r/[runId]/loading.tsx"],
+  ]) {
+    let present = true;
+    try {
+      await readFile(path.join(WEB, rel), "utf-8");
+    } catch {
+      present = false;
+    }
+    check(id, present, `${rel.replace("app/", "")} has a loading state`);
+  }
+}
+
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

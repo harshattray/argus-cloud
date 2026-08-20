@@ -21,23 +21,23 @@ deliberate step for a page that will display it, followed by
 |---|---|---|---|---|
 | `demo-repository-light.png` | light | DEMO — Northwind Retail (sample data) — repository view (demo-checkout) | full page | 133 KB |
 | `demo-repository-dark.png` | dark | DEMO — Northwind Retail (sample data) — repository view (demo-checkout) | full page | 132 KB |
-| `demo-trend-light.png` | light | DEMO — Northwind Retail (sample data) — frame trend (payment.png, 12 runs) | full page | 201 KB |
-| `demo-trend-dark.png` | dark | DEMO — Northwind Retail (sample data) — frame trend (payment.png, 12 runs) | full page | 199 KB |
-| `demo-trend-hover-light.png` | light | DEMO — Northwind Retail (sample data) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1764px) | 81 KB |
-| `demo-trend-hover-dark.png` | dark | DEMO — Northwind Retail (sample data) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1764px) | 80 KB |
-| `demo-run-report-flagged-light.png` | light | DEMO — Northwind Retail (sample data) — run report, owner view · 1 of 2 frames flagged | full page | 209 KB |
+| `demo-trend-light.png` | light | DEMO — Northwind Retail (sample data) — frame trend (payment.png, 12 runs) | full page | 205 KB |
+| `demo-trend-dark.png` | dark | DEMO — Northwind Retail (sample data) — frame trend (payment.png, 12 runs) | full page | 202 KB |
+| `demo-trend-hover-light.png` | light | DEMO — Northwind Retail (sample data) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1789px) | 84 KB |
+| `demo-trend-hover-dark.png` | dark | DEMO — Northwind Retail (sample data) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1789px) | 83 KB |
+| `demo-run-report-flagged-light.png` | light | DEMO — Northwind Retail (sample data) — run report, owner view · 1 of 2 frames flagged | full page | 211 KB |
 | `demo-run-report-flagged-dark.png` | dark | DEMO — Northwind Retail (sample data) — run report, owner view · 1 of 2 frames flagged | full page | 209 KB |
 | `demo-run-report-explainer-light.png` | light | DEMO — Northwind Retail (sample data) — a definition open on the run report | viewport only (1440×900 of 2064px) | 111 KB |
 | `demo-run-report-explainer-dark.png` | dark | DEMO — Northwind Retail (sample data) — a definition open on the run report | viewport only (1440×900 of 2064px) | 110 KB |
 | `real-repository-light.png` | light | REAL — Normascope's own runs (measured) — repository view (normascope-site-scenarios) | full page | 131 KB |
 | `real-repository-dark.png` | dark | REAL — Normascope's own runs (measured) — repository view (normascope-site-scenarios) | full page | 131 KB |
-| `real-trend-light.png` | light | REAL — Normascope's own runs (measured) — frame trend (norma-hero.png, 6 runs) | full page | 145 KB |
-| `real-trend-dark.png` | dark | REAL — Normascope's own runs (measured) — frame trend (norma-hero.png, 6 runs) | full page | 143 KB |
-| `real-trend-hover-light.png` | light | REAL — Normascope's own runs (measured) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1505px) | 72 KB |
-| `real-trend-hover-dark.png` | dark | REAL — Normascope's own runs (measured) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1505px) | 71 KB |
+| `real-trend-light.png` | light | REAL — Normascope's own runs (measured) — frame trend (norma-hero.png, 6 runs) | full page | 149 KB |
+| `real-trend-dark.png` | dark | REAL — Normascope's own runs (measured) — frame trend (norma-hero.png, 6 runs) | full page | 146 KB |
+| `real-trend-hover-light.png` | light | REAL — Normascope's own runs (measured) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1530px) | 74 KB |
+| `real-trend-hover-dark.png` | dark | REAL — Normascope's own runs (measured) — hovering a point on the trend chart names its run | viewport only (1440×900 of 1530px) | 73 KB |
 | `real-run-report-flagged-light.png` | light | REAL — Normascope's own runs (measured) — run report, owner view · 5 of 7 frames flagged | full page | 603 KB |
 | `real-run-report-flagged-dark.png` | dark | REAL — Normascope's own runs (measured) — run report, owner view · 5 of 7 frames flagged | full page | 599 KB |
-| `real-run-report-clean-light.png` | light | REAL — Normascope's own runs (measured) — run report where nothing was flagged (0 of 7). A clean report is a result, not an empty page. | full page | 466 KB |
+| `real-run-report-clean-light.png` | light | REAL — Normascope's own runs (measured) — run report where nothing was flagged (0 of 7). A clean report is a result, not an empty page. | full page | 467 KB |
 | `real-run-report-clean-dark.png` | dark | REAL — Normascope's own runs (measured) — run report where nothing was flagged (0 of 7). A clean report is a result, not an empty page. | full page | 462 KB |
 | `real-run-report-explainer-light.png` | light | REAL — Normascope's own runs (measured) — a definition open on the run report | viewport only (1440×900 of 5591px) | 113 KB |
 | `real-run-report-explainer-dark.png` | dark | REAL — Normascope's own runs (measured) — a definition open on the run report | viewport only (1440×900 of 5591px) | 112 KB |

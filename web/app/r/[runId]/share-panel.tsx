@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Explainer } from "../../_components/cloud/explainer";
+import { Loading } from "../../_components/cloud/loading";
 import styles from "./report.module.css";
 
 /**
@@ -152,6 +153,7 @@ export function SharePanel({ runId }: { runId: string }) {
         >
           {links === null ? "Show links" : "Refresh"}
         </button>
+        {busy && <Loading label="Working" size="sm" />}
         {error && <span className={styles.error}>{error}</span>}
       </div>
 

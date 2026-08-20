@@ -58,8 +58,15 @@ export const DEFAULT_TREND_POINTS = 200;
  * **This is the ceiling on what the *detail* chart reads, not on history.** The
  * overview covers the whole retained window by bucketing; this bounds how many
  * individual runs the exact chart will pull before it says it truncated.
+ *
+ * Sized from what retention can actually produce rather than picked: the team
+ * plan allows 200 runs a day and keeps 90 days, so 18,000 is the most rows one
+ * frame can have. 20,000 clears that, which means "All" is genuinely all for
+ * every tenant this plan can create — and the cap still exists, so a future plan
+ * with longer retention degrades to a truncated read rather than an unbounded
+ * one.
  */
-export const MAX_TREND_POINTS = 5000;
+export const MAX_TREND_POINTS = 20_000;
 
 /**
  * Detail sizes the page offers: how many individual runs the exact chart reads.
@@ -69,8 +76,14 @@ export const MAX_TREND_POINTS = 5000;
  * of those is 40,000 DOM nodes in the first byte and no reader can aim at a
  * 0.14-unit target anyway. Narrowing the range is what gets the detail back,
  * which is what the brush is for.
+ *
+ * **Fixed steps only — the "all" step is appended by `windowOptions` from the
+ * real count.** Defining the last one as `MAX_TREND_POINTS` looked tidy and was
+ * wrong: raising the cap to 20,000 silently deleted the 5k step, because the two
+ * had become the same number. A ladder of round sizes and a ceiling on reads are
+ * different facts and neither should move when the other does.
  */
-export const DETAIL_SIZES = [200, 1000, MAX_TREND_POINTS];
+export const DETAIL_SIZES = [200, 1000, 5000];
 
 /**
  * Above this many runs on one chart, per-run marks and hover cards are dropped
@@ -267,22 +280,30 @@ export function trendLimit(raw: string | number | null | undefined): number {
 export const TREND_WINDOWS = DETAIL_SIZES;
 
 /**
- * Which detail sizes to offer, given what the current read found.
+ * Which detail sizes to offer, given how many runs are actually in scope.
  *
- * **Never offer more history than exists.** A frame with twelve runs showing a
- * "5000 runs" option promises history that is not there and returns the same
- * twelve — the reader learns nothing except that the control does nothing.
+ * **Driven by the real count, so every option does something.** The first cut
+ * keyed off `truncated`, which meant a frame with 47 runs was offered "200 /
+ * 1k / 5k" — three buttons that all return the same 47 points. The count comes
+ * free: the runs table already does a `COUNT(*)` for its pager.
  *
- * `truncated` is the only fact available for this without a second COUNT, and it
- * is exactly the right one: it means the read filled up and there is more behind
- * it. So larger sizes are offered when it is true, and never when it is false.
- * Smaller sizes are always offered — narrowing always does something.
+ * The last option is always **all of them**, which is what the reader actually
+ * wants at the top of a ladder — "5k" is an implementation number, and stopping
+ * there would leave a busy repository with history it could see no way to reach.
+ * Capped at `MAX_TREND_POINTS`, which is sized above what retention can produce,
+ * so "all" is the truth rather than a rounding of it.
  *
- * Lives here rather than in the page because it is a statement about what the
- * server will honour, next to `MAX_TREND_POINTS` which is the other half of it.
+ * A single option back means there is nothing to choose: the whole history fits
+ * in one view, and the page states that instead of drawing a control.
  */
-export function windowOptions(limit: number, truncated: boolean): number[] {
-  return TREND_WINDOWS.filter((n) => n <= limit || truncated);
+export function windowOptions(total: number): number[] {
+  const sizes = DETAIL_SIZES.filter((n) => n < total);
+  return [...sizes, Math.min(total, MAX_TREND_POINTS)];
+}
+
+/** True when even "all" could not fetch everything — a plan beyond the cap. */
+export function detailCapped(total: number): boolean {
+  return total > MAX_TREND_POINTS;
 }
 
 /**

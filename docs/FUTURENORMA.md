@@ -348,6 +348,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **A labelled demo tenant** (`npm run seed:demo`) | ✅ 2026-08-20 | Three repositories, twelve weeks, six frames, real credit grants and `usage_events`. The organization is named `DEMO — … (sample data)` and it is the top breadcrumb, so the label is on screen throughout a walkthrough. **Not evidence** — §3v records the one surface where the label does not appear |
 | **Every Cloud figure explains itself** | ✅ 2026-08-20 | The word itself is the control, under a dotted underline — 26 on a seven-frame report. The text comes from `web/lib/glossary.ts`, which the public `/report` page also prints, so the words a prospect reads before signing up are the words they read after. **A first cut used a circled "?" and came to 103 of them; Harsha rejected it** — §3w records what replaced it and why the count fell. Native HTML popover, so `/repos/` still ships **zero client JavaScript** and no new inline styles. 52 checks — `FinishedSPEC.md` §3w |
 | **Hovering a chart point names its run** | ✅ 2026-08-20 | The trend chart draws a card — commit, measurement, the threshold that run was judged at, the verdict and the date — on `:hover`, from a full-height hit column per run. The sparklines use `<title>` instead, because `preserveAspectRatio="none"` would smear anything drawn in their coordinate system — §3w |
+| **Waiting is shown, and the brand book still holds** | ✅ 2026-08-20 | The Yutic mark, still, inside a ring that turns — because `yutic-brand-rules.txt` §01 says the mark is **never rotated or given effects**, and a spinning logo is both. Rendered at the 28px floor with one eye diameter of clearspace; `prefers-reduced-motion` stops it. Loading states on the three `force-dynamic` routes, and inline beside Explain and the share controls. **The rule is overridable and §09 is the precedent** — 14 checks, one of which is the one to delete if it is — §3x |
 | **Two-level history: overview → brush → exact runs** | ✅ 2026-08-20 | The trend chart drew 30 runs while the page's own "first drifted at" was computed over all of them, so it routinely named a drift it could not show. Now: a **time-spaced overview** across the tenant's whole retention, bucketed so that **nothing is averaged** — each bucket keeps the lowest, highest, first and last values *recorded* in it, plus whether its runs disagreed about crossing the line. Drag it to select a period; the detail chart below shows those runs exactly. Interactive elements are bounded (200 runs fully interactive, the exact line above that, 25 table rows a page, CSV for everything) while the **data never is**. 42 checks in a new `overview` suite — §3x. **This is where `/repos/` stopped being zero-JavaScript**: Harsha chose a real drag over clickable buckets; both charts are still server-rendered SVG and only the brush hydrates |
 | **A tenant of real runs** (`npm run seed:real`) | ✅ 2026-08-20 | Ten runs that actually happened, from `norma-bridge-usecase/` and `test-run/` cases 01–05: 59 frame rows, 151 images, 22.3 MB, 11 recorded Sonnet 5 findings. Every figure is read from the summary `norma-scope` wrote — nothing computed, no invented branch or SHA, and **no `usage_events`**, because that spend went through the CLI and a hosted usage row would claim otherwise. A separate organization from the demo one, named `REAL — …`, for the same reason the demo one is named `DEMO — …`. 21 checks — §3w |
 | **Cloud screenshots, both themes, one command** (`npm run capture:cloud`) | ✅ 2026-08-20 | 20 shots into `docs/screenshots/cloud/` with a generated manifest. Not `web/public/` — these are pictures of a surface that 404s in production. It refuses to write a screenshot of a page that did not load; §3w records the four ways the first version lied |
@@ -357,14 +358,14 @@ Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**1,012 checks green** on PGlite across thirty-one suites — `apiKeyRevocation`,
+**1,028 checks green** on PGlite across thirty-one suites — `apiKeyRevocation`,
 `artifactUploads`, `backup`,
 `budgetAlerts`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
 `enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
 `planLimits`, `providerBudget`,
 `rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
 `seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks`, plus `overview` — and **1,040** against
+`waitlistConfirmationEmail`, `webhooks`, plus `overview` — and **1,056** against
 a real Postgres server, both run 2026-08-20. Migrations are still `001`–`020`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox

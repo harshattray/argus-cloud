@@ -13,6 +13,7 @@ import {
   pageNumber,
   repoOrg,
   repoViewOpen,
+  detailCapped,
   trendLimit,
   windowOptions,
   type FrameOverview,
@@ -266,7 +267,7 @@ export default async function TrendPage({
                 : "Hover a point for that run."}
             </p>
           </div>
-          <Window repoId={owner.id} frame={frame} trend={trend} keep={keep} />
+          <Window repoId={owner.id} frame={frame} trend={trend} keep={keep} total={runs.total} />
           <div className={styles.chartWrap}>
             <TrendChart trend={trend} />
             {/*
@@ -495,8 +496,16 @@ function RunsPager({ base, keep, runs }: { base: string; keep: string; runs: Fra
  * **The ladder never offers more than there is** — `windowOptions` in
  * `trendData.ts` decides that, and the suite checks it there.
  */
-/** `1000` reads as a measurement; `1k` reads as a size. */
-function sizeLabel(n: number): string {
+/**
+ * `1000` reads as a measurement; `1k` reads as a size.
+ *
+ * The final step is labelled by what it *is* — every run in scope — rather than
+ * by its number, which is an accident of how busy the repository has been.
+ */
+function sizeLabel(n: number, last: boolean): string {
+  if (last) {
+    return "All";
+  }
   return n >= 1000 ? `${n / 1000}k` : String(n);
 }
 
@@ -505,24 +514,42 @@ function Window({
   frame,
   trend,
   keep,
+  total,
 }: {
   repoId: string;
   frame: string;
   trend: FrameTrend;
   /** Range and selection, carried through so changing the size keeps them. */
   keep: string;
+  /** Runs actually in scope. The ladder is built from this, not from a guess. */
+  total: number;
 }) {
-  const offered = windowOptions(trend.limit, trend.truncated);
+  const offered = windowOptions(total);
+
+  /*
+   * Nothing to choose. Every real tenant is here today — the busiest has ten
+   * runs of one frame — and drawing three buttons that all return the same
+   * chart would be the "control with a dead option" failure, three times over.
+   *
+   * It says so rather than rendering nothing, because an absent control reads
+   * as a missing feature and this is the opposite: you are already looking at
+   * the whole thing.
+   */
   if (offered.length < 2) {
-    return null;
+    return (
+      <p className={styles.windowStatic}>
+        Showing all {total} run{total === 1 ? "" : "s"} · fully interactive
+      </p>
+    );
   }
   return (
     <nav className={styles.window} aria-label="Runs shown">
       <span className={styles.windowLabel}>Show</span>
-      {offered.map((n) =>
-        n === trend.limit ? (
+      {offered.map((n, i) => {
+        const label = sizeLabel(n, i === offered.length - 1);
+        return n === trend.limit ? (
           <span key={n} className={styles.windowOn} aria-current="true">
-            {sizeLabel(n)}
+            {label}
           </span>
         ) : (
           <Link
@@ -530,10 +557,10 @@ function Window({
             className={styles.windowOption}
             href={`/repos/${repoId}/trend?frame=${encodeURIComponent(frame)}&limit=${n}${keep.replace(/&limit=[^&]*/, "")}`}
           >
-            {sizeLabel(n)}
+            {label}
           </Link>
-        )
-      )}
+        );
+      })}
       {/*
         Each size is labelled with the interaction it gives, because they do not
         give the same one. Presenting "200 / 1k / 5k" as a plain ladder implies
@@ -550,10 +577,11 @@ function Window({
         their cards. `dense` is the count that actually came back.
       */}
       <span className={styles.windowLabel}>
-        runs ·{" "}
+        of {total} ·{" "}
         {trend.dense
           ? `line only above ${MAX_INTERACTIVE_POINTS} — select a range to inspect`
           : `${trend.points.length} drawn, fully interactive`}
+        {detailCapped(total) ? ` · capped at ${MAX_TREND_POINTS.toLocaleString("en-GB")}` : ""}
       </span>
     </nav>
   );
