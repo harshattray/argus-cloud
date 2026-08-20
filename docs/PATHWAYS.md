@@ -480,10 +480,18 @@ No paid Cloud launch is verified until the relevant pathways have evidence for:
   threshold. Three high-severity advisories are recorded and **unconfirmed**;
   see `FinishedSPEC.md` §9;
 - [ ] tenant-isolation and authorization probes;
-- [ ] stored-XSS and sandbox/CSP probes;
+- [ ] stored-XSS and sandbox/CSP probes — **the CSP half is probed against the
+  live deployment**, not only against the config: `scripts/golive-check.mjs`
+  (2026-08-21) checks the served headers, that `/r/` carries a nonce, that the
+  nonce differs between two requests, and that the strict policy does not also
+  allow inline scripts. Stored XSS is still unprobed;
 - [ ] prompt-injection and hostile-content suites;
 - [ ] SSRF, redirect, DNS-rebinding, and capture containment suites;
-- [ ] rate-limit, quota, concurrency, replay, and abuse tests;
+- [ ] rate-limit, quota, concurrency, replay, and abuse tests — **the storage
+  half is now proven against a real S3 API rather than a local stub** (2026-08-21):
+  an upload exceeding the pinned `Content-Length`, an unsigned read, an expired
+  URL, and the upload protocol's own size and hash verification. CI runs them on
+  every push against MinIO; they have been run once against R2. `FinishedSPEC.md` §3y;
 - [ ] webhook signature, session, CSRF, and key-revocation tests;
 - [ ] backup restore, retention, deletion, and incident-drill evidence —
   **three of four.** Retention and deletion are proven (`FinishedSPEC.md` §3j),
@@ -1309,9 +1317,9 @@ the dependency audit). Three things remain, and none is a logic gap:
 4. Use direct presigned uploads; do not proxy large images through serverless.
 5. Enforce entitlement and quota server-side on every request.
 6. Deduplicate content-addressed artifacts within an organization.
-7. Upload full artifacts for flagged frames and thumbnails for clean frames.
-8. Secret-scan DOM and code context before provider submission.
-9. Recalibrate after crops ship and reprice packs before billing.
+7. ✅ Upload full artifacts for flagged frames and thumbnails for clean frames.
+8. ✅ Secret-scan DOM and code context before provider submission.
+9. ✅ Recalibrate after crops ship and reprice packs before billing — recalibrated 2026-08-19; no reprice needed.
 
 **Tests:** containment, forged keys, free-plan refusal, quota isolation,
 abandoned uploads, duplicate artifacts, crop grounding, secret scanning, COGS.
@@ -1348,8 +1356,97 @@ open question of what 500 credits should buy. Until then they are configuration
 that can be changed with an UPDATE, which is the point of holding them in a
 table.
 
-Items 7-9 are open: thumbnails for clean frames, the secret scan on the upload
-path, and the post-crop calibration.
+**Item 7 landed 2026-08-19.** The default upload no longer means "only flagged
+frames leave" — it means full artifacts for flagged frames and one downscaled
+JPEG for each clean one, so a run's history contains the frames that passed
+without three full-resolution PNGs apiece. `--all-artifacts` overrides it.
+BuildV5 G2.12's own example is the test: 2 flagged of 20 sends 6 full images and
+18 thumbnails; the override sends all 60. Argus `cloud` suite C5, C8, C14–C18
+(28 checks); cloud-side `uploadPipeline` U9b–U9d.
+
+Two things were found by tracing the feature against what already existed rather
+than by testing the feature alone, and both are closed:
+
+- **`contentType` was client-supplied and unvalidated.** It is signed into the
+  presigned PUT, stored on the object, and returned as the `content-type` header
+  on every presigned GET — so a caller with a valid upload key could declare
+  `text/html` for a screenshot and be handed a URL a browser renders as markup
+  on the storage origin. That is the stored-XSS probe §3's security baseline
+  asks for, reachable through the ordinary upload path. `CONTENT_TYPES` in
+  `artifactUploads.ts` is now an allowlist per kind, checked with the other
+  malformed-field rules so nothing is reserved or signed for a request that will
+  be refused.
+- **The object key's extension was derived from the kind, not the content.**
+  `extensionFor("thumbnail")` returned `png` unconditionally, so a JPEG
+  thumbnail — the common case — would have been stored at `<sha256>.png` while
+  its own content type said otherwise. Derived from the resolved content type
+  now.
+
+One correction to `makeThumbnail`'s behaviour lives in the upload path rather
+than in the shared function: it only considers keeping the original when it did
+*not* resize, so a downscaled frame always came back as JPEG even where the JPEG
+was larger. For a screenshot that is academic; for a large flat-colour frame it
+is not, and it would have made this feature *increase* what a clean frame costs
+the customer's quota. `thumbnailFor` never uploads a thumbnail larger than the
+image it stands in for. `report.ts` is the other caller and is deliberately left
+alone — it embeds thumbnails as data URIs and has its own reasons.
+
+**Item 8 landed 2026-08-19.** A credential in a run's data no longer reaches the
+provider. The scan lives in `src/promptAssembly.ts` — the one function the
+interactive and batch paths both call, so an unscanned payload cannot be
+assembled at all. A hit **blocks and names the field**; it never redacts, because
+a redaction that misses is an exfiltration. Interactive explain returns
+`secret_blocked` and releases both reservations; the batch path skips that frame
+before it reserves anything and still submits the clean ones. Either way CI stays
+green and nothing is charged. `test/secretScan.test.mjs`, 42 checks, including
+SS7 — the pre-item-8 assembly run through the same harness to prove the rest has
+teeth. Detail: `FinishedSPEC.md` §3q.
+
+The scan reads the source fields rather than the assembled string: the stats
+blob is capped, so scanning the output would call a secret "safe" whenever the
+cap happened to cut it off.
+
+**Crop grounding landed 2026-08-19 (BuildV5 G3).** Hosted explain reasons over
+image crops of the flagged regions. Proven against the real portfolio capture
+with a real key: the crop-grounded answer reports the rectangle `compare`
+recorded (`960,400 336×48`) and describes a green element present in the
+reference and missing in the build, where the metadata-only answer said the
+location could not be determined and returned `0,0,0,0`.
+
+**The crops are cut in the CLI, not on the server** — BuildV5 G3 says otherwise
+and is superseded. Cropping means decoding, and the 2026-08-19 sharp decision
+exists precisely because uploaded images are hostile input; decoding them in our
+own function is that risk with a worse blast radius. `FinishedSPEC.md` §3r has
+the mechanism and the evidence.
+
+**Crops cost exactly one credit.** Vision is billed on area, so the crop budget
+is the price: an analysis is 3 credits without crops and 4 with. The budget is
+sized by the deep pass, which binds first. The server measures every image from
+its own header before spending anything on it, so a client cannot decide what an
+analysis costs us.
+
+**Item 9 landed 2026-08-19 (BuildV5 G4).** `scripts/calibrate-hosted.mjs` makes
+real billed calls through the real service and reads every figure back out of
+`usage_events`. Three results:
+
+- **Crops made the hosted analysis 2.3× cheaper** — $0.0083 crop-grounded against
+  $0.0194 metadata-only. They add ~600 input tokens and cut output from ~1,700 to
+  ~519, and output costs 5× input. G4 was written expecting the opposite.
+- **Our price table was wrong.** `usage.ts` priced Sonnet 5 at $3/$15 per MTok
+  against a live page saying $2/$10 — and the page states the $3/$15 increase
+  scheduled for 2026-09-01 will not occur. Every recorded Sonnet cost was 50%
+  high. Corrected; the harness now refuses to run while the two disagree.
+- **Every pack clears its 3× floor by 9-11×.** No reprice needed, which is the
+  gate's condition.
+
+Detail and caveats: `docs/calibration.md`, `FinishedSPEC.md` §3s.
+
+**Pathway 2 is complete.**
+
+**Uploads are deliberately not scanned.** The server is out of the byte path for
+artifacts once a presigned URL is issued, and the enforcement this item asks for
+is at submission. Crop grounding will add image and DOM context to the outbound
+request through the same function, so it inherits the guard.
 
 **Not yet true in production:** nothing has been deployed and **the R2 leg has
 never carried a real artifact**. Everything above is the filesystem driver.
@@ -1425,15 +1522,21 @@ one of them sat where no test could see it, which is the point worth keeping:
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. `'unsafe-inline'` was never shipped. **Still open beneath it:** `style-src` keeps `'unsafe-inline'` because the page is written with inline `style` attributes — removing it was tested and leaves the page unstyled. Phase H rewrites that page; move it to classes then and the directive can go. |
+| 1 | ~~`/r/` is a blank page in production~~ **Fixed 2026-08-15, confirmed on the live site 2026-08-19** | `middleware.ts` now issues a per-request nonce with `strict-dynamic`, plus the `font-src` that was also missing. Verified against a real production build: the page renders, fonts return 200, the nonce differs per request, and a hostile frame label rendered as visible text without executing. Then confirmed against `normascope.com` itself — **27 scripts, 27 nonces**, hydrated, fonts loaded, no console errors, a different nonce on each of three requests. `'unsafe-inline'` was never shipped. **Half-closed 2026-08-19 by Phase H, and the other half is not closing.** The page's styling moved into `report.module.css`, so `style-src-elem` on `/r/` and `/admin` no longer permits inline styles in production — verified against a production build: 2 stylesheet links, 0 inline `<style>` tags, 31 scripts and 31 nonces. `style-src-attr` still permits them and will keep having to: a meter's fill width, a region overlay's position and a pane's aspect ratio are computed per frame and have no stylesheet to live in. `style-src` is kept behind both as the fallback, because a browser implementing neither specific directive would otherwise fall through to `default-src 'none'` and load no CSS at all. |
 | 2 | ~~`plan` and `subscription_status` can both say `lapsed`~~ **Resolved 2026-08-15, migration 019** | `plan` is now `free \| team` — what was bought. `subscription_status` owns the lifecycle, which is the only place `past_due` and `refunded` could ever live. The tie-breaker: the `lapsed` limits row differed from `free` on one column read only *after* a gate both fail, so the duplicate decided nothing. It also closed a live gap — `subscription_status` was written by the webhook and read by nothing, so a lapsed organization kept uploading. |
 | 3 | The sweeper and the backup schedule are built and unscheduled | Both must run before customers upload. See above. |
-| 4 | 500 included credits buy 100 analyses, not 500 | A live consequence of the 2026-08-10 pricing decision, recorded as needing Harsha's call. The lever is the model, and it is a cost finding only — §8's substitution process governs any cutover. |
+| 4 | ~~500 included credits buy 100 analyses, not 500~~ **Softened 2026-08-19 — now 125** | The Sonnet 5 price correction (§3s) took an analysis from 5 credits to 3, and the crop budget put one back: **4 credits, 125 analyses a month**. Still short of 500, so whether that is the right allowance remains Harsha's call — but it is no longer a number moving in the wrong direction, and it improved without touching the model. |
 | 5 | The R2 leg has never carried a real artifact | Step 5 requires the G suite re-run against real R2. |
 | 6 | `--target` produces no summary, so it cannot upload | The zero-config flow is outside the upload path entirely. Fine today; a decision if that flow should reach Cloud. |
 | 7 | `revokeApiKey` now has a surface, but no rotation | A leaked key can be withdrawn from `/admin/keys`. Issuing a replacement is still a script. |
+| 9 | G3.3's selector half is untested | Crop grounding's parity check asks that CLI and hosted findings both name a selector and a measurement. Both name the measurement — the same region rectangle, the same missing element. Neither names a selector, because selectors are derived from DOM context and the portfolio fixture is an offline capture with no `.bridge/context/`. Closing it needs a capture run against a live page, which is a browser, not a fixture. |
+| 8 | Argus's secret scanner flags ordinary file paths | Found while building item 8 here. With `/` in S8's entropy alphabet, `artifacts/build/marketing-hero-desktop-1440x900` scores 4.52 bits against a 4.5 threshold — a false positive that **blocks** a local explain and names an innocent file. Argus's copy (`src/explain/scanner.ts`) scans DOM and code context, where paths are far more common than in summary metadata, so it is likelier to bite there than here. The fix is the one-character change already made in `src/secretScan.ts`; it is a CLI change with a publish attached, so it waits for the next `norma-scope` release rather than riding along with a Cloud commit. |
 
-Next: Pathway 3 — the report page — which item 1 above blocks.
+Next: Pathway 3 — the report page. **It is no longer blocked** — item 1 above was
+fixed on 2026-08-15 and verified against the live site on 2026-08-19. Pathway 2's
+own item 9 comes first under the canonical order, and it cannot start until crop
+grounding (G3) ships, because there is nothing to recalibrate until the payload
+changes.
 
 #### CLI-to-Cloud connection
 
@@ -1483,6 +1586,18 @@ Supported upload modes should be `none`, `flagged`, `all`, and eventually
 `metadata-only`. The paid default is `flagged`; clean frames should not leave
 the machine unless the customer asks for them.
 
+> **This sentence and item 7 disagree, and the disagreement is Harsha's to
+> settle — flagged 2026-08-19, not decided.** Item 7 ships thumbnails for clean
+> frames *by default*, so on the paid default a downscaled JPEG of every clean
+> frame now leaves the machine. Item 7 and BuildV5 G2.12 are specific and agree
+> with each other; this line is older and more general. The implemented reading
+> is that "clean frames do not leave" meant their full-resolution artifacts, and
+> a thumbnail is the history record the hosted report and trends are built on —
+> but that is an interpretation of a privacy promise, not a settled decision.
+> `metadata-only` remains the mode that sends no pixels at all. If the promise
+> was meant literally, the fix is to default clean frames to no thumbnail and
+> put them behind an opt-in, which is a one-line change to `framesToSend`.
+
 The server must enforce entitlement on every request. Free organizations must
 not be able to mint upload keys, obtain presigned URLs, or bypass the rule with
 a client flag. The free CLI remains complete and local; Cloud adds persistent
@@ -1509,6 +1624,29 @@ differentiator and should not be faint text beneath an AI explanation.
 
 **Gate:** a prospect can compare one real local report with Cloud and immediately
 understand what historical state adds.
+
+**Built 2026-08-19 — BuildV5 Phase H, H1–H4.** Images, findings with region
+overlays, history as page furniture, and a share interface for the API that had
+none. Detail and evidence: `FinishedSPEC.md` §3t. `test/reportPage.test.mjs`
+(41 checks) plus 5 added to `uploadPipeline`; the suite total is **775 across 26
+suites** on PGlite. Four guards were watched failing before being trusted, and a
+fifth was found to be asserting nothing at all — see §3t, because that one is the
+best argument for the practice this repo already has.
+
+**The gate above is not yet met, and it is not code that is missing.** The gate
+asks that a *prospect* can put a local report beside a hosted one. Every check
+so far is against seeded data on a laptop; nothing is deployed, and the only
+real capture in the repo is the portfolio run. Meeting it needs Step 5 and a run
+someone did not seed.
+
+**Still open on this page, none of it blocking Step 4:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 1 | The capture's aspect is measured in the browser, not stored | Nothing decodes a customer image server-side, and dimensions are not on `run_artifacts`. So the first paint uses a 4:3 fallback and corrects once the image loads. Storing width/height at declare would remove the reflow — it is a CLI change with a publish attached, so it waits for a release rather than riding along here. |
+| 2 | `style-src-attr 'unsafe-inline'` remains | The page's geometry is computed per frame — meter width from a score, region position as a percentage of natural size. There is no stylesheet those can live in. Carried-forward item 1 asked for `'unsafe-inline'` to go when Phase H rewrote the page; the `-elem` half went, this half did not, and pretending otherwise would be worse than saying so. |
+| 3 | Region overlays assume the diff shares the build's dimensions | True for every capture the CLI produces today. A diff rendered at another size would misplace every box, and nothing checks it. |
+| 4 | ~~No page above `/r/{runId}`~~ | **Closed 2026-08-20.** `/repos/{repoId}` lists a repository's runs and frames, and the run report links up to it for owners. See Pathway 6 below. |
 
 ### Pathway 4 — Create the recurring CI explanation loop
 
@@ -1552,7 +1690,35 @@ Implement:
 - usage history showing cache hits as free;
 - subscription, invoices, renewal, cancellation, and refund paths;
 - repository and seat list;
-- internal admin view for margin, storage, spend, and breaker status.
+- internal admin view for margin, storage, spend, and breaker status;
+- **"Generated by" on the run report header** — see the decision below.
+
+#### "Generated by *username*" — decided 2026-08-20, deferred to here
+
+Asked for on the run report header; **Harsha decided to wait for this step**
+rather than ship an approximation.
+
+**Why it could not ship earlier.** There is no session, so nothing knows who is
+reading the page or who ran the build. The two identities actually available
+today are the label on the API key that uploaded the run (which identifies a CI
+pipeline, not a person, and is the same string for every run from one key) and a
+name the CLI could be changed to send — `GITHUB_ACTOR` in CI, `git config
+user.name` locally. Both are stand-ins for the thing Step 6 supplies properly,
+and shipping one means a migration, an Argus release, and a column to reconcile
+against real identity later.
+
+**The policy is settled, so it does not need re-deciding when it is built:**
+
+| Question | Decision |
+|---|---|
+| Which views show it | **Both.** Owner *and* share. A report sent to a designer is more useful when it says who ran it |
+| What is shown | **Display name only.** Never an email address, and never a git author email |
+| Why share views are different from the breadcrumb | The breadcrumb is owner-only because it names the repository and offers a link the holder cannot open. A name is neither — it widens no capability |
+
+**Two things to get right when it lands.** A name is untrusted text, rendered as
+a React text node like everything else on that page. And the column has to
+tolerate runs that predate it: the header simply omits the line, the way it
+already omits a branch or a commit that was never recorded.
 
 #### Re-branching staging — the step that is not obvious
 
@@ -1683,6 +1849,60 @@ This is where Cloud becomes organizational memory rather than report hosting.
 
 **Gate:** trend charts, enrichment, and quality-debt counts agree on the same
 underlying data.
+
+**Frame-level history is built — 2026-08-20, BuildV5 Phase I (I1–I3).** Score
+over commits, a threshold line that steps where the threshold moved, the
+first-exceeded marker, source/mode transitions, and gaps for runs that measured
+nothing. `test/trends.test.mjs` (71 checks); the suite total is **878 across 28
+suites** on PGlite and **906** against real Postgres. Detail and evidence:
+`FinishedSPEC.md` §3u.
+
+The gate is met for the part that is built, and met by construction rather than
+by comparison: first drift is not calculated twice. `frameHistory()` in
+`enrichment.ts` remains the only implementation, and the chart places its answer
+— which is what §10.8's "do not calculate first drift independently in multiple
+places" asks for.
+
+**Organization-level quality debt is not built**, and is deliberately still
+here rather than pulled forward. It needs records this schema does not carry —
+owner, due date, status, resolution commit — and §10.8 item 5 says to add them
+only after the basic chart agrees with enrichment. It now does.
+
+**Open on this pathway:**
+
+| # | Item | Why it matters |
+|---|---|---|
+| 1 | `/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production | A share token is a capability for one run; honouring it on a repository-wide view would widen every link ever issued into a tenant-wide read. Sessions arrive in Pathway 5 / Step 6, and the landing-page-after-login framing in BuildV5 I1 belongs to that step. |
+| 1b | A share view carries no breadcrumb, so it shows no organization name | Deliberate — the trail would name the repository and offer a link the holder cannot open. It has one consequence worth knowing: the demo tenant's `DEMO — … (sample data)` label rides on the breadcrumb, so a demo report sent as a share link is unlabelled. `seed-demo` prints that caveat; a durable fix is a share-view label, which is Pathway 5's territory. |
+| 2 | There is no repository *list* | It would have to answer "what does this organization have", which needs a session to know whose organization it is. The trends API is specified to answer about a frame and never about the tenant, so it cannot supply one either. Pathway 5. |
+| 3 | The x-axis is runs in which the frame was *compared* | A run where the frame is absent entirely is not a point on the chart, where a run that recorded a null measurement is a gap. Both are honest; they are not the same picture, and nothing yet says which happened. |
+| 4 | Quality debt, recurrence resolution, and org-level summaries | Items 5–7 of §10.8. Unblocked as of this build. |
+| 5 | No "generated by" on the report header | No session, so nothing knows who ran the build. Decided 2026-08-20 to wait for Pathway 5 rather than approximate it from an API key label; the policy for when it lands is settled and written up under Pathway 5. |
+| 6 | `style-src-attr 'unsafe-inline'` is unchanged, and neither the explainers nor the chart tooltips widened it | Recorded because it was the live question when they were built. The bubbles position from `_styles/surface.module.css` and CSS anchor positioning off the popover's *implicit* anchor — an `anchor-name` would have to be unique per instance and could only come from an inline style. The hover cards are SVG attributes, not CSS. Carried-forward item 2 stands exactly where it did. |
+| 7 | Chart tooltips and the brush both need a pointer | Hover is an enhancement: every point is also a row in the Runs table with the same facts and a link, and the range links do what the brush does, coarsely, without a drag. `touch-action: pan-y` on the brush is reasoning rather than evidence — **no touch device has been tried**. |
+| 8 | Every density figure behind the two-level chart is a fixture | The 200-run stress frame was seeded locally and deleted. No real tenant holds more than ten runs of one frame, so the thresholds in §3x (`MAX_INTERACTIVE_POINTS`, `DOT_MIN_SLOT`, `OVERVIEW_BUCKETS`) are measured against invented data. They are the right shape; the exact numbers want re-checking against a real busy repository at Step 5. |
+
+**Closed on this pathway — 2026-08-20.** Every figure on `/r/` and `/repos/` is
+now a defined term that opens a plain-language definition from
+`web/lib/glossary.ts`, the same file the public `/report` page prints, so the
+vocabulary a prospect learns before signing up is the vocabulary the product uses
+after; and hovering a point on either chart names its run. Native HTML popover
+and plain `:hover`, so `/repos/` still ships zero client JavaScript.
+`npm run seed:real` adds a second tenant of ten runs that actually happened —
+real images, real percentages, the real recorded findings — kept in its own
+organization so "(sample data)" is never stamped on a measurement, and
+`npm run capture:cloud` photographs every page in both themes into
+`docs/screenshots/cloud/`. `FinishedSPEC.md` §3w, 73 new checks and two shipped
+bugs that only real data surfaced.
+
+**And the chart learned to hold a real history — 2026-08-20.** It drew 30 runs
+while first drift was computed over all of them, so it named drifts it could not
+show. Now a time-spaced overview across the tenant's whole retention, bucketed
+without averaging anything, with a drag that selects the period the exact chart
+then renders. Interactive elements are bounded; the data is not — 25 rows a page
+and a CSV export carry the rest. `FinishedSPEC.md` §3x. **This is where `/repos/`
+stopped being zero-JavaScript**, by decision, and §3v's claim was corrected in
+the same change rather than left standing.
 
 ### Pathway 7 — Add organization-level quality contracts
 
@@ -1847,6 +2067,14 @@ Cloud is not ready to charge until:
   backup key. **This box does not go green on the rehearsal alone.** Launch
   means paying customers, and by then the schedule must be on: see Pathway 1
   item 10 for the switch-on checklist;
+- [ ] **`next` is on 16, taken as its own dedicated change** — decided
+  2026-08-19 (`FUTURENORMA.md` §4 open decision 3b). It clears all three
+  accepted high advisories to `npm audit` **0**; that is the reason, not
+  `next/image`, which uploaded artifacts still must not use (§10.5 3A). Cheap
+  now and dearer later: the 2026-08-16 trial at `next@16.3.1` was 635/635 green
+  with the nonce CSP intact, and migrating once customer reports and uploaded
+  artifacts are live is a different job. Do it before launch, not beside other
+  work;
 - [ ] pricing is recalibrated after artifacts ship;
 - [ ] refund policy and runbook exist;
 - [ ] a real demo uses real historical Normascope data;
@@ -2292,6 +2520,29 @@ The hosted page is `web/app/r/[runId]/page.tsx`. Keep its data access
 organization/session scoped. Add a report view model that resolves artifact
 references to short-lived authorized GET URLs. Do not expose object keys or
 permanent public URLs to the browser.
+
+> **Render those URLs with a plain `<img>`. Never `next/image`.** Decided by
+> Harsha on 2026-08-19, before this pathway starts, so it is settled rather than
+> discovered late.
+>
+> `next/image` puts `sharp` in the request path, and
+> `security/audit-allowlist.json` accepts three high-severity libvips advisories
+> in `sharp` **on the recorded ground that we do not serve user-uploaded images
+> through the optimiser**. Those advisories need attacker-chosen image bytes to
+> matter, and an uploaded screenshot is exactly that: a customer, or anyone
+> holding their upload key, can craft a malformed PNG. Routing artifacts through
+> the optimiser would feed hostile input straight into `sharp` on Vercel *and*
+> silently make the allowlist's stated reason false.
+>
+> Three reasons this way round: customer bytes stay out of `sharp`, it matches
+> the storage design already in place (short-TTL presigned GETs direct from
+> storage, never through our origin), and it avoids both a breaking Next 15→16
+> major and per-image optimisation billing.
+>
+> `web/app/_components/Screenshot.tsx` is the precedent and its header explains
+> the same trade for our own screenshots. Anything that would make the
+> allowlist's sentence untrue re-opens that entry rather than quietly
+> invalidating it.
 
 Reuse visual behavior from `Argus/src/report.ts`:
 

@@ -1,0 +1,553 @@
+/*
+ * The palette and page chrome shared by every signed-in Cloud surface: the run
+ * report (`/r/`) and the repository and trend views (`/repos/`).
+ *
+ * **One source for the fact, per CLAUDE.md rule 1.** Phase I added a second set
+ * of pages in the same visual language as Phase H's report. The obvious move
+ * was to copy the token block into a second stylesheet with a comment asking
+ * the next person to keep them in step — which is exactly the shape of comment
+ * that rule exists to forbid. A colour changed in one file and not the other
+ * would not fail anything; the product would just look like two products.
+ *
+ * The palette itself is copied from `Argus/src/report.ts` (5d311fb), on purpose
+ * and once: Doctrine 6 keeps paid logic out of the published package, so the
+ * CLI's renderer and this one cannot share code. That copy is documented at the
+ * top of `report.module.css`, along with the three layout fixes that must not be
+ * re-derived.
+ */
+
+.surface {
+  --clay: #a8736e;
+  --clay-deep: #8e5c57;
+  --ink: #1c1b1a;
+  --ink-soft: #6b6664;
+  --ink-faint: #9a9391;
+  --line: #e7e1df;
+  --line-soft: #f1ecea;
+  --page-bg: #ede7e1;
+  --card: #ffffff;
+  --frame-bg: #f7f5f3;
+  --danger: #b6611f;
+  --danger-bg: #fbede3;
+  --success: #3e7d52;
+  --success-bg: #e8f1ea;
+  --warn: #8a6d1a;
+  --warn-bg: #efe7d9;
+  --shadow: 0 1px 2px rgba(28, 27, 26, 0.04), 0 12px 32px rgba(28, 27, 26, 0.07);
+  --mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  background: var(--page-bg);
+  color: var(--ink);
+  min-height: 100vh;
+  padding: 28px 18px 56px;
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+/*
+ * ── The three theme states ──────────────────────────────────────────────────
+ *
+ * `light` and `dark` are explicit choices, stamped on this element as
+ * `data-theme` from a cookie the server read before the first byte. *Absent* is
+ * the default and means "follow the device", which is `prefers-color-scheme`.
+ *
+ * The order matters and so does the `:not()`. The media block must not override
+ * an explicit `light` choice — a viewer on a dark laptop who picked light gets
+ * light — and the `[data-theme="dark"]` block after it must win in the other
+ * direction, for a viewer on a light laptop who picked dark. Drop either guard
+ * and the switch works in one direction only, which is the shape of bug that
+ * looks like "the toggle is broken sometimes".
+ *
+ * Every token is defined once on the bare `.surface` above. Nothing gets its
+ * only definition inside a media query, or the light theme would depend on a
+ * query that never runs.
+ */
+@media (prefers-color-scheme: dark) {
+  .surface:not([data-theme="light"]) {
+    --ink: #f2eeec;
+    --ink-soft: #a9a2a0;
+    --ink-faint: #7c7573;
+    --line: #34302e;
+    --line-soft: #292524;
+    --page-bg: #131211;
+    --card: #1c1b1a;
+    --frame-bg: #232120;
+    --clay: #c79b95;
+    --clay-deep: #d9b5b0;
+    --danger: #e29055;
+    --danger-bg: #33241a;
+    --success: #79bc92;
+    --success-bg: #1b2a21;
+    --warn: #d9b65e;
+    --warn-bg: #332c1b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* The explicit dark choice. Last, so it beats the light defaults above on a
+   device whose own setting is light. */
+.surface[data-theme="dark"] {
+  --ink: #f2eeec;
+  --ink-soft: #a9a2a0;
+  --ink-faint: #7c7573;
+  --line: #34302e;
+  --line-soft: #292524;
+  --page-bg: #131211;
+  --card: #1c1b1a;
+  --frame-bg: #232120;
+  --clay: #c79b95;
+  --clay-deep: #d9b5b0;
+  --danger: #e29055;
+  --danger-bg: #33241a;
+  --success: #79bc92;
+  --success-bg: #1b2a21;
+  --warn: #d9b65e;
+  --warn-bg: #332c1b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.card {
+  max-width: 1080px;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/*
+ * ── Ground-dependent assets ─────────────────────────────────────────────────
+ *
+ * The wordmark and the Yutic lockup each ship as two files, one drawn for a
+ * light ground and one for a dark one. In the *auto* theme state the server
+ * cannot know which the viewer will see, so both are rendered and one is
+ * hidden here — the same three-state cascade as the tokens above.
+ *
+ * `display: none` rather than `visibility` or opacity, deliberately: it takes
+ * the hidden copy out of the accessibility tree, so a screen reader announces
+ * one wordmark and one endorsement instead of two.
+ */
+.onDark {
+  display: none;
+}
+
+.onLight {
+  display: inline-flex;
+}
+
+@media (prefers-color-scheme: dark) {
+  .surface:not([data-theme="light"]) .onDark {
+    display: inline-flex;
+  }
+
+  .surface:not([data-theme="light"]) .onLight {
+    display: none;
+  }
+}
+
+.surface[data-theme="dark"] .onDark {
+  display: inline-flex;
+}
+
+.surface[data-theme="dark"] .onLight {
+  display: none;
+}
+
+.surface[data-theme="light"] .onDark {
+  display: none;
+}
+
+.surface[data-theme="light"] .onLight {
+  display: inline-flex;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  padding: 22px 30px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mastheadTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.wordmark img {
+  display: block;
+  height: 19px;
+  width: auto;
+}
+
+.title {
+  margin: 6px 0 4px;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.runmeta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.runmeta a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.runmeta code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ---------- breadcrumb ---------- */
+
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.crumbs li + li::before {
+  content: "/";
+  margin-right: 8px;
+  color: var(--ink-faint);
+}
+
+.crumbs a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.crumbs [aria-current="page"] {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- theme switch ---------- */
+
+.themeSwitch {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--frame-bg);
+}
+
+.themeSwitch form + form .themeOption {
+  border-left: 1px solid var(--line);
+}
+
+.themeOption {
+  display: block;
+  height: 100%;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.themeOption:hover {
+  color: var(--ink);
+}
+
+.themeOn {
+  background: var(--clay);
+  color: var(--card);
+}
+
+.themeOn:hover {
+  color: var(--card);
+}
+
+.themeOption:focus-visible {
+  outline: 2px solid var(--clay-deep);
+  outline-offset: -2px;
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 30px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.footerLine {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+  max-width: 62ch;
+}
+
+.endorsement {
+  flex: none;
+}
+
+/* ---------- waiting ----------
+ *
+ * The Yutic mark, still, inside a ring that turns.
+ * `_components/cloud/loading.tsx` carries the reasoning — in short, brand rules
+ * §01 says the mark is never rotated or given effects, so the identity holds
+ * still and the motion is a separate element around it.
+ */
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.spinner {
+  --yutic-mark: 28px;
+  /* Clearspace is one eye diameter: 23 of the artwork's 144.5 units wide. */
+  --yutic-clearspace: calc(var(--yutic-mark) * (23 / 144.5));
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(var(--yutic-mark) + var(--yutic-clearspace) * 4);
+  height: calc(var(--yutic-mark) + var(--yutic-clearspace) * 4);
+}
+
+/* §01: minimum 28px wide, "below that drop the quill and base". There is no
+   second asset for that case, so the mark is never rendered below it — `sm`
+   shrinks the ring's padding, not the artwork. */
+.spinnerSm {
+  --yutic-clearspace: calc(var(--yutic-mark) * (23 / 144.5) * 0.5);
+}
+
+.spinMark {
+  display: block;
+  width: var(--yutic-mark);
+  height: auto;
+  /* Named so nobody "fixes" the still logo later: it is a rule, not an
+     oversight. No transform, no filter, no opacity animation. */
+}
+
+.spinRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--clay);
+  animation: spin 820ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * Asked not to move, so it does not. A ring that keeps turning for someone with
+ * a vestibular disorder is the one accessibility failure that is also a health
+ * issue — and the ring still reads as "waiting" standing still, because it is
+ * visibly incomplete.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .spinRing {
+    animation: none;
+  }
+}
+
+.loadingLabel {
+  letter-spacing: 0.02em;
+}
+
+.loadingPanel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 28px 30px;
+}
+
+/* Announced, never shown. `display: none` would take it out of the
+   accessibility tree, which is the opposite of the point. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- explainers ----------
+ *
+ * A defined term and the bubble it opens. `_components/cloud/explainer.tsx`
+ * carries the reasoning; this is the part that has to survive three grounds and
+ * two positioning models.
+ *
+ * **Everything is a token.** The bubble renders in the top layer, which is
+ * outside the element that carries `data-theme` — but custom properties inherit
+ * through the *DOM* tree, not the layout tree, and the popover's DOM parent is
+ * still inside `.surface`. So the tokens resolve for the theme in force. Hard
+ * colours here would be right in light and wrong in dark, and the top layer is
+ * exactly where nobody would look for the cause.
+ */
+
+/*
+ * The trigger is the word itself, so almost everything here is an *undo*: a
+ * `<button>` arrives with its own font, colour, padding, border and background,
+ * and every one of those would make a defined term look unlike the sentence it
+ * sits in. `font: inherit` alone is not enough — `letter-spacing` and
+ * `text-transform` are not part of the shorthand, and these triggers sit inside
+ * uppercase tracked labels as often as they sit in body text.
+ *
+ * `display: inline` rather than the button default of `inline-block`, so a term
+ * that lands at the end of a line wraps like text instead of jumping whole to
+ * the next line.
+ */
+.explainerTerm {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: help;
+  /* The affordance, and the only mark this adds to the page. Dotted, drawn in
+     the text's own colour at low strength, so it reads as an underline on that
+     word rather than as an element sitting next to it. */
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 38%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+.explainerTerm:hover {
+  color: var(--clay-deep);
+  text-decoration-color: var(--clay);
+}
+
+.explainerTerm:focus-visible {
+  outline: 2px solid var(--clay-deep);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/*
+ * The bubble.
+ *
+ * These declarations are the *fallback* as much as the base: a browser with no
+ * anchor positioning applies exactly this and gets a centred card, because the
+ * UA stylesheet already centres a popover with `inset: 0; margin: auto`.
+ */
+.explainerBubble {
+  display: none;
+  max-width: min(30rem, calc(100vw - 32px));
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  /*
+   * Typography is reset, not merely set.
+   *
+   * A popover lives in the top layer but inherits down the *DOM* tree, and every
+   * "?" on this page hangs off a label that has been styled to shout: stat
+   * labels are `text-transform: uppercase` with tracking, table headers are
+   * centred, the frame-nav label is small caps. Without these four the bubble
+   * renders its definition in whatever voice its neighbour uses — which is how
+   * the first version of this shipped a paragraph in all caps.
+   *
+   * The `font` shorthand above resets size, weight and family. It does not touch
+   * any of these.
+   */
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  text-align: left;
+  /* A frame label can be one 400-character word. The bubble is not the place to
+     find that out. */
+  overflow-wrap: anywhere;
+}
+
+.explainerBubble:popover-open {
+  display: block;
+}
+
+.explainerHead {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clay-deep);
+}
+
+.explainerDef {
+  display: block;
+  color: var(--ink-soft);
+}
+
+/*
+ * Anchored to the button that opened it, where the browser can do that.
+ *
+ * `popovertarget` creates the implicit anchor reference, so no `anchor-name` is
+ * needed — which matters, because a name would have to be unique per instance
+ * and a CSS module cannot generate one without an inline style.
+ *
+ * `position-try-fallbacks` handles the two edges: a "?" near the bottom of the
+ * viewport flips the bubble above the button, and one near the right edge flips
+ * which side it spans. Without them a popover at the foot of a long report opens
+ * off-screen.
+ */
+@supports (position-area: block-end) {
+  .explainerBubble {
+    position-area: block-end span-inline-end;
+    position-try-fallbacks:
+      block-start span-inline-end,
+      block-end span-inline-start,
+      block-start span-inline-start;
+    margin: 6px 0 0;
+    max-width: min(23rem, calc(100vw - 32px));
+    width: max-content;
+  }
+}

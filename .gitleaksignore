@@ -1,0 +1,46 @@
+# Findings gitleaks is right to raise and we are right to keep.
+#
+# `test/secretScan.test.mjs` proves that our *outbound* scanner refuses to send
+# a customer's credential to the provider (`src/secretScan.ts`, PATHWAYS Pathway
+# 2 item 8). To prove it, the suite has to contain things shaped like
+# credentials — a GitHub token, a Figma token — and a scanner that did not flag
+# them would be the broken one. Both scanners are working here; they simply
+# disagree about whether a fixture counts, and the fixture is the point.
+#
+# **Why fingerprints and not `# gitleaks:allow` alone.** gitleaks-action scans
+# commit history, so annotating the line today does nothing about the commit
+# that introduced it — the diff in 467fd738 still contains the value and always
+# will. A fingerprint names one finding in one commit at one line, which is
+# exactly the scope of an exception that should never widen. The lines also
+# carry inline allows, so editing the file later does not raise them again.
+#
+# Nothing real belongs in this file. If a genuine credential is ever committed,
+# the fix is to rotate it and purge it, never to add a line here.
+#
+# Checked 2026-08-21: all four are the same two fake values, both defined in the
+# S1 fixture table and reused where a suite needs a poisoned field.
+
+# A fake GitHub PAT: the S4 row of the fixture table (97), reused as a poisoned
+# skipReason (165) and a poisoned frame label (254).
+#
+# **No comment here quotes a fixture.** The first version of this file spelled
+# out the Figma one, and gitleaks flagged the ignore file — correctly, and on
+# the very next commit. Naming the rule and the line is enough; anyone who needs
+# the value can open the line the fingerprint points at.
+467fd73828c5e97f59d809961def35c612bcfabd:test/secretScan.test.mjs:github-pat:97
+467fd73828c5e97f59d809961def35c612bcfabd:test/secretScan.test.mjs:github-pat:165
+467fd73828c5e97f59d809961def35c612bcfabd:test/secretScan.test.mjs:github-pat:254
+
+# The S7 fixture, a named token assignment.
+467fd73828c5e97f59d809961def35c612bcfabd:test/secretScan.test.mjs:generic-api-key:100
+
+# A Figma **file key** in a test-run config — the identifier out of a Figma URL,
+# not a credential. It opens nothing on its own: reading that file needs a token
+# and permission on it, neither of which is here. Flagged on entropy alone,
+# which is what a random-looking identifier and a secret have in common.
+#
+# Not currently failing anything — it predates CI and sits on `main`, outside
+# every push and pull-request range scanned so far. Listed anyway, because the
+# first full-history scan would fail on it and the tempting fix at that moment
+# is a broader one than this.
+64532df37b4fec52197bcd122f7d73f0d25f1b40:test-run/case-01-fidelity-bose/config.json:generic-api-key:2

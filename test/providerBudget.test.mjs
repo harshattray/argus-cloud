@@ -26,6 +26,7 @@ const { grantCredits, balance } = await import(path.join(DIST, "ledger.js"));
 const { hostedExplain } = await import(path.join(DIST, "explainService.js"));
 const { resetBreaker, isTripped } = await import(path.join(DIST, "breaker.js"));
 const { buildUserContent, TRUNCATION_NOTE } = await import(path.join(DIST, "promptAssembly.js"));
+const { SYSTEM_PROMPTS } = await import(path.join(DIST, "hostedPrompt.js"));
 const {
   HARD_CAPS,
   maxInputTokens,
@@ -78,7 +79,7 @@ const OPUS = "claude-opus-4-8";
 // --- P1: the hard maximum comes from caps, not from measurement -----------
 {
   const hardMax = hardMaxCostMicrodollars(SONNET);
-  const { system, user } = maxInputTokens();
+  const { system, user, image } = maxInputTokens();
   check("P1.1", typeof hardMax === "number" && hardMax > 0, `a sonnet analysis can cost at most $${(hardMax / 1e6).toFixed(4)}`);
   check(
     "P1.2",
@@ -91,6 +92,35 @@ const OPUS = "claude-opus-4-8";
   check("P1.3", hardMax > 16_400, `the hard maximum exceeds the measured blended cost of $0.0164 ($${(hardMax / 1e6).toFixed(4)})`);
   check("P1.4", Math.abs(hardMaxCostMicrodollars(SONNET, { batch: true }) - hardMax * 0.5) <= 1, "the batch rate halves it");
   check("P1.5", hardMaxCostMicrodollars("model-we-never-priced") === null, "an unpriced model has no maximum — it cannot be authorized");
+
+  // P1.6 — the system-prompt cap, measured against the real strings.
+  //
+  // `maxSystemPromptChars` said "Asserted against the real prompt in tests" and
+  // was not: the prompts lived in `web/`, which this suite cannot import, so
+  // P1.2 above only ever proved the constant equalled itself. The prompt is
+  // priced into every reservation as a cache write, so one that outgrew the cap
+  // would under-state the maximum cost of every call with nothing failing.
+  // Moved into the package on 2026-08-19 so this can be true.
+  const longest = Object.entries(SYSTEM_PROMPTS).sort((a, b) => b[1].length - a[1].length)[0];
+  check(
+    "P1.6",
+    Object.values(SYSTEM_PROMPTS).every((p) => p.length <= HARD_CAPS.maxSystemPromptChars),
+    `every system prompt fits the cap the reservation is derived from — longest is ${longest[0]} at ${longest[1].length} of ${HARD_CAPS.maxSystemPromptChars} chars`
+  );
+  check(
+    "P1.7",
+    Object.keys(SYSTEM_PROMPTS).length >= 2 && longest[1].length > 0,
+    `and the cap is measured against every prompt that can be sent, not just one (${Object.keys(SYSTEM_PROMPTS).length} prompts)`
+  );
+  // The crop prompt must actually describe crops, or a crop-grounded request
+  // would carry the hedge telling the model it has not been shown pixels.
+  check(
+    "P1.8",
+    /NOT been shown pixels/.test(SYSTEM_PROMPTS.HOSTED_SYSTEM_PROMPT) &&
+      !/NOT been shown pixels/.test(SYSTEM_PROMPTS.HOSTED_SYSTEM_PROMPT_CROPS) &&
+      /untrusted/.test(SYSTEM_PROMPTS.HOSTED_SYSTEM_PROMPT_CROPS),
+    "the hedge is on the metadata prompt only, and the crop prompt still calls the images untrusted"
+  );
 }
 
 // --- P2: the prompt cap that makes the maximum real ----------------------

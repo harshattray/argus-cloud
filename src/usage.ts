@@ -29,9 +29,28 @@ export const ZERO_USAGE: TokenUsage = {
  * ($2/$10, ends 2026-08-31) so recorded costs never under-state provider
  * spend. A model missing here fails closed (no charge computed → no sale).
  */
+/**
+ * Microdollars per token, at **list** prices.
+ *
+ * **Sonnet 5 corrected 2026-08-19: $3/$15 → $2/$10 per MTok.** The $2/$10 launch
+ * price was introductory, due to rise to $3/$15 on 2026-09-01, and this table
+ * carried the higher figure deliberately — FUTURENORMA §3's rule is to record at
+ * list prices so recorded spend can never under-state reality. Anthropic's
+ * pricing page now states that the increase **will not occur** and $2/$10 is the
+ * standard price, so the same rule points the other way: the higher number is no
+ * longer a list price, it is a number we made up.
+ *
+ * The consequence is mechanical and intended (§3, "credits are derived from
+ * cost"): a sonnet analysis's worst case falls from $0.0844 to $0.0563, which
+ * derives to **4 credits instead of 5** — so 500 included credits buy 125
+ * analyses a month rather than 100.
+ *
+ * Found by `scripts/calibrate-hosted.mjs`, which refuses to calibrate while this
+ * table disagrees with the live page. Nothing had ever checked it.
+ */
 const PRICES_MICRO_PER_TOKEN: Record<string, { input: number; output: number }> = {
   "claude-haiku-4-5": { input: 1, output: 5 },
-  "claude-sonnet-5": { input: 3, output: 15 },
+  "claude-sonnet-5": { input: 2, output: 10 },
   "claude-opus-4-8": { input: 5, output: 25 },
 };
 

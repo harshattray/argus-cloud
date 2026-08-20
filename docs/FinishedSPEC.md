@@ -1341,6 +1341,1105 @@ excluded from the converter — that HTML references `.png` directly, so a sibli
 
 ---
 
+### 3q. Nothing secret reaches the provider — Pathway 2, item 8 ✅ (2026-08-19)
+
+A credential in a run's data is now blocked before any provider call, on both
+hosted paths, and being blocked costs the customer nothing.
+
+**Where the guard is, and why there.** `src/promptAssembly.ts` — the one
+function the interactive path and the batch path both call. A payload that has
+not been scanned cannot be assembled, so a caller added later inherits the guard
+instead of having to remember it. The rules are S1–S8 from SECURITY-LLM.md, in
+`src/secretScan.ts`.
+
+| Path | What happens | Cost to the customer |
+|---|---|---|
+| Interactive explain | Assembly throws; `explainService.ts` returns `secret_blocked`, releases both reservations | Nothing — credits and provider dollars both returned |
+| CI batch | The frame is skipped before it reserves anything; clean frames in the same batch still run | Nothing, and CI stays green |
+
+**A hit blocks and names the field. It never redacts** — a redaction that misses
+is an exfiltration, and nothing can promise it caught every copy of a value
+inside a JSON blob.
+
+**The scan reads the source fields, not the assembled string.** The stats blob
+is capped, so a secret far enough in is cut before the request goes out.
+Scanning the output would have called that safe — correct for that payload,
+wrong for the same payload 100KB shorter. SS4 pins both halves: the block still
+fires, and the capped output really does drop the secret, which is exactly why
+the weaker version would have looked fine.
+
+**Two things this found:**
+
+- **An ordinary file path scored as a secret.** With `/` in S8's entropy
+  alphabet, `artifacts/build/marketing-hero-desktop-1440x900` is one 47-char
+  token at 4.52 bits — over the 4.5 threshold, because entropy there measures
+  the variety of several ordinary words and their separators, not the randomness
+  of any value. A false positive refuses a paying customer's analysis for naming
+  a file. `/` is now a separator on this side. Found by the clean corpus, which
+  is why the suite has one.
+- **The same false positive exists in Argus's copy** (`src/explain/scanner.ts`),
+  which scans DOM and code context — where paths are far more common than in
+  summary metadata. Not fixed here: it is a CLI change with a publish attached.
+  Recorded in `PATHWAYS.md` Pathway 2, carried forward.
+
+**Evidence:** `test/secretScan.test.mjs`, 42 checks. SS1 plants one payload per
+rule; SS2 is the clean corpus (commit SHAs, UUIDs, blob keys, paths, Figma
+labels, `apiKey: process.env.X`) and pins the one known gap; SS5 and SS6 assert
+no provider call, no charge, a released reservation and a metered
+`blocked_no_charge` event; **SS7 runs the pre-item-8 assembly through the same
+harness and asserts the secret reaches the wire**, so the rest is known to have
+teeth. Deleting the throw turns 13 checks red, including the two that watch the
+money.
+
+**What this is not.** Uploads are not scanned — the server is out of the byte
+path for artifacts by design, and the enforcement the item asks for is at
+submission. Crop grounding (G3) will add image and DOM context to the outbound
+request; it goes through the same function, so it inherits the scan.
+
+---
+
+### 3r. Crop-grounded hosted explain — BuildV5 G3 ✅ (2026-08-19)
+
+Hosted explain now reasons over image crops of the flagged regions, not only
+over diff metadata. Proven against the real portfolio capture with a real key,
+not fixtures.
+
+**The mechanism changed from what BuildV5 G3 describes, and the change is the
+point.** G3 has the server fetch the uploaded PNGs and cut the regions itself.
+That was written before the 2026-08-19 decision that customer bytes never reach
+`sharp` — a decision whose whole reason is that uploaded images are hostile
+input. Decoding them inside our own function is that hazard with a worse blast
+radius than the `next/image` case that was already refused. **So the crops are
+cut in the CLI, where the pixels are already decoded, by the same `cropRegion`
+the local `explain` uses**, and arrive as one JSON sidecar per frame.
+
+| Piece | Where |
+|---|---|
+| Regions recorded when found | `Argus/src/compare.ts` → `.bridge/diff/{frame}-regions.json` |
+| Crops cut and uploaded | `Argus/src/cloud/upload.ts`, kind `crops` |
+| Sidecar validated and bounded | `src/cropGrounding.ts` |
+| Images added to the turn | `src/promptAssembly.ts`, `buildUserBlocks` |
+| Migration | `020_crop_artifacts.sql` |
+
+**Crops cost exactly one credit.** Vision is billed on area, so the pixel budget
+*is* the price: an analysis is 3 credits without crops and 4 with them, at any
+budget worth having. The 1.5M-pixel budget is sized by the **deep** pass, which
+binds first — opus input is 2.5× sonnet's, and 1.59M is the largest budget that
+still holds deep at 8 credits rather than 9.
+
+> An earlier version of this section said crop grounding changed no price. That
+> was computed against a Sonnet 5 list price of $3/$15 per MTok which Anthropic
+> has since confirmed will never take effect; at the real $2/$10 the analysis
+> price is 4, not 5, and one of those four credits is the crops. Corrected the
+> same day, by §3s below.
+
+**The server measures every image from its own header.** Twenty-four bytes of
+PNG IHDR, or a walk to the JPEG SOF marker — no pixel decompression anywhere. A
+sidecar declaring `10x10` while attaching `4000x4000` is measured at 4000x4000
+and dropped. Without that, the client would decide what an analysis costs us and
+the pre-call reservation would stop being a maximum: eight images at the largest
+size the provider bills is $0.1571 against an $0.0844 reservation, an 11% margin
+against a 50% floor.
+
+#### What the real run showed
+
+The portfolio capture — three frames, one flagged — compared, uploaded through
+the real CLI, and explained through the real `/api/explain` route:
+
+| | Metadata-only | Crop-grounded |
+|---|---|---|
+| Region reported | `0,0,0,0` | `960,400 336×48` — the rectangle `compare` recorded |
+| What it said | "No pixel coordinates or bounding box were provided… the exact location cannot be determined" | "the reference shows a faint teal/green horizontal line below the pink block that is missing in the build" |
+| Output tokens | 1,367 | 940 |
+| Measured cost | **$0.02444** | **$0.01999** |
+
+**Crop grounding cost less, not more** — a grounded model stops hedging, and the
+output tokens it saves are worth more than the image tokens it adds. One sample,
+on one frame; it is a reason to run G4, not a substitute for it.
+
+The crop-grounded run also flagged text rendered *inside the image* as
+`injection-suspected`, which is the untrusted-pixels rule doing its job on image
+content rather than on text.
+
+#### G3.3 — CLI versus hosted, same frame
+
+| | CLI `explain` (BYO key) | Hosted, crop-grounded |
+|---|---|---|
+| Region | `960,400 336×48` | `960,400 336×48` |
+| Finding | build background flat white/grey where the reference has a green-tinted gradient | reference has a teal/green line below the pink block, missing in the build |
+| Injection | flagged the overlay text | flagged the same text |
+| Cost | $0.0155 | $0.0200 |
+
+Both land on the same rectangle and the same missing green element, which is the
+parity G3.3 asks for. **One half of its pass condition is untested:** it also
+asks that both name a *selector*, and neither did, because selectors come from
+DOM context and this fixture has none — it is an offline capture with no
+`.bridge/context/`. That is a gap in the evidence, not a pass.
+
+#### Found by running it
+
+- **A silent fallback with no way to see it.** Staging the run put the sidecar
+  in `.storage` while the dev server resolves that path relative to `web/`, so
+  the first crop-grounded call quietly produced a metadata answer. Nothing
+  errored. In production the same silence covers a missing object or a corrupt
+  sidecar, and "why was my paid explanation so vague?" would have no answer.
+  `cropsForFrame` now returns a reason and it is recorded on the usage event
+  beside `crops=0`.
+- **Crops must be dropped in pairs.** A build crop whose reference did not
+  survive validation is one picture, not a comparison, and the model would be
+  judging it against nothing.
+
+**Evidence:** `test/cropGrounding.test.mjs` (29 checks) and
+`test/cropExplain.test.mjs` (21 checks) here; `cloud` C19–C23 (12 checks) in
+Argus. Two teeth checks: CG5.4/5.5 price the same request with the budget
+removed and show the reservation exceeded, and CE3.4 shows that with a fixed
+prompt version the metadata answer would have been served to every crop request
+forever — silently, which is how this feature would have been absent rather than
+broken.
+
+**Not proven:** the presigned transfer leg for this kind specifically was
+exercised against Argus's own HTTP test server, not against a deployed Cloud
+(the local dev server's presigned URLs point at a port another process held).
+Every other kind's transfer was proven on 2026-08-15 and the code path is shared.
+And R2 remains untouched — §3l's caveat stands unchanged.
+
+---
+
+### 3s. The hosted path, calibrated after crops — BuildV5 G4 ✅ (2026-08-19)
+
+`scripts/calibrate-hosted.mjs` makes real, billed calls through the real
+`hostedExplain` service and reads every figure back out of `usage_events`.
+`docs/calibration.md` carries the full table; the three findings are here.
+
+**1. Crops made the hosted analysis 2.3× cheaper.** G4 exists on the assumption
+that crops raise COGS — "crops change the input token profile, which changes
+COGS, which is the floor under every pack price". They do add ~600 input tokens.
+They also cut output from ~1,700 tokens to ~519, because a model that can see the
+difference stops writing paragraphs about what it cannot determine, and output
+costs 5× input.
+
+| | Calls | Cost/call | Avg output |
+|---|---:|---:|---:|
+| Analysis, crop-grounded | 3 | **$0.0083** | 519 |
+| Analysis, metadata-only | 4 | $0.0194 | 1,700 |
+| Deep, crop-grounded | 1 | $0.0351 | 758 |
+
+**2. Our price table had never been checked against the source, and was wrong.**
+`usage.ts` priced Sonnet 5 at $3/$15 per MTok. The live page says $2/$10 — and
+says explicitly that the $3/$15 increase scheduled for 2026-09-01 **will not
+occur**. Every recorded cost for Sonnet was 50% high: safe in direction, since
+spend was over-stated and no budget ever ran loose, but wrong since the table was
+written. The harness refuses to calibrate while the two disagree, which is how it
+surfaced. Consequences, all favourable:
+
+- The `$0.0164` "post-intro" figure quoted throughout `FUTURENORMA.md` was a
+  forecast of a cancelled event. Withdrawn.
+- Credits are derived from cost, so a sonnet analysis fell from 5 to 3 — and the
+  crop budget put one back, landing at **4**. 500 included credits now buy **125
+  analyses a month, up from 100**, which closes `PATHWAYS.md` carried-forward
+  item 4 without a model change.
+- Packs were seeded against the higher figure, so they clear their floors by more
+  than intended.
+
+**3. Every pack clears its 3× floor with room to spare — no reprice.**
+
+| Pack | COGS | 3× floor | Price | Headroom |
+|---|---:|---:|---:|---:|
+| pack_100 | $0.21 | $0.62 | $7 | 11.3× |
+| pack_200 | $0.41 | $1.24 | $12 | 9.7× |
+| pack_1000 | $2.07 | $6.21 | $55 | 8.9× |
+
+Priced at the *metadata* cost instead — the expensive shape — pack_1000's floor
+is $14.52 against $55. The gate's condition ("pack prices still ≥ 3× blended
+COGS, or the reprice is recorded") passes without a reprice.
+
+**What the sample does not settle:** nine calls on four fixtures, no batch
+measurement on this path, and a cold prompt-cache mix. Real traffic will read the
+cache more often and cost less than these figures, not more. Full caveats in
+`calibration.md`.
+
+### 3t. The hosted report page — BuildV5 Phase H ✅ (2026-08-19)
+
+The page a customer looks at was 131 lines and no images. It now shows the
+three captures, the findings, and the history — the last of which is the only
+thing on it a local run structurally cannot produce.
+
+**H1 — the images.** Build / reference / diff per frame, in the CLI report's
+visual language, copied deliberately from `Argus/src/report.ts` (5d311fb) rather
+than re-derived, with its three fixes intact: panes size to the capture's own
+aspect, captures past 2.2:1 scroll at natural size with the three panes locked
+together, and the lightbox is bounded by the viewport. Verified in a browser
+against a **production build** on 2026-08-19: a 6:1 capture gave three panes of
+458px client height over 1844px of content, scrolling one moved all three to the
+same offset, and a 400×2400 image in the lightbox measured 153×920 against a
+1400×1000 viewport with no page overflow.
+
+Images are plain `<img>` from short-lived presigned GETs, never `next/image` —
+the 2026-08-19 decision, and the stated ground for the `sharp` entry in
+`security/audit-allowlist.json`.
+
+**H2 — the findings.** Category, confidence badge, observation, hypothesis,
+selector, code pointer, the "generated — verify before applying" label, and the
+flagged regions drawn on the diff as percentage boxes. `injection-suspected`
+renders as a warning with its own border and a leading explanation, not as an
+ordinary finding. E3's corpus was re-run against the rebuilt page: a seeded
+finding carrying `<img src=x onerror=alert(1)>`, `<script>alert('xss')</script>`,
+`"><svg onload=alert(2)>` and `javascript:alert(3)` produced **zero** injected
+`script`, `img` or `svg` nodes and rendered as visible text.
+
+**H3 — the history.** First drift, times flagged, prior-run count, a sparkline
+against the threshold line, and the previous finding. Computed by
+`frameHistory()` in `enrichment.ts` — **the same function the prompt uses**, and
+the one Phase I's chart will use, because BuildV5's I2.1 gate says two
+implementations of "first drift" that disagree is a bug in one of them.
+
+**H4 — share links.** `/api/share` gained `GET` (list) and `DELETE` (revoke)
+beside its `POST`, and an interface. The whole lifecycle was exercised against a
+production build with `NORMA_DEV_OPEN` off: no token → not found; create → the
+report renders; the share viewer sees **no Explain button and no share panel**;
+revoke → not found again.
+
+**Evidence.** `test/reportPage.test.mjs`, 41 checks, plus 5 added to
+`uploadPipeline`. Four guards were watched failing before being trusted
+(CLAUDE.md rule 3): dropping the current run from its own history, bounding a
+presigned TTL by the share link's remaining life, the tenant scope on the
+artifact query, and the server-side cap on rendered regions.
+
+**One of the new guards was vacuous when written, and only breaking the code
+found it.** The CSP checks in `uploadPipeline` V5 read `middleware.ts` as text,
+and `middleware.ts` explains each directive in prose directly above it — so a
+regex looking for `style-src-elem` matched the *comment* discussing
+`style-src-elem`, found no `'unsafe-inline'` after it, and passed regardless of
+the policy. Every extraction in V5 now strips comments first. This is the whole
+argument for rule 3 in one incident: the check was green, correct-looking, and
+asserting nothing.
+
+**Two real bugs found only by looking at the page, after the suite was green:**
+
+- **`onLoad` never fired.** The `<img>` is server-rendered, so the browser
+  finishes fetching it before React hydrates, and a handler attached afterwards
+  never runs. The page therefore never learned the capture's aspect and a 6:1
+  export rendered letterboxed into the default box — the exact sliver the CLI
+  fixed in `5d311fb`, reintroduced by a lifecycle detail rather than by the CSS.
+  The ref now checks `complete` on attach as well.
+- **`npm run seed:dev` wrote to a database that did not exist.** `createDb()`
+  falls back to in-memory PGlite without `PGLITE_DATA_DIR`, which is set in
+  `web/.env.local` — a file Next loads and a repo-root script does not. The seed
+  printed run URLs the whole time and every one of them 404'd.
+
+**The CSP was tightened, not closed.** `style-src-elem` on `/r/` and `/admin`
+no longer permits inline styles in production, because the page's styling moved
+from `style={{…}}` attributes into `report.module.css`. Verified against a
+production build: 2 stylesheet links, **0 inline `<style>` tags**, 31 scripts
+and 31 nonces, no console errors. `style-src-attr` still permits inline styles
+and will keep having to: the meter's fill width, a region overlay's position and
+the pane's aspect ratio are computed per frame and have no stylesheet to live in.
+`style-src` is kept as the fallback for browsers implementing neither, which
+would otherwise fall through to `default-src 'none'` and load no CSS at all.
+
+**`img-src` now names the storage origin**, derived in `src/storage/origin.ts`
+from the same environment the driver is built from rather than configured
+separately, and asserted against a URL a real driver signed. **The R2 shape is
+unproven** — virtual-hosted addressing against a custom endpoint is exactly what
+a local stub gets right and a real service does differently. That is Step 5's
+J2, and until it runs this is a claim, not a fact.
+
+---
+
+### 3u. Trends — BuildV5 Phase I ✅ built (2026-08-20)
+
+Until now there was **no page above `/r/{runId}`**: a run could only be found by
+already holding its URL. There is now a repository view, a frame trend chart,
+and an API that serves one frame's trend and nothing else.
+
+**I1 — the repository view.** `/repos/{repoId}`. Committed runs, newest first,
+with commit, branch, date, frames compared and frames flagged, paginated at 20;
+then every tracked frame with its last 12 runs as a sparkline, worst first.
+Pending runs are absent, which is migration 017's promise kept in the second
+place it can be broken.
+
+A page of forty runs costs **four queries**, whatever the size of the
+repository: resolve the repo, count the runs, read the page, read every frame's
+sparkline. `test/trends.test.mjs` T1.1a asserts the number by counting through
+the `Db` seam, and T1.1b runs the per-row version through the same harness — 21
+queries for the same answer.
+
+The empty state names the next action (`npx norma-scope upload`) rather than
+saying "no runs yet", because a repository row with nothing in it almost always
+means a key was set up and nothing was uploaded.
+
+**I2 — the frame trend.** `/repos/{repoId}/trend?frame=…`. Aligned mismatch over
+commits, oldest first, with four things that the obvious version of this chart
+would get wrong:
+
+- **Gaps, not zeros.** A run that recorded no measurement breaks the line and
+  gets a band. Plotting it at 0 draws a pass that never happened.
+- **A stepped threshold line.** The threshold comes from each run's own uploaded
+  summary and can change. One flat line at today's value would put runs that
+  were flagged underneath it.
+- **The line breaks where the measurement changed.** `fidelity` and `baseline`
+  are different quantities against different references. Marking the boundary
+  and still drawing a stroke across it says two things at once; I2.2 asks for the
+  two segments to be visually distinguished, so they are.
+- **First drift is placed, not computed.** The commit comes from
+  `frameHistory()` in `enrichment.ts` — the same function the prompt and the
+  report page use — and this code only finds where that commit sits among the
+  points on screen.
+
+**The gate is that agreement, and the counter-test is the argument for it.**
+T2.1b runs the naive version — scan the visible points for the first flagged one
+— through the same harness. On a full window it agrees. On a 3-run window it
+answers `r11kkkkkkk` where `enrichment.ts` says `r07ggggggg`: it is a different
+query over a truncated window, and it would have shipped looking correct. When
+first drift is older than the window the marker is absent and the page *says so*,
+because an absent marker otherwise reads as "never drifted", which is the
+opposite of the truth.
+
+**I3 — the trends API.** `GET /api/trends?repo&frame&limit`, bearer key, rate
+limited. Verified against a production build:
+
+| Probe | Answer |
+|---|---|
+| No key | 401 |
+| No `frame` / no `repo` | 400, naming the missing one |
+| Another tenant's **real** repo id | `404 {"error":"not found"}` |
+| A repo id that never existed | the same 404, byte for byte |
+| `limit=100000` | served at the 200-point ceiling, with `limit: 200` in the body |
+| `limit=3` on an 11-run frame | 3 points, `truncated: true`, `firstDriftIndex: null`, `firstDriftCommit` still named |
+
+The response body's top-level keys are `frame`, `points`, `firstDriftCommit`,
+`firstDriftIndex`, `recurrence`, `transitions`, `skipped`, `truncated`, `limit`
+— no repository list, no run totals, no plan or credit state. `frame` is
+required rather than optional for that reason: an omitted frame would have to
+mean "tell me what you have".
+
+**Access, stated plainly: these pages 404 in production.** A share token is a
+capability for exactly one run, so honouring it on a repository-wide view would
+widen every share link ever issued into a tenant-wide read. There is no session
+layer until Step 6, so `/repos/` answers only behind `NORMA_DEV_OPEN` — the same
+local door the report page uses — and the run report links up to its repository
+**for owners only**. This is Step 6's work, not a gap in Phase I.
+
+**One source for the palette.** The report page's tokens moved into
+`web/app/_styles/surface.module.css` and both stylesheets `composes` from it.
+Copying the block into a second file with a comment asking the next person to
+keep them in step is the exact shape CLAUDE.md rule 1 forbids: a colour changed
+in one and not the other fails nothing, and the product just looks like two
+products.
+
+**Evidence.** `test/trends.test.mjs`, 71 checks. Suite totals at the time: **846
+on PGlite, 874 against real Postgres**, across 27 suites (they moved again with
+§3v). Guards watched failing before
+being trusted (CLAUDE.md rule 3), each by breaking the built code and re-running:
+
+| Break | Went red |
+|---|---|
+| First drift placed by scanning for the first flagged point | T2.10, T5.3 |
+| A skipped measurement coerced to 0 | T2.7, T2.8, T2.3b |
+| The transition marker on the last old point instead of the first new one | T3.2 |
+| The `org_id` predicate dropped from `resolveRepo` | T1.14, T1.15 |
+| An unusable uploaded threshold read as a number | T3.5, T3.6 |
+| The sparkline's break at a mode change removed | T3.4a |
+| The frame cap moved out of the database into JavaScript | T6.3a |
+| The page-offset clamp removed | T6.6 |
+
+**Two bounds were open until the code was re-read, and both are now asserted.**
+A `?page=999999999` became a nine-billion-row `OFFSET`, and the frame list was
+capped in JavaScript *after* reading every frame in the repository. The second
+is the more interesting one: it was four queries either way, so the query count
+T1.1a asserts could not see it. `test/trends.test.mjs` now counts **rows** as
+well as statements, with a ceiling tight enough that removing the database-side
+cap fails it — a loose ceiling would have passed with the cap gone, which is the
+whole thing being checked.
+
+The frame cap therefore binds **by name, in the database**, and the page says so
+rather than claiming "the 60 worst": working out which frames are worst is
+exactly what reading all of them is for.
+
+**Found by looking at the page, after the suite was green:**
+
+- **The line ran straight through a mode change.** The marker was there; the
+  stroke crossing it said the two numbers were comparable. Fixed by breaking the
+  line — on the large chart and on the repository view's sparkline, because a
+  small chart that lies where the large one does not is still a lie.
+- **`seed:dev` was not seeding the case its own comment claimed.** The "skipped
+  run" was seeded as *no `frame_stats` row at all*, which is a run where the
+  frame is absent — it does not appear on a chart, so nothing was drawing the gap
+  the comment described. It now seeds a row with a null measurement, which is
+  what a compared-but-unmeasured frame actually looks like. Phase I is where the
+  difference became visible.
+- **Two stat labels were wrong.** "Flagged on latest run" counted frames flagged
+  on *their own* latest run, and the frame-list note quoted the longest history
+  across all frames as though it applied to each.
+
+**CSP.** `/repos/*` joins `/r/` and `/admin` on the strict per-request-nonce
+policy, verified against a production build: `default-src 'none'`, 35 scripts,
+38 nonce attributes, one nonce value per response and a different one on each
+request. Every chart is server-rendered inert SVG — no client component on
+either page, so there is nothing to hydrate and nothing to nonce beyond Next's
+own bundle.
+
+**What this does not prove.** Everything above is seeded data on a laptop. The
+Phase I gate is I1–I3 green and the annotation agreeing with `enrichment.ts`,
+which is met; the *sales* claim under it — a months-deep dogfood repository
+rendering a real trend — needs Step 5 and a repository nobody seeded. Treat
+Step 4 as **built and not yet validated**, the same standing Step 3 has.
+
+---
+
+### 3v. Cloud app chrome, the theme switch, and a demo tenant ✅ (2026-08-20)
+
+Four things, from Harsha's review of the trend pages.
+
+**One shell across every Cloud page.** `/r/`, `/repos/{id}` and the trend page
+share a masthead — product wordmark, breadcrumb, theme switch — and a footer.
+The run report also gained a **jump-to list** for its frames, worst-first,
+with each frame's pass/flag state on the chip so a twenty-frame run is
+navigable before you scroll. Anchor ids are positional (`frame-0`, `frame-1`),
+never slugged from the label: a label is upload-supplied, so slugging it makes
+ids that collide silently and builds a fragment out of hostile text.
+
+**The breadcrumb is owner-only, and it does a second job.** A share token names
+one run, so a trail up to the repository would name it and offer a link the
+holder cannot open. For owners it reads *organization / repository / commit* —
+and naming the organization is what makes the demo tenant below announce itself.
+
+**The theme is a cookie, and it has three states.** Light and dark are explicit
+choices; absent means "follow the device", which is the default and what the
+pages did before. `POST /api/theme` sets it and 303s back.
+
+- **POST, not a link.** A side-effecting `GET` would be flipped by any link
+  prefetcher, crawler or speculative load.
+- **Same-origin only**, on `Sec-Fetch-Site` with `Origin` as the fallback.
+- **The redirect target is validated as a same-site path** — `//evil.example`
+  is a protocol-relative URL and a browser treats it as another origin, so
+  without that check this route is an open redirect. Verified: it answers `/`.
+- **No JavaScript anywhere on these pages.** Read server-side before the first
+  byte, so no flash of the wrong theme, no hydration, and nothing new to nonce
+  under the strict CSP.
+
+The cascade is the part that quietly breaks. `@media (prefers-color-scheme:
+dark)` is guarded by `:not([data-theme="light"])` and the explicit
+`[data-theme="dark"]` block is declared after it. Drop either and the switch
+works in one direction only — the shape of bug that reads as "the toggle is
+broken sometimes". S1.4b evaluates the unguarded cascade against all four
+device × choice cases and shows a viewer on a dark device who picks light
+staying dark.
+
+**Logos.** The Normascope Cloud wordmark in the masthead, the Yutic endorsement
+in the footer, on every Cloud page. Both ship as a light-ground and a
+dark-ground file, and in the *auto* theme state the server cannot know which the
+viewer will get — so both are rendered and one is `display: none`, which also
+keeps it out of the accessibility tree. Verified: one wordmark and one
+endorsement in `innerText`, and the dark-ground Yutic file is the brand book's
+own approved reversal, which §01 names as the only sanctioned recolour.
+
+> **This overrode a rule in `yutic-brand-rules.txt`.** §09 read "never in
+> product headers or app UI", and `YuticEndorsement.tsx` had excluded `/r/`
+> deliberately for that reason. Harsha decided on 2026-08-20 that the
+> endorsement belongs on every surface; the rules file was updated in the same
+> change so the book and the code agree, and it records that this also puts the
+> endorsement in front of anyone holding a share link. **Still open, and not
+> ours to settle:** the rules file says the line reads *"A lab from Yutic"* and
+> the component renders *"A product from"*. Both have shipped.
+
+**The x-axis, which Harsha was right to question.** Positions were correct;
+two things were not.
+
+| Defect | Fix |
+|---|---|
+| Labels were a fixed `slice(0, 7)`. A fixture whose commits shared a seven-character prefix rendered six distinct runs as one repeated string | The prefix length is chosen from the data — never below 7, so real shas keep git's familiar form, never above 12. Two runs on the same commit still share a label, because they share a commit |
+| The threshold riser sat *on* a run; the measurement-changed marker sat *between* two runs. Same event, two positions, half a slot apart | Both on the boundary. A threshold is a rule that applied to a stretch of runs, so it changes between them, not at one of them |
+
+Spacing is by run index rather than by time, which is deliberate and unchanged —
+the axis says "over commits".
+
+**A third chart was lying, and only opening the page found it.** The run
+report's history strip drew straight through a `baseline` → `fidelity` change
+while the trend chart and the repository sparkline broke their lines there. The
+same data read as a sudden regression on one page and a marked transition two
+pages over. All three now take the rule from one `segments()` helper.
+
+**`npm run seed:demo` — a demo tenant that cannot be mistaken for evidence.**
+Three repositories, twelve weekly runs each, six frames, chosen so each page has
+something worth looking at: a regression that appears and is fixed, a frame that
+regresses twice, a repository whose measurement changed mid-history, a quiet
+frame, and a frame whose capture failed twice. Real `credit_grants` and real
+`usage_events`, so the balance is a number something moved rather than a
+display.
+
+Every figure in it is invented, and the surfaces say so: the organization is
+`DEMO — Northwind Retail (sample data)`, repositories are `demo-`prefixed, the
+seeded finding opens "SAMPLE FINDING (demo data, not a real analysis)", and the
+model column records `demo-sample-not-a-real-model-call`. The script refuses to
+run against a hosted database on a hostname match rather than a prompt somebody
+clicks through — it writes to the two ledgers every customer-facing figure
+traces to.
+
+**The honest limit, stated where it is used:** share views carry no breadcrumb
+by design, so a report opened from a share link shows **no demo label**. The
+script prints that caveat every run.
+
+> **The first cut of the demo data contradicted itself**, and it is worth
+> recording why. A run carries **one** `summary.threshold` for all its frames.
+> Putting the mode-changing frame in with the storefront's meant the
+> storefront's threshold jumped 0.1% → 5% at week 6, which silently un-flagged
+> `home.png`'s regression halfway through its own story. Frames measured
+> differently belong to different runs; the schema said so and the first cut did
+> not listen. `search-results` and `nav-bar` now live in `demo-design-system`,
+> where the threshold moves with the measurement for every frame in the run.
+
+**Evidence.** `test/cloudShell.test.mjs`, 32 checks. Suite totals: **878 on
+PGlite, 906 against real Postgres**, across 28 suites. Guards watched failing
+before being trusted:
+
+| Break | Went red |
+|---|---|
+| `:not([data-theme="light"])` dropped from the media block | S1.2 |
+| The explicit `[data-theme="dark"]` block renamed | S1.3 |
+| The protocol-relative check removed from the redirect target | S2.3 |
+| The breadcrumb handed to share viewers as well as owners | S4.4 |
+| The demo organization renamed to a plausible company | S5.1 |
+| Commit labels returned to a fixed 7-character slice | S3.2b (counter-test) |
+
+Checked in a browser against a production build: the switch flips a dark-device
+page to light and back, `data-theme` is stamped on the surface, the cookie POST
+returns 303 with `HttpOnly; SameSite=Lax; Secure`, a cross-site POST is 403, an
+open-redirect attempt lands on `/`, both logo variants are present with one
+hidden, and every jump link has a matching anchor.
+
+**What this does not prove.** Same standing as §3u: seeded data on a laptop, and
+`/repos/` still 404s in production until Step 6. The demo tenant is a testing
+and walkthrough surface, not the sales asset — that remains Argus's own
+dogfooded history on a deployed instance, per FUTURENORMA §4.
+
+---
+
+### 3w. Explainers, a real tenant, and a screenshot set ✅ (2026-08-20)
+
+Three things, from Harsha's review of the Cloud pages. A fourth — a "generated
+by *username*" line in the report header — was **deferred to Step 6 by decision
+on the same day**; the reasoning and the settled policy are in `PATHWAYS.md`
+Pathway 5.
+
+**Every number on a Cloud page can now explain itself.** A defined term — the
+word itself, under a dotted underline — opens a plain-language definition:
+26 on a seven-frame report, covering the stat strip, each frame's aligned
+mismatch / SSIM / mode, the history facts, both charts and their legends, the
+findings' confidence, hosted-AI credits, the share panel, and every column header
+on both tables.
+
+> **The first cut put a circled "?" beside each label, and Harsha rejected it.**
+> It came to **103** question marks on that same report — a page speckled with
+> query glyphs reads as a page unsure of itself, and the count scaled with the
+> number of *frames* rather than with the number of ideas. Wrapping the word adds
+> no glyph at all, and it fixed an alignment problem that kept recurring: a
+> separate icon is its own flex item, so in a wrapping row it broke onto the next
+> line away from the thing it explained. A trigger that *is* the text cannot come
+> apart from it. The count fell to 26 in the same pass, because per-frame
+> repetition was most of the noise — the badge, the meter legend, the region
+> button and both Explain buttons lost theirs, and none of them was the word a
+> reader was stuck on.
+
+The text is not written in the pages. It comes from `web/lib/glossary.ts`, which
+the public `/report` page already prints as a list — so the definition a prospect
+reads before signing up is the one they read afterwards. Cloud-only words
+(history, first drift, recurrence, credits, share links) live in a second export,
+because `/report` documents the *local* HTML report and a local run has none of
+those things.
+
+Three constraints shaped the implementation, in this order:
+
+| Constraint | What it ruled out | What it left |
+|---|---|---|
+| No client JavaScript on `/repos/` — §3v claims exactly that | a `useState` tooltip, which would put a hydration boundary around a chart that currently arrives in the first byte | the native HTML popover: `popovertarget` on a plain `<button>`. The browser supplies the top layer, light dismiss, Escape and focus handling, and ships nothing to do it |
+| No new inline styles — `style-src-attr 'unsafe-inline'` is a carried-forward item, not an invitation | positioning from a `style` attribute; also `anchor-name`, which would need to be unique per instance and so could only come from one | CSS anchor positioning off the popover's *implicit* anchor, behind `@supports`, with the UA's centred popover as the fallback |
+| `.card` is `overflow: hidden` and `.tableWrap` scrolls | a positioned `<div>`, which would be clipped in a card and drag a scrollbar in a table header | the top layer, which escapes both |
+
+The typography has to work in both directions and the two are opposites: the
+**trigger** inherits everything (it is a word inside a stat label, a table header
+or body text) and the **bubble** resets everything (it is a paragraph in the top
+layer). Getting the second wrong shipped once — the definitions rendered in
+capitals, because a popover inherits down the *DOM* and every trigger hangs off a
+label styled `text-transform: uppercase`; the `font` shorthand resets size,
+weight and family and touches neither `text-transform` nor `letter-spacing`.
+
+The Explain row also gained a **"Hosted AI"** heading, because it previously
+opened with an unlabelled password field — and because the credits definition
+needed somewhere to hang that was not a button. A trigger *is* its own text now,
+and those words already belong to a click that spends money.
+
+**Hovering a point on either chart says which run it is.** "Which run is that
+spike?" is a question about a *point*, and answering it by asking someone to
+match an x-position against the table below is not answering it. The trend chart
+draws a card — commit, measurement, the threshold that run was judged at, the
+verdict, the mode pair and the date — from a 13px transparent hit circle under
+the 3.5px dot, revealed by plain `:hover` on the group. Still no JavaScript.
+
+The two sparklines cannot do that, and the reason is one attribute:
+`preserveAspectRatio="none"`. They are 200 units wide and stretch to whatever the
+row gives them, so anything drawn in their coordinate system arrives horizontally
+smeared. They use `<title>`, which the browser renders outside the SVG's
+coordinate system entirely.
+
+Two things the card had to be told, both of which are one-word bugs:
+
+- **`fill: transparent`, never `fill: none`.** `none` does not paint and
+  therefore takes no pointer events, so the tooltip would open only on the 3.5px
+  dot — invisible *and* untouchable.
+- **`pointer-events: none` on the card.** It overlaps its neighbours' hit
+  circles, and a card that could be hovered would hold itself open while
+  stealing the point the reader was moving towards.
+
+Hover does not exist on a touch screen, so this is an enhancement and not the
+only route: every point is also a row in the Runs table, with the same facts and
+a link.
+
+**`npm run seed:real` — a second tenant, and every number in it is a
+measurement.** Ten runs that actually happened, read out of the summaries
+`norma-scope` wrote at the time: the portfolio capture in `norma-bridge-usecase/`
+and cases 01, 02 (six scenarios), 03 and 05 in `test-run/`. 59 frame rows, 151
+images, 22.3 MB, and the 11 real Sonnet 5 findings from case 03 — including the
+two that turned out wrong and the `injection-suspected` one.
+
+It is a **separate organization** from the demo tenant, and it is the same rule
+that names that one. `DEMO — … (sample data)` exists so nobody mistakes an
+invented figure for a measurement; `REAL — Normascope's own runs (measured)`
+exists so nobody stamps "(sample data)" on a figure that is one. `seed-demo`
+builds both, so a walkthrough has invented history deep enough to show what
+trends do and real runs to show that any of it is true.
+
+Four things it deliberately does not do:
+
+- **No `usage_events`.** Case 03 was a real billed call — 3,753/409 on Haiku
+  4.5 and 6/3,772/2,696 on Sonnet 5 — but that spend went through the CLI
+  against a personal key, before the hosted meter existed. There is no per-frame
+  breakdown and the printed estimate used the Sonnet price since corrected
+  (§3s). A hosted usage row would claim this system metered that call. The
+  balance sits at a full 500 and the ledger is empty.
+- **No invented provenance.** One run carries a branch — case 05, whose README
+  records `demo/normascope-visual-verification` — and no run carries a commit
+  SHA, because none of them recorded one. An earlier draft put `main` on three
+  runs and a different, plausible branch on case 05, contradicting the README
+  two directories away.
+- **Nothing computed.** `flagged`, the percentages, SSIM, mode and source are
+  copied from the summary, never recomputed. V2.2 re-reads all 59 rows against
+  their source files.
+- **Case 02's scenarios are their own repository.** Each is an independent
+  one-line change measured against the same baseline and reverted — six
+  experiments, not six commits. Joined into one history the trend line climbs to
+  87% and falls back to 0.4%, which reads as "it broke and somebody fixed it"
+  and is a story about a codebase that never existed.
+
+> **Real data found two real bugs in pages that had shipped.**
+>
+> **The diff overlay's region keys.** Keyed on `x,y,w,h` — unique until two
+> findings name the same rectangle, which case 03's `norma-hero.png` does: an
+> `injection-suspected` finding and a `layout` finding on the identical box.
+> React saw duplicate keys and reserved the right to drop one of the overlays.
+> Keyed on position now, which is also what the highlight compares against.
+>
+> **"First drifted at" said "never exceeded the threshold" beside "Times flagged:
+> 4 runs".** `firstDriftCommit` was one field carrying two facts, and a null
+> meant both "it never drifted" and "we have no commit for the run where it
+> did" — the second being *every* run uploaded from a laptop, since `upload`
+> reads the SHA from `GITHUB_SHA`. Split into `firstDriftAt` (whether) and
+> `firstDriftCommit` (where), and the pages print the three states apart. The
+> same change moved the chart's marker from matching on a commit to matching on
+> a **run id**: a commit is ambiguous when two runs share it, and useless when
+> every run's is empty — which is why no marker appeared on those charts at all.
+> `test/trends.test.mjs` T5.5, T5.5b, T5.6 and the T5.6b counter-test, which runs
+> the one-field reading over both histories and shows it calling them the same
+> thing.
+
+**`npm run capture:cloud` — the pages, both themes, one command.** 24 shots into
+`docs/screenshots/cloud/` with a generated manifest: repository view, frame
+trend, a point hovered on the trend chart, a flagged run report, a clean one, a
+definition open, and the share view, each in light and dark. Playwright driving
+the Chrome already on the machine — `playwright-core`, no 150 MB browser
+download.
+
+The two interaction shots exist because the ordinary full-page capture can never
+contain them: a popover is closed and a hover card does not exist until a pointer
+is over a dot. The script opens one and hovers the other — picking the *middle
+flagged* point rather than the first, because hovering point zero puts the card
+over the y-axis and photographs the least informative run in the history.
+
+They go to `docs/`, **not** `web/public/`: anything under `public/` is served by
+the deployed site at a guessable URL, and these are pictures of a surface that
+404s in production. Moving a chosen one into `web/public/screens/` is a
+deliberate act for a page that will display it.
+
+Four things the first version got wrong, each fixed and each recorded because
+they are the ways an automated screenshot lies:
+
+| It did this | Why | Now |
+|---|---|---|
+| Wrote sixteen screenshots of "Not found" without complaining | File-backed PGlite is one writer. Seeding while the dev server holds `.pgdata` leaves the script reading new ids off disk and the server serving old ones | Reads the `<h1>` and exits 1 with the cause. A file named `real-run-report-light.png` containing "Not found" is worse than no file |
+| Photographed a lone "Difference" pane | "Most images" picked case 03 — seven diff overlays, no captures — over a run with all three kinds | Distinct kinds decide it; volume only breaks the tie |
+| Named a file `-flagged` showing zero flagged frames | The best run was chosen for completeness and named for intent | The name says what the picture contains |
+| Charted `cart.png`, the frame seeded deliberately flat | Every demo frame has twelve runs, so alphabetical order broke the tie | Longest history, then the one that has actually moved |
+
+**The demo tenant's hero run moved, for the same reason.** Its images, findings
+and share link were attached to the *newest* storefront run — week 12, where the
+regression has been fixed and `home.png` reads 0.02%. So the one fully-furnished
+demo report showed a frame marked "pass" carrying a high-confidence finding about
+a missing background, and no Explain buttons, because the page only offers those
+on a flagged frame. They now hang off the last run where `home.png` is over its
+threshold, inside the regression the series was written to tell.
+
+**Evidence.** `test/explainers.test.mjs` (52 checks) and
+`test/realSeed.test.mjs` (21), plus 4 new checks in `trends`. Suite totals:
+**955 on PGlite, 983 against a real Postgres server**, across 30 suites.
+Guards watched failing before being trusted:
+
+| Break | Went red |
+|---|---|
+| `text-transform: none` and `letter-spacing: normal` dropped from the bubble | X3.1, X3.2, X3.1b |
+| One term misspelled in a page | X2.2, naming the file |
+| A per-frame explainer's `scope` removed | X2.4 |
+| A `?` glyph put back inside the trigger | X2b.1, X2b.2 |
+| `fill: none` on the chart's hover target | X6.4, X6.4b |
+| `pointer-events: all` on the hover card | X6.5 |
+| Points drawn before the trend line | X6.7 |
+| `branch: "main"` invented on runs that recorded none | V2.4 |
+| `flagged` recomputed as `pct > threshold` instead of copied | V2.5b |
+| A capture directory renamed | V1.1 |
+
+Checked in a browser in both themes: 26 triggers and 26 popovers on the real
+seven-frame report, no duplicate ids, no unresolved targets, anchor positioning
+active, a bubble opening flush under its trigger, and a hover card opening beside
+its point and flipping to the left half of the chart past the middle.
+
+**What this does not prove.** Same standing as §3u and §3v — seeded data on a
+laptop, `/repos/` still 404s in production. Two limits specific to this work:
+
+- **The suite cannot render React.** It checks the glossary, the ids, the CSS
+  reset, the `@supports` split and the absence of client components; it cannot
+  show a bubble appearing in the right place. That was a browser check and is
+  recorded as one.
+- **X2.2's scan is static.** Two terms are reached through a ternary and are
+  listed by hand in the suite; the image captions are extracted. A third
+  expression form would not be covered — X2.6 fails if the count grows, which
+  converts a silent gap into a failing check.
+- **Hover cannot be sized on the server.** SVG text has no measurable width
+  there, so the tooltip is a fixed box and every line has to fit the widest value
+  it can ever carry. The first cut put the verdict, the mode pair and the date on
+  one line, which fitted `flagged · baseline/baseline` and ran straight out
+  through the edge on `under threshold · fidelity/baseline · 2026-08-13`. The
+  budget is written out above `TIP`; adding a field means redoing that sum.
+- **V2.5b is a counter-test that does not bite, and says so.** Recomputing
+  `flagged` instead of copying it agrees on all 59 rows, because no recorded
+  value sits exactly on its threshold. The check asserts the code rather than
+  the data, and the output states which half is real.
+
+---
+
+### 3x. Two-level history: an overview, a brush, and a bound on the DOM ✅ (2026-08-20)
+
+**The trend chart could not show a customer's history, and said so in a sentence
+nobody could act on.** It drew the newest 30 runs. First drift and recurrence are
+computed over *everything* the organization holds — so the page routinely stated
+"first drifted at `ee6813323c`" above a chart with no marker on it, and offered
+as remedy a note about editing a URL parameter.
+
+Measured before designing, on a 200-run frame. The numbers are the reason this
+is a defect report rather than a preference:
+
+| Runs drawn | Gap between marks | Dots merge? | Hover hits the right run? |
+|---|---|---|---|
+| 20 | 27px | no | yes |
+| **30 — the old default** | 17.8px | no | **marginal** |
+| 60 | 8.8px | no | no |
+| 90 | 5.8px | yes | no |
+| 200 | 2.6px | yes | **off by three** |
+
+A tooltip that names the wrong commit is worse than no tooltip, and it was
+already imprecise at the default window on a narrow card.
+
+**The model Harsha settled on**, after two rounds of it: **time is the primary
+axis of history, run count is a secondary detail control.**
+
+| | Overview | Detail |
+|---|---|---|
+| Axis | **time** | run index |
+| Range | 7d / 30d / … / retention | what the brush selected |
+| Resolution | bucketed, spike-preserving | every run, exact |
+| Interaction | drag to select | hover for the run |
+
+Reading them in that order is the answer to "when did this start": the overview
+shows ninety days, you drag the fortnight it happened in, and the detail chart
+gives you the individual commits with their cards.
+
+**Why the overview is a different chart and not a smaller one.** The detail chart
+is spaced by run index — correct when reading commits in order, and it means two
+hundred runs in an afternoon and two hundred across a quarter draw *identically*.
+Over ninety days that is not a rendering choice, it is a false picture, and the
+one question the overview exists to answer is exactly the one that spacing
+cannot. This was a latent flaw in the existing chart, not a new requirement.
+
+**Nothing is averaged, and that is doctrine rather than taste.** Each bucket
+keeps five facts, every one a value some run recorded: lowest, highest, first,
+last, and whether runs inside it disagreed about crossing the threshold. An
+average is a sixth number that no run measured. `test/overview.test.mjs` carries
+both counter-tests and prints what the reader would have seen:
+
+| Instead of min/max | What it draws |
+|---|---|
+| mean of the bucket (O2.4b) | **24.36%** for a bucket whose real peak is 97.4% |
+| every nth run (O2.5b) | the spike is visible at stride 2 and invisible at 3, 4, 5 and 7 — the picture depends on the stride, not on the site |
+
+**The ladder's largest step is the tenant's retention, read rather than
+written.** `plan_limits.retention_days` is 90 for every plan today and the sweep
+cascades `frame_stats`, so 90 days genuinely *is* all this organization has —
+and "all retained" is therefore an **annotation on that step, not a fourth
+option**. A separate "All" beside a 90 that means the same thing is a control
+where one choice does nothing, and it would imply storage the plan does not
+sell. `overviewRanges(365)` returns four real steps, so a later tier needs no
+code change.
+
+**The DOM is bounded; the data is not.** Every run stays in the line geometry and
+in the export. What is bounded is how many *interactive* elements exist:
+
+| Size | What it gives |
+|---|---|
+| 200 runs | fully interactive — marks and hover cards |
+| 1k, 5k, All | the exact line; select a range to inspect it |
+| Runs table | 25 rows a page |
+| Export | the complete span, exact, as CSV |
+
+**The ladder is built from the real count, and its top step is *all of them*.**
+The first cut keyed off `truncated`, which offered "200 / 1k / 5k" to a
+forty-seven-run frame — three buttons returning the same forty-seven points.
+Harsha caught it by asking what happens below 200. The count is free: the runs
+table already does a `COUNT(*)` for its pager. So sizes are offered only where
+they would show something different, the last step is every run in scope rather
+than an implementation number, and a frame whose whole history fits in one view
+gets **"Showing all 12 runs · fully interactive"** instead of a control. That is
+every real tenant today.
+
+`MAX_TREND_POINTS` is 20,000, sized above what retention can produce — 200 runs
+a day for 90 days is 18,000 — so "All" is the truth for every plan that exists,
+and the cap still bounds the one query whose cost would otherwise be a
+customer's choice.
+
+5,000 interactive points would be ~40,000 DOM nodes in the first byte, aimed at
+0.14-unit targets. Bounding a view is only honest while the whole dataset stays
+reachable — hence the export, and hence pagination on the *table*, which has no
+shape to break, and never on the chart, which does.
+
+> **`FinishedSPEC.md` §3v's "zero client JavaScript on `/repos/`" is no longer
+> true, by decision.** Harsha chose a real drag over the zero-JS approximation
+> (clickable buckets) on 2026-08-20. The valuable half survives and is now what
+> the suite guards: **both charts are still inert server-rendered SVG**, complete
+> in the first byte, and with JavaScript off the pages read correctly and the
+> range links work — only the drag is missing. `brush.tsx` is the one client
+> component on the tree, it holds no history, and it converts a drag into a URL
+> for the server to answer. X4.1 was rewritten rather than deleted.
+
+**Three defects found by rendering it rather than by reasoning about it:**
+
+- **The hit target was a circle.** Fixed radius means the targets overlap once
+  runs are closer than the diameter, and the last one drawn wins — aiming at run
+  80 opened run 83. Now a full-height column exactly one slot wide: they tile the
+  plot, so they cannot overlap at any density, and the reader aims at an
+  x-position rather than at a dot they may not be able to see.
+- **The overview sized its bars by `buckets.length`.** Only buckets holding runs
+  come back, so with sparse history the array is far shorter than the division of
+  time — six real runs from one afternoon drew as a block covering a quarter of a
+  90-day chart. Correct data, a picture claiming three weeks of drift.
+- **The interactivity label read the size requested, not the size drawn.** A 5k
+  selection narrowed by the brush to 32 runs still said "line only, select a
+  range to inspect" while showing 32 dots and their cards.
+
+**The export defuses formula injection.** A CSV field beginning `=`, `+`, `-` or
+`@` is executed by Excel and Sheets on open, and frame labels and commit
+messages are upload-supplied — the same argument that made `contentType` an
+allowlist in `artifactUploads.ts`. Fields are quoted and such values prefixed.
+
+### The waiting indicator, and a brand rule it had to work around
+
+Harsha asked for the Yutic logo as an animated loading symbol. The brand book
+forbids precisely that, in one sentence:
+
+> `yutic-brand-rules.txt` §01 — *"A fan of five peacock feathers, each with an
+> eye. **Never rotated, reordered, stretched, recoloured or given effects.**
+> Clearspace = one eye diameter. Minimum 28px wide."*
+
+A spinning mark is a rotation *and* an effect. **So the mark holds still and a
+ring turns around it** — the identity is the logo, the motion is not applied to
+it. It renders at the 28px floor (the rule says to drop the quill and base below
+that, and there is no reduced asset, so it is never smaller), keeps one eye
+diameter of clearspace, and is served as-is with no recolour.
+
+`prefers-reduced-motion` stops the rotation and leaves a ring that still reads as
+waiting, because it is visibly incomplete. The label is real text inside
+`role="status"`, so the wait is announced rather than drawn.
+
+**This is an overridable rule and §09 is the precedent for how**: it read "never
+in product headers or app UI" until Harsha decided otherwise on 2026-08-20, and
+the rules file was edited in the same change. S6.6 is the check that would need
+deleting, deliberately, alongside that edit.
+
+Loading states are on the three routes where a wait is visible — the repository
+view, the trend page and the run report. All three are `force-dynamic`, every
+control on the trend page is a navigation, and the brush pushes a URL on every
+drag. The report's wait is not the database: it presigns a URL per artifact, so a
+twenty-frame run is sixty signatures before the first byte. Explain and the share
+panel show the same indicator inline, beside the controls rather than inside a
+button label — swapping a label to "Explaining…" resized the button mid-click and
+left the other one still offering its price during a call that had already
+reserved credits.
+
+**Evidence.** `test/overview.test.mjs` (42 checks), 14 in `cloudShell` for the
+brand rule and the loading routes, plus additions to `explainers` and `trends`.
+Suite totals: **1,028 on PGlite, 1,056 against a real Postgres server**, across
+31 suites. Guards watched failing before being trusted:
+
+| Break | Went red |
+|---|---|
+| Hit target back to a fixed-radius circle | X6.3, X6.3b |
+| Dots thinned by value rather than by density | X6.13 |
+| `pointer-events: all` on the hover card | X6.5 |
+| Points drawn before the trend line | X6.7 |
+| The whole detail ladder shown regardless of what exists | T5b.1, T5b.3, T5b.5 |
+| A second client component added to `/repos/` | X4.1 |
+| The Yutic mark animated instead of the ring | S6.5 |
+| The reduced-motion guard removed | S6.9 |
+| The ladder keyed off truncation rather than the count | T5b.1, T5b.9 |
+
+**What this does not prove.** The brush was driven with a synthetic pointer in
+one browser at one width; touch has not been tried, and `touch-action: pan-y` is
+reasoning rather than evidence. The 200-run stress frame was seeded locally and
+deleted afterwards — **no real tenant has more than ten runs of one frame**, so
+every density figure above is a measurement of a fixture, not of a customer.
+
+---
+
+### 3y. Storage against real R2, and checks that outlive go-live day — BuildV5 Phase J, partial ✅ (2026-08-21)
+
+**R2 exists and the suite has run against it.** Bucket `normascope-cloud`,
+private, Eastern North America to sit beside the Neon database in `us-east-1`
+and the Vercel functions in `iad1`. An Object Read & Write account token scoped
+to that one bucket; five variables in Vercel Production.
+
+**Suite: 1085 checks across 32 suites against real R2**, 1055 on the filesystem
+driver. The two numbers differ because 30 checks only exist when a real S3 API
+is present.
+
+| Phase J check | Result |
+|---|---|
+| J1.1 fresh production database migrated | ✅ already true — Neon, 20 migrations, 2026-08-13 |
+| J2.1 full G suite against real R2 | ✅ storage 66, uploadPipeline 50 |
+| J2.2 unsigned bucket read denied | ✅ `golive-check` L7 — 400 on a listing and on an object |
+| J3.1 no private route serves data anonymously | ✅ L4 — `/admin` → `/admin/unlock`, the rest 404 — **but see the deployment note below** |
+| J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request — **same caveat** |
+| J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
+| J3.4 upload from the private-preview org as a real `team` org | ✅ org provisioned, `canUpload=true` through the real entitlement path, 5 files uploaded |
+| J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
+| J2.3 delete a run then an org, prefixes empty **in the bucket** | ◐ the data now exists; the deletion has not been run |
+| J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+
+**The private preview uploaded a real run, and it is Harsha's own.** The
+portfolio's `.bridge/` holds a genuine comparison from 2026-07-31 — three frames,
+one flagged. `norma-scope upload` sent it to `https://www.normascope.com` through
+the presigned path: **5 files, 0.36MB, run `a52bdc55`**, and the artifact mix is
+what Pathway 2 item 7 promised — build, reference and diff for the one flagged
+frame, a thumbnail each for the two clean ones. All five objects are in
+`normascope-cloud` with sizes matching the database byte for byte, and
+`frame_stats` carries the three frames at 0.26%, 0.03% and 0%.
+
+`scripts/provision-preview-org.mjs` makes the org reproducible. It is a real
+`team` org with an active subscription, because the entitlement check that
+refuses uploads from unpaid plans is the one control between "free" and the
+thing we charge for, and granting the preview an exception is the easiest way to
+stop testing it.
+
+**The deployment is ninety commits behind this branch, and that changes what the
+J3 results mean.** `main` is at `e42810d`, the website merge. Everything since —
+the rebuilt report page, trends, the Cloud shell, the storage origin in the CSP,
+and the Phase J checks above — is unreleased. So:
+
+- **J2.1 and J2.2 stand.** The suite ran this branch's code against the real
+  bucket, and bucket privacy is a property of R2 rather than of any build.
+- **J3.1, J3.2 and J3.3 describe `main`, not what we are about to ship.** They
+  are true of the live site and they do not prove the branch behaves the same.
+  They have to be re-run after a deploy.
+
+**One consequence is already visible.** The shared report renders and carries the
+real numbers, but `img-src` on the live page is `'self' data:` — no R2 origin,
+because `storageImageOrigin` and `src/storage/origin.ts` do not exist on `main`.
+Every uploaded screenshot would be blocked by the policy. This is exactly the
+failure S5.7 was written to catch, arriving through the one route S5.7 cannot
+see: the check is correct, the code is correct, and the deployment is old.
+
+**The timing is the evidence that it was R2 and not the local stand-in.** The
+storage suite takes 4.6s against MinIO on `localhost` and **71.3s** against
+Cloudflare; `uploadPipeline` goes from 2.2s to 28.2s. Those are round trips.
+
+**Three of these were plans to grep something once.** J2.1, J3.3 and J2.2 are
+written in `BuildV5.md` as go-live-day actions, and each checks a property that
+can break afterwards without anything going red — a header dropped in a config
+edit, a route that stops being gated when auth lands, a bucket opened at 1am to
+debug something. Doing them by hand proves the deployment was correct on the day
+it was done.
+
+- **The upload protocol was proven only against local disk.** `commitUpload`
+  accepts or refuses a run on what `head()` and `get()` report, and those are
+  the *driver's* answer: a local file always has the size the filesystem states,
+  while S3 reports what the client declared at PUT time and signals a missing
+  object by error name rather than by null. The suite now takes whichever driver
+  the environment selects. Against a real S3 API the counter-tests still fire —
+  U6b watches the naive commit accept 5000 stored bytes declared as 9.
+- **CI gained a third suite job on a real S3 API**, so the checks that skipped
+  themselves on every push now run: unauthenticated PUT, an upload exceeding the
+  pinned `Content-Length`, an expired URL, `deletePrefix` past the 1000-key
+  boundary.
+- **`test/bundleSecrets.test.mjs`** replaces J3.3's one-off grep: credential
+  shapes, server-only variables read or assigned, an allowlist of the
+  `NEXT_PUBLIC_` names, no `.env` inside `.next`.
+- **`scripts/golive-check.mjs <url>`** reads what the server returns over the
+  wire — the headers no build artifact contains, the nonce, the private routes,
+  the bucket's answer to an unsigned read. Production passes all of it.
+
+**Two of these checks were wrong first, and both failures are the useful part.**
+
+| Check | What it did | Why it mattered |
+|---|---|---|
+| `golive-check` L4 | Pointed at the apex domain, which 308s to `www`. Every request came back 308 and the gate checks read that as "not served anonymously" | **Six passes that never reached the application.** A check a redirect satisfies proves nothing |
+| `golive-check` L3 | Looked for a CSP nonce on `/`, which is served the inline policy by design | Reported a correct deployment as broken. Two policies exist; asking the wrong one is how this goes green while meaning nothing |
+| `bundleSecrets` B3 | Plain name matching flagged `ANTHROPIC_API_KEY` on `/commands`, which *explains* that the CLI needs one | A check that cries wolf is one people learn to ignore. B3 now needs a value beside the name, and B7 proves the loosening did not break it |
+
+**One claim that had never been checked against the service.** `storageImageOrigin`
+builds the artifact host by prefixing the bucket onto the endpoint, and the only
+test used a made-up endpoint — it proved the function agrees with itself. Get it
+wrong and nothing fails: the suite stays green, the deploy succeeds, and report
+images silently do not render, blocked by a policy naming a host that was never
+used. S5.7 signs a real GET and compares origins. Proven against MinIO's
+path-style URLs; **virtual-hosted addressing, which is what R2 uses, is
+unconfirmed** — the check exists but that run has not been reported back.
+
+**A number in the plan was wrong.** `BuildV5.md` J4.1 expects the portfolio's
+function count to fall from 11 to 7. Vercel does not turn underscore-prefixed
+paths into functions, so `api/_norma/*` never counted; the real drop is 11 → 10.
+
+**What this does not prove.** J2.3 has its data now but has not been run: nothing
+has deleted a run and then an org and confirmed both prefixes are empty *in the
+bucket*, which is the check that protects against paying to store bytes nobody
+can reach. It is deliberately not run yet — run `a52bdc55` is the only real run
+in production, and it is the one that would validate Steps 3 and 4.
+
+**And Steps 3 and 4 still cannot be validated, for a reason that is not about
+them.** Their gates ask what a prospect can see. The prospect would see `main`,
+which does not contain either of them. Nothing is wrong with the work; it has
+simply never been released.
+
+The preview's data also outlives its code: the `norma_*` tables are still in the
+portfolio's shared Turso database and the `normascope-cloud-*` objects are still
+in its bucket.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -1977,14 +3076,15 @@ this section and are deliberately absent.
 | Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
-| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.23 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is proposed, not signed off** — it prints UNCONFIRMED every run until someone takes the call. The sharp entry must be re-decided *before* Pathway 2, not on its review date: uploaded screenshots are exactly the input those libvips CVEs describe. **The upgrade was trialled on 2026-08-16 — see below; it is a decision waiting on Harsha, not an unknown** |
-| The next 16 upgrade is untried | **Closed as an unknown 2026-08-16, still open as a decision.** Trialled in a throwaway worktree at `next@16.3.1` with the current work applied: `npm audit` goes to **0 vulnerabilities**, the suite is **635/635 green**, typecheck and build pass, every route keeps its rendering mode, and the nonce CSP still stamps every script with zero unnonced and zero violations. One cosmetic change: the build output renames "Middleware" to "Proxy". 15.5.23 is already the newest 15.x — it carries the `backport` dist-tag — so staying put means staying on a line that only receives backports. **Whether to take the major is Harsha's call**; the evidence says it is cheap now and gets more expensive after launch |
+| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.23 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is still proposed, not signed off** — all three entries have `acceptedBy: null` and print UNCONFIRMED every run until a name goes on them. The sharp question is now answered: uploaded artifacts render as plain `<img>` from presigned URLs and never reach the optimiser (decided 2026-08-19, `PATHWAYS.md` §10.5 3A). **All three close when `next` 16 lands** — decided 2026-08-19 to take that upgrade before launch as its own change, which takes `npm audit` to 0 |
+| The next 16 upgrade is untried | **Closed as an unknown 2026-08-16. Closed as a decision 2026-08-19: take it, before launch, as its own change** (`FUTURENORMA.md` §4 open decision 3b; gated in `PATHWAYS.md` §7). Trialled in a throwaway worktree at `next@16.3.1` with the current work applied: `npm audit` goes to **0 vulnerabilities**, the suite is **635/635 green**, typecheck and build pass, every route keeps its rendering mode, and the nonce CSP still stamps every script with zero unnonced and zero violations. One cosmetic change: the build output renames "Middleware" to "Proxy". 15.5.23 is already the newest 15.x — it carries the `backport` dist-tag — so staying put means staying on a line that only receives backports. **The upgrade is still not done** — the trial worktree was thrown away, so this row records a decision and evidence, not a shipped change |
 | The economic path is implemented twice | **Closed** (§3g). One module, `economicPath.ts`; no other file may move money. The extraction found two live defects — see below |
 | Provider dollars held when credits run out | **Closed** (§3g, P9.9–P9.11). Was real and untested: an org refused for credits left its provider reservation held for the full TTL, quietly reducing the global ceiling for every other org |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |
 | Prepaid API balance is small (~$19) | Mitigated by the daily cap. Keep it on |
 | Sonnet 5 intro pricing ends 2026-08-31 | **21 days.** Post-intro COGS is already the basis for the pack floor, so no repricing is forced — but verify |
 | No paying customers exist | Every economic figure here is a projection from measured COGS, never from revenue |
+| `migrations` failed one check once, against real Postgres, and has not repeated | **Open, unexplained.** On 2026-08-20 a full real-Postgres run reported `1 suite(s) failed: migrations — 1 failing check(s)`. The output was filtered before the `FAIL` line was captured, so **which check failed is not known.** Five subsequent runs — three of the full 27 suites and three of `migrations` alone — were green at 874 and 20. It happened immediately after a 27-suite PGlite run finished, so the machine was loaded, and M7/M7b spawn 20 processes against one barrier; a timing flake is the obvious guess and a guess is all it is. Nothing in the trends work touches migrations or spawns a process. **Recorded rather than dismissed**: a suite that fails once and passes six times is still a suite that failed, and the next person to see it should know it is the second sighting, not the first |
 
 ---
 

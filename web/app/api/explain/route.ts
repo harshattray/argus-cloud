@@ -3,6 +3,7 @@ import { requireApiKey, unauthorized, rateLimited } from "../../../lib/auth";
 import { makeProvider, HOSTED_MODELS, type FrameEvidence } from "../../../lib/provider";
 import { hostedExplain } from "argus-cloud/explainService.js";
 import { alert } from "../../../lib/alerts";
+import { cropsForFrame } from "../../../lib/crops";
 
 /**
  * Interactive hosted explain (Build 4.0 D1): one frame, one decrement, wired
@@ -67,6 +68,10 @@ export async function POST(request: Request): Promise<Response> {
     stats: frameData,
   };
 
+  // Crop grounding (G3). Absent crops are not an error — the analysis falls
+  // back to metadata with the hedge in the system prompt intact (G3.2).
+  const grounding = await cropsForFrame(db, key.org_id, run.id, body.frame);
+
   const outcome = await hostedExplain(
     db,
     {
@@ -87,6 +92,8 @@ export async function POST(request: Request): Promise<Response> {
       designHash: String(frameData.structuralSimilarity ?? ""),
       model: body.deep ? HOSTED_MODELS.deep : HOSTED_MODELS.analysis,
       pass: body.deep ? "deep" : "analysis",
+      crops: grounding.crops,
+      groundingNote: grounding.note,
     }
   );
 

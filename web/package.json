@@ -5,6 +5,7 @@
   "description": "Normascope Cloud web surface — Next.js on Vercel (Stage 4 + Build 4.0 Phase D)",
   "scripts": {
     "dev": "NEXT_DIST_DIR=.next-dev next dev",
+    "dev:gate-test": "NEXT_DIST_DIR=.next-dev node --env-file-if-exists=.env.gate-test.local \"$(command -v next)\" dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"

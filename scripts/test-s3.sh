@@ -27,15 +27,18 @@ USER=normascope
 PASS=normascope-test-secret
 ENDPOINT="http://127.0.0.1:${PORT}"
 
-if ! command -v minio >/dev/null 2>&1; then
-  echo "minio not found — run: brew install minio" >&2
-  exit 1
-fi
-
 case "${1:-}" in
   start)
     mkdir -p "$DATA_DIR"
     if ! curl -fsS -o /dev/null "${ENDPOINT}/minio/health/live" 2>/dev/null; then
+      # The binary is needed only to *launch* one. CI runs the same server from
+      # a container and then calls this script for the bucket and the exports,
+      # which is what keeps the two environments configured by one file rather
+      # than by a workflow that has drifted from it.
+      if ! command -v minio >/dev/null 2>&1; then
+        echo "minio not found — run: brew install minio (or start one at ${ENDPOINT})" >&2
+        exit 1
+      fi
       MINIO_ROOT_USER="$USER" MINIO_ROOT_PASSWORD="$PASS" \
         minio server "$DATA_DIR" --address "127.0.0.1:${PORT}" --console-address "127.0.0.1:${CONSOLE_PORT}" \
         >"$DATA_DIR/minio.log" 2>&1 &

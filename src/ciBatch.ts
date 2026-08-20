@@ -7,6 +7,8 @@ import { creditsRequired, type BudgetLimits } from "./providerBudget.js";
 import { reserveBoth, settleCharged, releaseBoth } from "./economicPath.js";
 import { buildEnrichment, applyEnrichment } from "./enrichment.js";
 import { findingsShapeValid, AUTO_EXPLAIN_PER_RUN_CAP } from "./explainService.js";
+import { promptVersionFor } from "./promptAssembly.js";
+import type { GroundingCrop } from "./cropGrounding.js";
 
 /**
  * Build 4.0 Phase D — CI auto-explain of top-N flagged frames via the
@@ -41,7 +43,20 @@ export interface BatchEntry {
 
 export interface BatchSubmission {
   /** custom_id → request payload the caller sends to the Batches API. */
-  requests: { customId: string; frame: string; model: string; enrichmentText: string | null }[];
+  requests: {
+    customId: string;
+    frame: string;
+    model: string;
+    enrichmentText: string | null;
+    /**
+     * Crops for this frame (G3). Present here and **deliberately absent from
+     * `BatchEntry`**: entries are persisted as JSON in `explain_batches`, and
+     * writing base64 images into that row would store megabytes per batch to
+     * re-read data that only `submit` ever needed. Collect works from the
+     * provider's results, not from the request.
+     */
+    crops: readonly GroundingCrop[];
+  }[];
 }
 
 export type BatchSubmit = (submission: BatchSubmission) => Promise<string>; // returns provider batch id
@@ -51,9 +66,26 @@ export type BatchResult =
   | { kind: "error"; message: string };
 export type BatchFetch = (batchId: string) => Promise<Map<string, BatchResult> | null>; // null = not finished
 
+/**
+ * Scans one frame's outbound evidence before it is enqueued (Pathway 2 item 8).
+ *
+ * **Why the batch path gets a pre-flight of its own.** The scan that actually
+ * enforces the rule lives in prompt assembly, which the batch path only reaches
+ * inside `submit` — and `submit` builds every frame's request at once, so one
+ * frame carrying a credential would throw there and take the whole batch's
+ * reservations down with it. Four clean frames would be skipped because of a
+ * fifth. Scanning per frame first makes the block precise; assembly remains the
+ * backstop that cannot be bypassed.
+ *
+ * Required rather than optional so a caller that forgets it fails to compile
+ * instead of failing to scan.
+ */
+export type FrameScan = (frame: string) => { rule: string; source: string } | null;
+
 export interface CiBatchDeps {
   submit: BatchSubmit;
   fetch: BatchFetch;
+  scan: FrameScan;
   dailyBudgetMicrodollars: number;
   alert: Alert;
   now?: () => Date;
@@ -67,7 +99,7 @@ export interface EnqueueRequest {
   runId: string;
   model: string;
   /** Flagged frames ordered worst-first; the top-N cap applies here. */
-  frames: { frame: string; buildHash: string; designHash: string }[];
+  frames: { frame: string; buildHash: string; designHash: string; crops?: readonly GroundingCrop[] }[];
 }
 
 export interface EnqueueOutcome {
@@ -111,7 +143,7 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
       buildHash: f.buildHash,
       designHash: f.designHash,
       model: req.model,
-      promptVersion: 1,
+      promptVersion: promptVersionFor(f.crops),
     });
     const cached = await cacheGet(db, req.orgId, cacheKey);
     if (cached !== null) {
@@ -129,6 +161,23 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
       });
       continue;
     }
+    // Before any money is reserved: a frame whose evidence carries a
+    // credential is never going to be sent, so it must not hold a reservation
+    // while it waits to be refused (Pathway 2 item 8).
+    const hit = deps.scan(f.frame);
+    if (hit) {
+      await recordUsage(db, {
+        orgId: req.orgId, runId: req.runId, frame: f.frame, model: req.model, pass: "analysis",
+        interactive: false, auto: true, status: "blocked_no_charge",
+        detail: `secret scan ${hit.rule} blocked ${hit.source}`,
+      });
+      skipped.push({
+        frame: f.frame,
+        reason: `${hit.source} looks like it contains a credential (rule ${hit.rule}) — not sent to the provider, no credits used`,
+      });
+      continue;
+    }
+
     // Our dollars first, per frame, at the batch rate. A batch of five frames
     // is five provider calls and must hold five reservations — reserving for
     // the batch as a whole would let a partially-collected batch release money
@@ -176,7 +225,13 @@ export async function enqueueCiBatch(db: Db, deps: CiBatchDeps, req: EnqueueRequ
       enrichmentText: enrichment?.text ?? null,
       enrichmentTokens: enrichment?.tokenEstimate ?? 0,
     });
-    requests.push({ customId: f.frame, frame: f.frame, model: req.model, enrichmentText: enrichment?.text ?? null });
+    requests.push({
+      customId: f.frame,
+      frame: f.frame,
+      model: req.model,
+      enrichmentText: enrichment?.text ?? null,
+      crops: f.crops ?? [],
+    });
     accepted++;
   }
 

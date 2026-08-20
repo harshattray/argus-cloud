@@ -51,11 +51,15 @@ jobs:
         # that let broken `web/` types pass a green `npm test`.
         run: npm run typecheck --workspace web
 
-      - name: Suite (PGlite)
-        run: npm test
-
+      # Before the suite, not after: `test/bundleSecrets.test.mjs` reads
+      # `web/.next` to check that no credential reached a client bundle
+      # (BuildV5 J3.3), and it skips itself when there is nothing built to read.
+      # `npm run verify` orders these two the same way for the same reason.
       - name: Build the web app
         run: npm run build --workspace web
+
+      - name: Suite (PGlite)
+        run: npm test
 
   # ---------------------------------------------------------------------------
   # The leg that counts: the same suite against a real Postgres server.
@@ -93,6 +97,56 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/normascope_test
         run: npm test
+
+  # ---------------------------------------------------------------------------
+  # The same suite against a real implementation of the S3 API.
+  # ---------------------------------------------------------------------------
+  #
+  # The filesystem driver runs everywhere, so without this the storage checks
+  # that matter most skip themselves on every push: an unauthenticated PUT to a
+  # presigned URL, an upload larger than the `Content-Length` the signature
+  # pinned, an expired URL, and `deletePrefix` walking past S3's 1000-key
+  # pagination boundary. The upload protocol skips too — `commitUpload` accepts
+  # or refuses a run on what `head()` and `get()` say, and local disk is the
+  # easier of the two answers.
+  #
+  # MinIO stands in for Cloudflare R2, which is also S3-compatible. It proves
+  # the driver against a real implementation of the protocol; it does not prove
+  # R2's own quirks, quotas or credentials, and BuildV5 J2.1 still requires this
+  # suite re-run against the real bucket before go-live.
+  storage:
+    name: Suite (real S3 API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Not a service container: MinIO needs a command (`server /data`) and
+      # `services:` has nowhere to put one. The port matches the script's
+      # default so the same `test-s3.sh start` works here and on a laptop —
+      # it sees a healthy server, skips launching one, and creates the bucket.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9410:9000 \
+            -e MINIO_ROOT_USER=normascope \
+            -e MINIO_ROOT_PASSWORD=normascope-test-secret \
+            minio/minio:latest server /data
+          for _ in $(seq 1 60); do
+            curl -fsS -o /dev/null http://127.0.0.1:9410/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy" >&2
+          docker logs minio >&2
+          exit 1
+
+      - name: Suite (real S3 API)
+        run: |
+          eval "$(scripts/test-s3.sh start)"
+          npm test
 
   # ---------------------------------------------------------------------------
   # Supply chain and secrets.

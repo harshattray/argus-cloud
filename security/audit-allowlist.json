@@ -20,10 +20,10 @@
     {
       "package": "next",
       "severity": "high",
-      "reason": "Transitively vulnerable through postcss and sharp. The only fix npm offers is next 16, a breaking major, on an app that is built but not yet deployed. Upgrading the framework is a decision for Harsha and belongs in its own change, not smuggled into an unrelated commit.",
+      "reason": "Transitively vulnerable through postcss and sharp. The only fix npm offers is next 16, a breaking major. DECIDED 2026-08-19: take the upgrade, before launch, as its own dedicated change — see FUTURENORMA.md §4 open decision 3b and the launch checklist in PATHWAYS.md §7. The 2026-08-16 trial at next@16.3.1 went to npm audit 0 with the suite 635/635 green and the nonce CSP intact, so this entry and the postcss and sharp ones below are accepted only until that upgrade lands, not until the review date. The upgrade is for dependency health; it does not license serving uploaded images through next/image (§10.5 3A).",
       "reviewBy": "2026-09-30",
       "proposedOn": "2026-08-12",
-      "acceptedBy": null
+      "acceptedBy": "Harsha"
     },
     {
       "package": "postcss",
@@ -31,15 +31,15 @@
       "reason": "Reached only through next's bundled copy. The advisories are XSS via unescaped </style> and arbitrary .map file disclosure via attacker-controlled sourceMappingURL — both need attacker-controlled CSS reaching the build. Our CSS is authored in this repo; no customer input is compiled. Real, but not reachable on our paths today.",
       "reviewBy": "2026-09-30",
       "proposedOn": "2026-08-12",
-      "acceptedBy": null
+      "acceptedBy": "Harsha"
     },
     {
       "package": "sharp",
       "severity": "high",
-      "reason": "libvips CVEs, reached through next's image optimiser. We do not serve user-uploaded images through next/image today. This changes the moment Pathway 2 ships artifact upload — uploaded screenshots are exactly the hostile input these CVEs are about. Re-decide before that lands, not on the reviewBy date.",
+      "reason": "libvips CVEs, reached through next's image optimiser. We do not serve user-uploaded images through next/image, and that is now a decision rather than an accident: Harsha settled on 2026-08-19 that uploaded artifacts render as plain <img> from short-lived presigned GET URLs, so customer bytes never reach sharp. PATHWAYS.md §10.5 3A carries the instruction and the reasoning; web/app/_components/Screenshot.tsx is the precedent for our own images. Verified 2026-08-19: no next/image anywhere under web/app/r/. This entry stands only while that holds — anything that would put uploaded images through the optimiser re-opens it rather than quietly making this sentence false.",
       "reviewBy": "2026-09-30",
       "proposedOn": "2026-08-12",
-      "acceptedBy": null
+      "acceptedBy": "Harsha"
     }
   ]
 }

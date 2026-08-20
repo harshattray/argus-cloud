@@ -14,7 +14,7 @@
  *
  * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *
- * One character, nine poses, `flip` to mirror it.
+ * One character, twelve poses, `flip` to mirror it.
  *
  * **Two rules, both learned by breaking them.**
  *
@@ -28,6 +28,13 @@
  * skipped. Eight placements, eight poses, and the count is the ceiling — a new
  * placement needs a new pose or it takes an existing placement's slot. The
  * inventory is in `docs/normascopeWeb.md` §5.
+ *
+ * **The last two live on the Cloud surface, not the site.** `lantern` and
+ * `hourglass` (2026-08-20) stand in the two places where a signed-in page used
+ * to have nothing to show: a frame that is not there, and a range of time that
+ * holds no runs. Same rule applied to a second surface — a new placement takes
+ * a new pose — and the same reason: `empty` already belongs to the 404, and
+ * reusing it would make one drawing mean two different things.
  *
  * **`offer` is the one exception, and it is the point of the set.** It holds
  * the cloud up, it lives only in `CloudBand` (`ui.tsx`), and it appears on
@@ -54,6 +61,8 @@ export type TwinPose =
   | "magnify"
   | "stack"
   | "empty"
+  | "lantern"
+  | "hourglass"
   | "offer";
 export type TwinTone = "ink" | "cream";
 
@@ -158,6 +167,49 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
     hands: [
       [48, 210],
       [152, 210],
+    ],
+  },
+  /* Right arm down and out, a lantern hanging low beside the figure.
+     Every other prop in the set is held at chest height or raised; this is the
+     only one *below* the body, which is the whole reason the pose is legible
+     next to `magnify` — both sweep an arm, and a silhouette is recognised
+     before a limb is. Down at the ground is also what the gesture means: we
+     went and looked where it should have been. */
+  lantern: {
+    left: "M46 178 C 26 190 22 208 34 216",
+    /* The elbow bulges out to 186 on purpose. Run straight from the shoulder to
+       the hand and the forearm lies along the body's own outline, which at this
+       height curves the same way — the arm disappeared into the silhouette and
+       the lantern read as hanging off the hip. */
+    right: "M154 178 C 178 186 186 200 178 216",
+    hands: [
+      [34, 220],
+      [178, 222],
+    ],
+  },
+  /* Both hands closed around the waist of an hourglass, held upright in front
+     of the body. The narrowest prop in the set by a long way — 44 units against
+     the camera's 88 and the empty frame's 108 — and the only tall one. That is
+     deliberate: it shares the both-hands-in-front silhouette with four other
+     poses, so the shape of the thing held has to do the separating.
+
+     It hangs lower than `camera` for a reason worth writing down: the mouth is
+     drawn *after* every prop, at y=152–160, and a tall prop starting at 150 got
+     a smile stroked across its lid. Nothing here rises above y=174. */
+  hourglass: {
+    left: "M46 180 C 54 196 68 216 80 232",
+    right: "M154 180 C 146 196 132 216 120 232",
+    /*
+     * On the lower bulb, arms hanging down — two earlier grips failed.
+     *
+     * At the waist the hands floated: it is four units across, so they closed
+     * on nothing. Up on the *upper* bulb they closed properly but the arms came
+     * out horizontal at y=182, a hand's width under the mouth, and the pair of
+     * them read as a bar drawn across the face.
+     */
+    hands: [
+      [80, 232],
+      [120, 232],
     ],
   },
   /* Both arms out to the edges of a frame held up at chest height. Wider than
@@ -289,6 +341,53 @@ const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
         </>
       );
 
+    /* A lantern hanging from the hand, down at knee height, unlit.
+       The figure already wears dark glasses — a reader that cannot see — so a
+       lamp it is carrying around is the joke continuing rather than a new one.
+       It hangs *below* the hand rather than being raised, which is what keeps
+       it out of `magnify`'s silhouette; the handle arc runs up under the hand
+       so the grip reads as a grip. Nothing here rises above y=222, well clear
+       of the sticker's y=20 floor. */
+    case "lantern":
+      return (
+        <>
+          <path d="M168 240 C 168 224 188 224 188 240" stroke={c.line} strokeWidth="5" />
+          <path d="M165 245 L191 245 L195 268 L161 268 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <path d="M171 251 L177 263" stroke={c.glare} strokeWidth="3.5" opacity="0.65" strokeLinecap="round" />
+          <rect x="161" y="235" width="34" height="9" rx="2.5" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <rect x="159" y="264" width="38" height="9" rx="2.5" fill={c.paper} stroke={c.line} strokeWidth="5" />
+        </>
+      );
+
+    /* An hourglass held upright, sand running through it.
+       The sand is the only part that says which way up it is, and it is drawn
+       as three real shapes — a wedge left in the top, a mound built up in the
+       bottom, and one grain between them — rather than a decorative texture.
+       The grain carries its own animation on the same beat as the tilt, the
+       way the camera's flash rides the shutter kick. */
+    case "hourglass":
+      return (
+        <>
+          <path
+            d="M76 183 L124 183 L102 213 L124 243 L76 243 L98 213 Z"
+            fill={c.paper}
+            stroke={c.line}
+            strokeWidth="5"
+          />
+          {/*
+            What is left in the top, and what has collected in the bottom. The
+            top holds a shallow band resting on the waist rather than a full
+            bulb: almost all of it has already run through, which is the state
+            worth drawing beside "no runs in this period".
+          */}
+          <path d="M86 199 L114 199 L101.6 212 L98.4 212 Z" fill={c.line} opacity="0.45" />
+          <path d="M79 241 L121 241 L100 223 Z" fill={c.line} opacity="0.45" />
+          <circle className="tw-sand" cx="100" cy="220" r="2.8" fill={c.line} opacity="0.85" />
+          <rect x="68" y="174" width="64" height="10" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <rect x="68" y="239" width="64" height="10" rx="3" fill={c.paper} stroke={c.line} strokeWidth="5" />
+        </>
+      );
+
     /* The cloud, held up. Drawn as one outline rather than the lockup's three
        circles over a bar: the mark is filled shapes with no stroke, and three
        stroked circles overlapping a stroked bar show every seam.
@@ -371,6 +470,16 @@ const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string
      it. Pivoting on the bottom edge rather than the centre is what makes it
      read as *shown* rather than as a picture swinging on a nail. */
   empty: { scope: "prop", origin: "100px 218px" },
+  /* The lantern is swept out along the ground and back — looking where the
+     thing should have been. Swinging from the shoulder rather than the wrist,
+     because the lantern hangs a long way below the hand and a wrist pivot
+     would move it about four units. */
+  lantern: { scope: "arm", origin: "154px 180px" },
+  /* Tipped towards you and set back down, pivoting on its base. The sand
+     falls on the same beat — see `tw-sand` in `globals.css`. Deliberately not
+     a turn: an hourglass rotating on a data page reads as a loading spinner,
+     which is the one thing this state must not say. */
+  hourglass: { scope: "prop", origin: "100px 249px" },
   /* The cloud drifts. See the note above about why this one never rests. */
   offer: { scope: "arm" },
 };

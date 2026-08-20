@@ -204,7 +204,9 @@
  * Reduced motion is handled by the blanket rule in the base layer above: these
  * are all `animation`, so they collapse to a single 0.01ms cycle and every
  * figure sits still in its rest pose. That is the correct still frame for all
- * nine — each keyframe list starts and ends at no transform.
+ * twelve — each keyframe list starts and ends at no transform, and `tw-sand`
+ * starts and ends at `opacity: 0`, so a stilled hourglass has no grain caught
+ * halfway down it.
  */
 
 /* Two jabs at whatever is under the heading. */
@@ -388,6 +390,69 @@
   }
 }
 
+/* The lantern is swept out along the ground and swung back. Negative first, so
+   it goes *away* from the body: the arm pivots at the shoulder and the lamp
+   hangs 90 units below it, so a positive rotation would swing it in across the
+   legs. */
+@keyframes tw-lantern {
+  0%,
+  56%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(-9deg);
+  }
+  85% {
+    transform: rotate(5deg);
+  }
+  95% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The hourglass is tipped towards you and set back down, pivoting on its base.
+   Not a turn: a rotating hourglass on a page of charts reads as a loading
+   spinner, and the one thing this state must not say is "wait, it's coming". */
+@keyframes tw-hourglass {
+  0%,
+  58%,
+  100% {
+    transform: rotate(0deg);
+  }
+  71%,
+  84% {
+    transform: rotate(-8deg);
+  }
+  93% {
+    transform: rotate(0deg);
+  }
+}
+
+/* One grain through the waist, on the same beat as the tilt — the camera's
+   flash rides its shutter kick the same way. It is the only thing in the
+   drawing that says which way up the glass is. */
+@keyframes tw-sand {
+  0%,
+  62%,
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(9px);
+  }
+  96% {
+    opacity: 0;
+    transform: translateY(11px);
+  }
+}
+
 /* Shoulders up, shoulders down. The shadow stays put — see `twins.tsx`. */
 @keyframes tw-shrug {
   0%,
@@ -438,6 +503,15 @@
 }
 .tw-empty {
   animation: tw-empty 5.8s ease-in-out infinite;
+}
+.tw-lantern {
+  animation: tw-lantern 5.6s ease-in-out infinite;
+}
+.tw-hourglass {
+  animation: tw-hourglass 6.2s ease-in-out infinite;
+}
+.tw-sand {
+  animation: tw-sand 6.2s ease-in-out infinite;
 }
 
 /*

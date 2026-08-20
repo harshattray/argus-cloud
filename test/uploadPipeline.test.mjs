@@ -21,7 +21,7 @@
 //         which would poison deduplication for every later run in the org.
 
 import { randomUUID, createHash } from "node:crypto";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +31,8 @@ const REAL_PG = Boolean(process.env.DATABASE_URL?.trim());
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const { createFilesystemStorage } = await import(path.join(DIST, "storage/filesystem.js"));
+const { createStorage } = await import(path.join(DIST, "storage.js"));
+const { orgPrefix } = await import(path.join(DIST, "storage/keys.js"));
 const {
   declareUpload,
   commitUpload,
@@ -60,17 +62,38 @@ async function refusal(fn) {
   }
 }
 
-console.log(`mode: ${REAL_PG ? "REAL POSTGRES (DATABASE_URL set)" : "PGlite (in-process)"}\n`);
-
 const db = await createDb();
 await migrate(db);
 
 const ROOT = await mkdtemp(path.join(HERE, ".tmp-upload-"));
-const storage = createFilesystemStorage({
-  root: path.join(ROOT, "blobs"),
-  publicBaseUrl: "http://localhost:3000/api/blob",
-  signingSecret: "upload-suite",
-});
+
+// The protocol is driver-agnostic by design, so the suite proving it must be
+// able to run on either driver — `createStorage()` picks from the environment
+// exactly as the deployment does.
+//
+// **This is what BuildV5's J2.1 asks for and the filesystem cannot give.**
+// `commitUpload` decides whether to accept an upload by heading the object and
+// reading it back, and both of those are *the driver's* answer: a local file
+// always has the size the filesystem reports, while S3 reports a size the
+// client declared at PUT time, and a missing object is `null` from one driver
+// and a thrown error name from the other. A guard proven only against local
+// disk is a guard proven against the easier of the two.
+//
+// Filesystem stays the default so `npm test` needs nothing installed. Set the
+// env from `scripts/test-s3.sh` and the same checks run against MinIO — and,
+// when the credentials exist, against R2.
+const storage = process.env.NORMA_STORAGE_BUCKET?.trim()
+  ? await createStorage()
+  : createFilesystemStorage({
+      root: path.join(ROOT, "blobs"),
+      publicBaseUrl: "http://localhost:3000/api/blob",
+      signingSecret: "upload-suite",
+    });
+
+console.log(
+  `mode: ${REAL_PG ? "REAL POSTGRES (DATABASE_URL set)" : "PGlite (in-process)"}` +
+    `, storage: ${storage.driver}${storage.driver === "s3" ? ` (${process.env.NORMA_STORAGE_ENDPOINT ?? "aws"})` : ""}\n`
+);
 
 const bytesOf = (s) => new TextEncoder().encode(s);
 const sha256 = (s) => createHash("sha256").update(bytesOf(s)).digest("hex");
@@ -310,6 +333,78 @@ check(
   "U9",
   u9a?.reason === "malformed" && u9b?.reason === "malformed" && u9c?.reason === "malformed",
   "a zero-byte declaration, a bogus hash, and the same frame/kind twice are all refused"
+);
+
+// ---------------------------------------------------------------------------
+// U9b — the content type is an allowlist, not a free field
+// ---------------------------------------------------------------------------
+//
+// `contentType` arrives in the declare body, is signed into the presigned PUT,
+// is stored on the object, and comes back as the `content-type` response header
+// on every presigned GET. Nothing checked it until thumbnails needed it: a
+// caller holding a valid upload key could declare `text/html` for a build
+// screenshot, upload a document, and be handed a URL a browser renders as
+// markup on the storage origin — the stored-XSS probe PATHWAYS §3's security
+// baseline asks for, reachable through the ordinary upload path.
+const u9dHtml = await refusal(() =>
+  declareUpload(db, storage, {
+    orgId: org,
+    repoName: "web",
+    summary: {},
+    artifacts: [{ frame: "x", kind: "build", sha256: sha256("x"), bytes: 10, contentType: "text/html" }],
+  })
+);
+// A thumbnail may be JPEG or PNG and nothing else — not SVG, which is the other
+// image type a browser will execute script from.
+const u9dSvg = await refusal(() =>
+  declareUpload(db, storage, {
+    orgId: org,
+    repoName: "web",
+    summary: {},
+    artifacts: [
+      { frame: "y", kind: "thumbnail", sha256: sha256("y"), bytes: 10, contentType: "image/svg+xml" },
+    ],
+  })
+);
+check(
+  "U9b",
+  u9dHtml?.reason === "malformed" &&
+    /cannot be text\/html/.test(u9dHtml.message) &&
+    u9dSvg?.reason === "malformed",
+  "a build declared text/html and a thumbnail declared image/svg+xml are both refused"
+);
+
+// U9c — and the legitimate ones are accepted, with the object key following the
+// content type rather than the kind. A JPEG thumbnail stored at `<sha>.png`
+// would make the key a second, disagreeing source for what the object is.
+const jpegThumb = await declareUpload(db, storage, {
+  orgId: org,
+  repoName: "web",
+  summary: {},
+  artifacts: [
+    { frame: "thumbed.png", kind: "thumbnail", sha256: sha256("jpeg-thumb"), bytes: 64, contentType: "image/jpeg" },
+  ],
+});
+const thumbRow = await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [jpegThumb.runId]);
+check(
+  "U9c",
+  jpegThumb.uploads.length === 1 && /\.jpg$/.test(thumbRow.rows[0]?.storage_key ?? ""),
+  `a JPEG thumbnail is accepted and stored under a .jpg key (${thumbRow.rows[0]?.storage_key ?? "no row"})`
+);
+
+// U9d — a declaration that says nothing still gets the kind's default, so every
+// client written before this existed keeps working.
+const noType = await declareUpload(db, storage, {
+  orgId: org,
+  repoName: "web",
+  summary: {},
+  artifacts: [{ frame: "plain.png", kind: "build", sha256: sha256("plain"), bytes: 64 }],
+});
+const plainRow = await db.query("SELECT storage_key FROM run_artifacts WHERE run_id = $1", [noType.runId]);
+check(
+  "U9d",
+  noType.uploads.length === 1 && /\.png$/.test(plainRow.rows[0]?.storage_key ?? ""),
+  "an omitted content type falls back to the kind's default and still stores under .png"
 );
 
 // ---------------------------------------------------------------------------
@@ -710,12 +805,26 @@ check(
 //
 // Checked at the source, because a React component the suite cannot render is
 // where a hardcoded number has nowhere to be caught.
-const panel = await readFile(path.resolve(HERE, "..", "web/app/r/[runId]/explain-panel.tsx"), "utf-8");
-const literalPrice = /\(\s*\d+\s+credits?\s*\)/.exec(panel);
+//
+// **The whole report tree, not one filename.** This named
+// `explain-panel.tsx` until Phase H moved the buttons into `frame-view.tsx`,
+// and a check pinned to a path is a check that a rename turns off — it errored
+// rather than passing silently this time, which was luck rather than design.
+// Reading the directory means a component that exists is a component that gets
+// checked, the same fix `test/seo.test.mjs` made for the same reason.
+const reportDir = path.resolve(HERE, "..", "web/app/r/[runId]");
+const reportSources = (await readdir(reportDir)).filter((f) => f.endsWith(".tsx"));
+const priced = [];
+for (const file of reportSources) {
+  const found = /\(\s*\d+\s+credits?\s*\)/.exec(await readFile(path.join(reportDir, file), "utf-8"));
+  if (found) {
+    priced.push(`${file}: "${found[0]}"`);
+  }
+}
 check(
   "V3",
-  literalPrice === null,
-  `the explain buttons carry no literal price${literalPrice ? ` — found "${literalPrice[0]}"` : ""}`
+  priced.length === 0,
+  `no literal credit price in the ${reportSources.length} report component(s)${priced.length ? ` — found ${priced.join(", ")}` : ""}`
 );
 
 // V3b — and the numbers themselves still clear the margin floor at the worst
@@ -808,9 +917,22 @@ const nextConfig = await readFile(path.resolve(HERE, "..", "web/next.config.mjs"
 
 // Scoped extraction. If either regex stops matching, the body is empty and
 // every check below fails — a rename must not make this suite vacuously green.
-const strictCsp = /function strictCsp\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middleware)?.[1] ?? "";
-const siteCsp = /const SITE_CSP = \[([\s\S]*?)\]\.join/.exec(middleware)?.[1] ?? "";
-const needsNonce = /function needsNonce\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middleware)?.[1] ?? "";
+//
+// **Comments are stripped first, and that is not tidiness.** These checks read
+// source text, and `middleware.ts` explains each directive in prose directly
+// above it — so a comment discussing `style-src-elem` is matched by a regex
+// looking for the directive `style-src-elem`. The first version of the Phase H
+// additions below did exactly that: it extracted the word out of a sentence,
+// found no `'unsafe-inline'` after it, and passed no matter what the real
+// policy said. Deliberately breaking the policy and watching the check stay
+// green is what found it (CLAUDE.md rule 3), which is the entire argument for
+// doing that rather than trusting a green line.
+const stripComments = (source) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+const middlewareCode = stripComments(middleware);
+const strictCsp = /function strictCsp\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middlewareCode)?.[1] ?? "";
+const siteCsp = /const SITE_CSP = \[([\s\S]*?)\]\.join/.exec(middlewareCode)?.[1] ?? "";
+const needsNonce = /function needsNonce\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(middlewareCode)?.[1] ?? "";
 
 const cspIssues = [];
 if (strictCsp.length === 0) cspIssues.push("strictCsp() not found — this check can no longer see the policy");
@@ -823,6 +945,49 @@ if (!/nonce-\$\{nonce\}/.test(strictCsp)) cspIssues.push("strict policy does not
 if (!/default-src 'none'/.test(strictCsp)) cspIssues.push("strict policy has no default-src 'none'");
 if (!/font-src 'self'/.test(strictCsp)) cspIssues.push("font-src missing — self-hosted fonts blocked");
 if (/script-src[^;`]*'unsafe-inline'/.test(strictCsp)) cspIssues.push("strict script-src allows unsafe-inline");
+
+// Phase H additions. Both are silent failures rather than loud ones, which is
+// the only kind this check is for.
+//
+// **`style-src-elem` must not carry `'unsafe-inline'` outside the dev gate.**
+// The report page moved its styling into a stylesheet precisely so this
+// directive could be tightened; putting the escape hatch back would undo that
+// while every page kept rendering, with nothing to notice. `style-src-attr`
+// deliberately keeps it — the page's geometry is computed per frame — and the
+// fallback `style-src` keeps it for browsers that implement neither, which
+// would otherwise fall through to `default-src 'none'` and load no CSS at all.
+const styleElem = /style-src-elem[^`,]*/.exec(strictCsp)?.[0] ?? "";
+if (styleElem.length === 0) cspIssues.push("style-src-elem missing — the report page's stylesheet rule is gone");
+if (/'unsafe-inline'/.test(styleElem.replace(/\$\{DEV_STYLE_SRC\}/, ""))) {
+  cspIssues.push("style-src-elem hard-codes 'unsafe-inline' outside the NODE_ENV gate");
+}
+if (!/style-src 'self'/.test(strictCsp)) {
+  cspIssues.push("the style-src fallback is gone — browsers without -elem/-attr fall to default-src 'none' and render unstyled");
+}
+// The other direction is a silent failure too. `style-src-attr` must keep
+// `'unsafe-inline'`: the report page's geometry is computed per frame — a
+// meter's fill width from its score, a region overlay's position as a
+// percentage of the capture's natural size, the pane's aspect ratio from the
+// image the browser measured. Tightening this to `'self'` does not blank the
+// page; it renders, fully styled, with every meter at zero width and every
+// region box stacked in one corner. Nothing errors.
+const styleAttr = /["`]style-src-attr[^"`]*/.exec(strictCsp)?.[0] ?? "";
+if (styleAttr.length > 0 && !/'unsafe-inline'/.test(styleAttr)) {
+  cspIssues.push("style-src-attr no longer allows inline styles — computed geometry silently collapses");
+}
+
+const devStyle = /const DEV_STYLE_SRC\s*=\s*([\s\S]*?);/.exec(middlewareCode)?.[1] ?? "";
+if (devStyle.length === 0) cspIssues.push("DEV_STYLE_SRC not found — cannot tell dev style sources from production ones");
+if (!/NODE_ENV\s*===\s*"development"/.test(devStyle)) cspIssues.push("dev-only style sources are no longer gated on NODE_ENV");
+
+// **`img-src` must name the storage origin.** Uploaded artifacts are fetched
+// straight from storage rather than proxied, so with R2 configured a bare
+// `img-src 'self'` blocks every screenshot on the report page — the images are
+// the whole point of Phase H, and the failure is a page of empty boxes with a
+// console warning nobody is watching.
+if (!/img-src[^;`]*STORAGE_IMG_SRC/.test(strictCsp)) {
+  cspIssues.push("img-src does not include the storage origin — uploaded images are blocked once R2 is configured");
+}
 
 // It has to actually reach the two trees that render untrusted content. `/r/`
 // is model output; `/admin` is other people's email addresses.
@@ -854,7 +1019,7 @@ if (/key:\s*"[Cc]ontent-[Ss]ecurity-[Pp]olicy"/.test(nextConfig)) cspIssues.push
 // perfectly. Nothing failed loudly. The reverse mistake, letting either source
 // into production, fails even more quietly: it would simply weaken the policy
 // while every page kept working.
-const devSources = /const DEV_SCRIPT_SRC\s*=\s*([\s\S]*?);/.exec(middleware)?.[1] ?? "";
+const devSources = /const DEV_SCRIPT_SRC\s*=\s*([\s\S]*?);/.exec(middlewareCode)?.[1] ?? "";
 if (devSources.length === 0) cspIssues.push("DEV_SCRIPT_SRC not found — cannot tell dev sources from production ones");
 if (!/NODE_ENV\s*===\s*"development"/.test(devSources)) cspIssues.push("dev-only script sources are no longer gated on NODE_ENV");
 if (!/'unsafe-eval'/.test(devSources)) cspIssues.push("'unsafe-eval' missing — next dev cannot hydrate any page");
@@ -871,6 +1036,13 @@ check(
 
 await rm(ROOT, { recursive: true, force: true });
 for (const id of [freeOrg, lapsedOrg, org, tightOrg, dailyOrg, sweepOrg, orphan, overOrg, neighbour, lapsing, settled, h9org, visOrg, statsOrg]) {
+  // Dropping the rows is enough on the filesystem driver — `ROOT` has just gone
+  // with everything under it. A bucket outlives the process, so the objects are
+  // removed by the same call the product uses to erase an organization, or a
+  // second run of this suite would be reading the first one's leftovers.
+  if (storage.driver === "s3") {
+    await storage.deletePrefix(orgPrefix(id));
+  }
   await db.query("DELETE FROM orgs WHERE id = $1", [id]);
 }
 await db.close();

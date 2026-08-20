@@ -1,0 +1,71 @@
+/*
+ * The empty state's layout. Colour and the three theme states come from
+ * `_styles/surface.module.css`, like everything else on this surface —
+ * `empty-state.tsx` carries the reasoning.
+ *
+ * The panel is shaped like the one it replaces, on purpose: same ground, same
+ * border, same radius as `.overviewWrap` and `.chartWrap` in
+ * `trends.module.css`. A section that loses its frame as well as its chart
+ * reads as a rendering failure rather than as an answer.
+ */
+
+.empty {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  background: var(--frame-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px 22px 16px;
+}
+
+.words {
+  min-width: 0;
+  max-width: 58ch;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.body a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.figure {
+  flex: none;
+}
+
+/* Callers that want a different size set the variable rather than restyling
+   the drawing, so nothing outside this file has to know it is an SVG. */
+.twin {
+  width: var(--cloud-twin-width, 92px);
+  height: auto;
+}
+
+/*
+ * Inside a panel the drawing is decoration and says nothing the sentence does
+ * not, so it is the first thing to go when the row stops fitting — below this
+ * it would take a third of a phone's width away from the words that matter.
+ *
+ * Scoped to `.empty` deliberately. A page whose *whole body* is an empty state
+ * has nothing else to show, and hiding the figure there would leave a phone
+ * looking at two lines of grey text.
+ */
+@media (max-width: 560px) {
+  .empty .figure {
+    display: none;
+  }
+}

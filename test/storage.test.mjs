@@ -279,6 +279,23 @@ if (S3_READY) {
   const stale = await fetch(brief.url);
   check("S5.6", !stale.ok, `an expired presigned url is refused by the server (${stale.status})`);
 
+  // The CSP has to name the host these URLs are actually served from, and that
+  // host is computed rather than observed — `storageImageOrigin` builds it from
+  // the bucket and the endpoint, prefixing one onto the other for virtual-hosted
+  // addressing. `reportPage.test.mjs` R7.5 asserts that arithmetic against a
+  // made-up endpoint, which proves the function agrees with itself.
+  //
+  // **This is the check that proves it agrees with the service.** Get it wrong
+  // and nothing fails here or in the suite — the images simply do not render in
+  // production, blocked by a policy naming a host that was never used.
+  const { storageImageOrigin } = await import(path.join(DIST, "storage/origin.js"));
+  const declared = storageImageOrigin(process.env);
+  check(
+    "S5.7",
+    declared !== null && new URL(get.url).origin === declared,
+    `the origin the CSP is told matches the one the presigned URL uses (${declared ?? "none"})`
+  );
+
   await s3Store.deletePrefix(orgPrefix(org));
 
   // --- S6: deletePrefix past the 1000-key boundary ----------------------
