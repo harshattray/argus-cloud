@@ -454,12 +454,26 @@ const shotTerms = [
     check(id, !/^\s*["']use client["']/m.test(src),
       `${rel.split("/").pop()} is still server-rendered, so the picture is in the first byte`);
   }
-  // The brush carries no data. The selection becomes a URL the server answers,
-  // so no tenant history is serialised into the page for a client to filter.
+  // The brush carries no history. The selection becomes a URL the server
+  // answers, so nothing about a tenant's runs is serialised into the page for a
+  // client to filter.
+  //
+  // **Loosened once, on 2026-08-20, and this is the reasoning.** It used to
+  // forbid the words `points`, `buckets` and `runs` outright, which is a proxy
+  // for the rule rather than the rule. The brush now takes one array —
+  // `occupied`, pairs of 0–1 fractions saying which parts of its own width have
+  // bands drawn under them — so that a drag across blank chart can decline to
+  // navigate instead of 404ing the page, which is what most of that chart is.
+  //
+  // That array discloses nothing. Every position in it is already painted in
+  // the inert SVG immediately underneath, at the same bucket resolution, by the
+  // server. What must never cross is a *measurement*: a percentage, a commit, a
+  // run id, a threshold, a flag or a timestamp. So the check names those.
   {
     const brush = decomment(await readFile(path.join(WEB, "app/repos/brush.tsx"), "utf-8"));
-    check("X4.1e", !/points|buckets|runs\b/.test(brush),
-      "and it holds no history — it converts a drag into a URL and lets the server answer");
+    check("X4.1e",
+      !/alignedMismatch|commitSha|runId|threshold|flagged|createdAt|\bpoints\b|\bbuckets\b/.test(brush),
+      "and it holds no history — no measurement, commit, run id or time reaches the client here");
   }
 
   const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
