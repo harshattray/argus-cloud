@@ -70,9 +70,26 @@ export function OverviewChart({ overview }: { overview: FrameOverview }) {
       aria-label={describe(overview)}
     >
       <line className={styles.axis} x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} />
-      <text className={styles.axisLabel} x={PAD.left - 6} y={PAD.top + 4} textAnchor="end">
-        {top.toFixed(2)}%
-      </text>
+      {/*
+        The label is the peak, at the peak's own height — not the top of the
+        axis, which is `peak × 1.15` and is a rendering constant.
+
+        It printed `top` and it was wrong in the way this repo cares about
+        most: a frame peaking at 87.6% put "100.74%" beside the chart, which is
+        an impossible aligned-mismatch figure that no run measured. Doctrine 2
+        says every number a customer reads traces to a recording. Headroom is
+        allowed to be invented; a number on the page is not.
+      */}
+      {overview.peak !== null && (
+        <text
+          className={styles.axisLabel}
+          x={PAD.left - 6}
+          y={y(overview.peak) + 4}
+          textAnchor="end"
+        >
+          {overview.peak.toFixed(2)}%
+        </text>
+      )}
 
       {/* The min–max band. Drawn first, so the line and the ticks sit on it. */}
       {overview.buckets.map((b) =>

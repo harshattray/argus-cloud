@@ -22,11 +22,13 @@
 //           decided by where the sampling window happens to land.
 
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
+const WEB = path.join(ROOT, "web");
 
 const { createDb, migrate } = await import(path.join(DIST, "db.js"));
 const {
@@ -38,6 +40,10 @@ const {
   MAX_INTERACTIVE_POINTS,
   DETAIL_SIZES,
 } = await import(path.join(DIST, "trendData.js"));
+
+/** Comments say what the code should do; these checks are about what it does. */
+const decomment = (text) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 let failures = 0;
 function check(id, condition, detail) {
@@ -236,6 +242,28 @@ async function run(frame, at, pct, { threshold = 0.5 } = {}) {
     `the smallest detail size (${DETAIL_SIZES[0]}) is fully interactive, so one option always is`);
   check("O6.3", DETAIL_SIZES.some((n) => n > MAX_INTERACTIVE_POINTS),
     "and at least one is not, which is why the page has to label them differently");
+}
+
+// ═══ O7 — a printed number is a number some run recorded ═══
+//
+// Both charts scale their y-axis to `peak × 1.15`: 15% of empty chart above the
+// data so the line is not welded to the top edge. Both then *printed* that
+// number as the axis label, so a frame peaking at 87.6% carried "100.74%" — an
+// impossible aligned mismatch, since it is a share of compared pixels and
+// cannot exceed 100. The runs table three inches below said 84.96% on the
+// repository where this was found.
+//
+// Doctrine 2: every figure a customer reads traces to a recording. Headroom may
+// be invented. A number on the page may not.
+{
+  for (const [id, rel] of [
+    ["O7.1", "app/repos/overview-chart.tsx"],
+    ["O7.2", "app/repos/trend-chart.tsx"],
+  ]) {
+    const chart = decomment(await readFile(path.join(WEB, rel), "utf-8"));
+    check(id, /peak\.toFixed\(2\)/.test(chart) && !/\{top\.toFixed/.test(chart),
+      `${rel.split("/").pop()} labels its axis with a value some run recorded, never with the headroom constant`);
+  }
 }
 
 await db.query("DELETE FROM orgs WHERE id = $1", [orgId]);

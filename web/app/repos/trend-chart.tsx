@@ -74,7 +74,13 @@ export function TrendChart({ trend }: { trend: FrameTrend }) {
   // Headroom above the highest of the two series so the peak is not welded to
   // the top edge, and never a zero-height axis for a frame that has always sat
   // at 0.
-  const top = Math.max(...measured, ...thresholds, 0) * 1.15 || 1;
+  //
+  // `peak` and `top` are kept apart because only one of them may be *printed*.
+  // `peak` is the highest number some run recorded — a measurement or the
+  // threshold it was judged against. `top` is that with 15% of empty chart added
+  // so the line is not welded to the edge, and it is a rendering constant.
+  const peak = Math.max(...measured, ...thresholds, 0);
+  const top = peak * 1.15 || 1;
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
   const x = (i: number) =>
@@ -111,9 +117,21 @@ export function TrendChart({ trend }: { trend: FrameTrend }) {
           threshold line, which is the reference the eye should be using. */}
       <line className={styles.axis} x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} />
       <line className={styles.axis} x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={y(0)} />
-      <text className={styles.axisLabel} x={PAD.left - 6} y={PAD.top + 4} textAnchor="end">
-        {top.toFixed(2)}%
-      </text>
+      {/*
+        The peak, at the peak's own height — not the top of the axis.
+
+        This printed `top`, and `top` is `peak × 1.15`. A frame peaking at 87.6%
+        was labelled 100.74%, which is an impossible aligned mismatch: it is a
+        share of compared pixels, so it cannot exceed 100. Doctrine 2 — every
+        number a customer reads traces to a recording. Headroom may be invented;
+        a number on the page may not. The overview chart carried the same bug and
+        was fixed with it.
+      */}
+      {peak > 0 && (
+        <text className={styles.axisLabel} x={PAD.left - 6} y={y(peak) + 4} textAnchor="end">
+          {peak.toFixed(2)}%
+        </text>
+      )}
       {/* Above the baseline, not below it — below puts this on top of the
           commit labels, which is where it was until it was looked at. */}
       <text className={styles.axisLabel} x={PAD.left - 6} y={y(0) - 3} textAnchor="end">
