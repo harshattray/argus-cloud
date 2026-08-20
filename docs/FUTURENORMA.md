@@ -903,13 +903,15 @@ issued, and there is no session layer until Step 6. Nothing about that is a gap
 in the trends work — it is Step 6 arriving after Step 4 in this order, which was
 the plan.
 
-**Step 5 is most of the way through, as of 2026-08-21.** Storage is real and the
-suite has run against it; the deployment passes its own header, gate and secret
-checks. What is left is not infrastructure — it is **one real upload**. J2.3 asks
-that deleting a run empties its prefix in the bucket, and no run has put anything
-there yet. That same upload is what would validate Steps 3 and 4, whose gates ask
-what a prospect can see rather than what the code does. `FinishedSPEC.md` §3y
-carries the evidence and the open list.
+**Step 5 is all but done, as of 2026-08-21 — and Steps 3 and 4 are validated
+with it.** Storage is real, the suite has run against it, and the branch is
+merged and deployed (PR #16). A share link now opens a real run of Harsha's own
+project: three captures, its numbers, its history, images served from R2 through
+presigned URLs the live CSP allows. That is the sentence Steps 3 and 4 have been
+waiting for, and it needed a deployment rather than more code.
+
+What remains of Phase J is J2.3's deletion half and the preview's leftover data.
+`FinishedSPEC.md` §3y carries the evidence and the open list.
 
 ### The capture test applied to this path
 
@@ -1176,18 +1178,11 @@ sizes matching the database.
 
 **What is still open, and why each is not paperwork:**
 
-1. **The branch has never been released.** `main` is at `e42810d` and this
-   branch is **ninety commits ahead**. The report page, trends, the Cloud shell
-   and the storage origin in the CSP are all unreleased, so Steps 3 and 4 cannot
-   be validated no matter how good they are — a prospect would be looking at
-   `main`. The visible symptom today: the shared report renders the real numbers
-   but `img-src` is `'self' data:`, so every uploaded screenshot would be
-   blocked. **This is the next decision, and it is Harsha's.**
-2. **J2.3 — the deletion half is unrun.** The data exists now, but nothing has
+1. **J2.3 — the deletion half is unrun.** The data exists now, but nothing has
    deleted a run and then an org and confirmed both prefixes are empty *in the
    bucket*. Held deliberately: `a52bdc55` is the only real run in production and
    it is the one that would demonstrate Steps 3 and 4.
-3. **J4 — the preview's data outlives its code.** The routes, handlers and
+2. **J4 — the preview's data outlives its code.** The routes, handlers and
    `_lib/norma.ts` are deleted (portfolio branch `retire-normascope-cloud-preview`,
    1131 lines, functions 11 → 10), but the `norma_*` tables are still in the
    portfolio's **shared** Turso database and the `normascope-cloud-*` objects in

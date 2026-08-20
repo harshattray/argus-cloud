@@ -2355,23 +2355,30 @@ refuses uploads from unpaid plans is the one control between "free" and the
 thing we charge for, and granting the preview an exception is the easiest way to
 stop testing it.
 
-**The deployment is ninety commits behind this branch, and that changes what the
-J3 results mean.** `main` is at `e42810d`, the website merge. Everything since —
-the rebuilt report page, trends, the Cloud shell, the storage origin in the CSP,
-and the Phase J checks above — is unreleased. So:
+**The deployment was ninety commits behind, and finding that out is what the
+upload was worth.** Before the merge, `main` was still at `e42810d` — the
+website merge — so the rebuilt report page, trends, the Cloud shell and the
+storage origin in the CSP had never been released. The shared report rendered
+the real numbers and served `img-src 'self' data:`, no R2 origin, because
+`src/storage/origin.ts` did not exist on `main`: every uploaded screenshot would
+have been blocked. That is precisely the failure S5.7 was written to catch,
+arriving by the one route S5.7 cannot see — the check was right, the code was
+right, and the deployment was old.
 
-- **J2.1 and J2.2 stand.** The suite ran this branch's code against the real
-  bucket, and bucket privacy is a property of R2 rather than of any build.
-- **J3.1, J3.2 and J3.3 describe `main`, not what we are about to ship.** They
-  are true of the live site and they do not prove the branch behaves the same.
-  They have to be re-run after a deploy.
+**Merged and deployed 2026-08-21 (PR #16), and re-verified after.** The live CSP
+now carries `https://normascope-cloud.<account>.r2.cloudflarestorage.com`, which
+also settles the case S5.7 had never exercised: **virtual-hosted addressing is
+what R2 signs, and it is what we declare.**
 
-**One consequence is already visible.** The shared report renders and carries the
-real numbers, but `img-src` on the live page is `'self' data:` — no R2 origin,
-because `storageImageOrigin` and `src/storage/origin.ts` do not exist on `main`.
-Every uploaded screenshot would be blocked by the policy. This is exactly the
-failure S5.7 was written to catch, arriving through the one route S5.7 cannot
-see: the check is correct, the code is correct, and the deployment is old.
+| Re-run against the new deployment | Result |
+|---|---|
+| `golive-check` L1–L8 | all pass, including the bucket probe |
+| `/repos/{unknown}` anonymously | the not-found state, no data |
+| The five presigned image URLs on the shared report | **all five serve** — 106426, 107017 and 87991 as `image/png`, 30833 and 25704 as `image/jpeg`, matching the database byte for byte |
+
+**Steps 3 and 4 are validated.** Their gates ask what a prospect can see; a
+prospect can now open a share link and see a real run of Harsha's own project,
+with its three captures, its numbers and its history, served from R2.
 
 **The timing is the evidence that it was R2 and not the local stand-in.** The
 storage suite takes 4.6s against MinIO on `localhost` and **71.3s** against
@@ -2428,11 +2435,6 @@ has deleted a run and then an org and confirmed both prefixes are empty *in the
 bucket*, which is the check that protects against paying to store bytes nobody
 can reach. It is deliberately not run yet — run `a52bdc55` is the only real run
 in production, and it is the one that would validate Steps 3 and 4.
-
-**And Steps 3 and 4 still cannot be validated, for a reason that is not about
-them.** Their gates ask what a prospect can see. The prospect would see `main`,
-which does not contain either of them. Nothing is wrong with the work; it has
-simply never been released.
 
 The preview's data also outlives its code: the `norma_*` tables are still in the
 portfolio's shared Turso database and the `normascope-cloud-*` objects are still
