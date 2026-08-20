@@ -1,4 +1,5 @@
 import type { FrameHistory } from "argus-cloud/enrichment.js";
+import { Explainer } from "../../_components/cloud/explainer";
 import { segments } from "../../repos/sparkline";
 import styles from "./report.module.css";
 
@@ -28,11 +29,14 @@ export function HistoryStrip({
   history,
   threshold,
   frame,
+  anchor,
 }: {
   /** Prior committed runs only — the current one is stripped by `priorRuns`. */
   history: FrameHistory;
   threshold: number | null;
   frame: string;
+  /** Positional, never the frame label — see the note in `frame-view.tsx`. */
+  anchor: string;
 }) {
   const rows = history.trend.slice().reverse(); // oldest → newest reads as a trend
   const points = rows.map((row) => row.alignedMismatchPercent);
@@ -54,12 +58,18 @@ export function HistoryStrip({
   return (
     <section className={styles.history} aria-label={`History for ${frame}`}>
       <div className={styles.historyHead}>
-        <span className={styles.historyLabel}>History</span>
+        <span className={styles.historyLabel}>
+          History
+          <Explainer term="history" scope={anchor} />
+        </span>
       </div>
       <dl className={styles.historyFacts}>
         {history.firstDriftCommit !== null && (
           <div className={styles.historyFact}>
-            <dt>First drifted at</dt>
+            <dt>
+              First drifted at
+              <Explainer term="first-drift" scope={anchor} />
+            </dt>
             <dd>
               <code>{history.firstDriftCommit.slice(0, 10)}</code>
             </dd>
@@ -67,20 +77,37 @@ export function HistoryStrip({
         )}
         {history.recurrence > 0 && (
           <div className={styles.historyFact}>
-            <dt>Times flagged</dt>
+            <dt>
+              Times flagged
+              <Explainer term="recurrence" scope={anchor} />
+            </dt>
             <dd>
               {history.recurrence} run{history.recurrence === 1 ? "" : "s"}
             </dd>
           </div>
         )}
         <div className={styles.historyFact}>
-          <dt>Prior runs</dt>
+          <dt>
+            Prior runs
+            <Explainer term="prior-runs" scope={anchor} />
+          </dt>
           <dd>{history.trend.length}</dd>
         </div>
       </dl>
 
       {measured.length >= 2 && (
-        <Sparkline points={points} breaks={breaks} threshold={threshold} frame={frame} />
+        <>
+          <Sparkline points={points} breaks={breaks} threshold={threshold} frame={frame} />
+          {/*
+            The chart's own "?" sits under it rather than in the heading. The
+            heading explains what history is; this explains how to read a line
+            with gaps and breaks in it, which is the question the picture raises.
+          */}
+          <p className={styles.sparkGapNote}>
+            Aligned mismatch on each prior run, oldest first.
+            <Explainer term="sparkline" scope={`${anchor}-spark`} />
+          </p>
+        </>
       )}
       {skipped > 0 && (
         <p className={styles.sparkGapNote}>

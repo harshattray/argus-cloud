@@ -4,7 +4,7 @@ import { getDb } from "../../../lib/db";
 import { getStorage } from "../../../lib/storage";
 import { readTheme } from "../../../lib/theme";
 import { CloudFooter, CloudMasthead, type Crumb } from "../../_components/cloud/cloud-shell";
-import shell from "../../_styles/surface.module.css";
+import { Explainer } from "../../_components/cloud/explainer";
 import { FrameView } from "./frame-view";
 import { HistoryStrip } from "./history-strip";
 import { SharePanel } from "./share-panel";
@@ -95,6 +95,7 @@ export default async function ReportPage({
       <main className={styles.sheet}>
         <CloudMasthead
           title="Run report"
+          explain="run"
           crumbs={crumbs}
           theme={theme}
           path={path}
@@ -113,15 +114,31 @@ export default async function ReportPage({
           }
         />
 
+        {/*
+          Every stat carries its own definition. The four numbers on this strip
+          are the ones a reader is most likely to misread — "flagged" sounds like
+          a failure and is not one, and "worst" is a maximum rather than an
+          average — so the explanation belongs beside the number rather than on a
+          page somewhere else.
+        */}
         <div className={styles.stats}>
-          <Stat value={String(run.frames.length)} label="Frames compared" />
+          <Stat value={String(run.frames.length)} label="Frames compared" explain="frames-compared" />
           <Stat
             value={String(flagged)}
             label="Flagged"
+            explain="flagged"
             tone={flagged > 0 ? styles.danger : styles.success}
           />
-          <Stat value={worst === null ? "n/a" : `${worst.toFixed(2)}%`} label="Worst aligned mismatch" />
-          <Stat value={run.threshold === null ? "n/a" : `${run.threshold}%`} label="Threshold" />
+          <Stat
+            value={worst === null ? "n/a" : `${worst.toFixed(2)}%`}
+            label="Worst aligned mismatch"
+            explain="worst-mismatch"
+          />
+          <Stat
+            value={run.threshold === null ? "n/a" : `${run.threshold}%`}
+            label="Threshold"
+            explain="threshold"
+          />
         </div>
 
         {run.frames.length === 0 ? (
@@ -186,7 +203,10 @@ function FrameNav({ frames }: { frames: FrameReport[] }) {
   }
   return (
     <nav className={styles.frameNav} aria-label="Frames in this run">
-      <span className={styles.frameNavLabel}>Jump to</span>
+      <span className={styles.frameNavLabel}>
+        Jump to
+        <Explainer term="frame" scope="nav" />
+      </span>
       <ul>
         {frames.map((frame, index) => (
           <li key={frame.frame}>
@@ -204,11 +224,26 @@ function FrameNav({ frames }: { frames: FrameReport[] }) {
   );
 }
 
-function Stat({ value, label, tone }: { value: string; label: string; tone?: string }) {
+function Stat({
+  value,
+  label,
+  tone,
+  explain,
+}: {
+  value: string;
+  label: string;
+  tone?: string;
+  /** Glossary key. Named to match `CloudMasthead` and `Fact`, so one rule finds
+      every component that forwards a term to an `<Explainer>`. */
+  explain?: string;
+}) {
   return (
     <div className={tone ? `${styles.stat} ${tone}` : styles.stat}>
       <span className={styles.statValue}>{value}</span>
-      <span className={styles.statLabel}>{label}</span>
+      <span className={styles.statLabel}>
+        {label}
+        {explain && <Explainer term={explain} scope="run" />}
+      </span>
     </div>
   );
 }
@@ -232,26 +267,48 @@ function Frame({
         <h2 className={styles.frameName}>{frame.frame}</h2>
         <span className={`${styles.status} ${frame.flagged ? styles.flagged : styles.clean}`}>
           {frame.flagged ? "flagged" : "pass"}
+          <Explainer term={frame.flagged ? "flagged" : "clean"} scope={anchor} />
         </span>
       </div>
+      {/*
+        Three quantities on one line, and a reader has no way to tell which one
+        is the headline. Each gets its own "?" rather than one for the line: the
+        question people actually have is "what is SSIM", not "what is this row".
+      */}
       <p className={styles.frameNumbers}>
         aligned mismatch{" "}
-        {frame.alignedMismatchPercent === null ? "n/a" : `${frame.alignedMismatchPercent.toFixed(2)}%`} ·
-        SSIM {frame.structuralSimilarity === null ? "n/a" : frame.structuralSimilarity.toFixed(3)} ·{" "}
-        {frame.mode}/{frame.source}
+        {frame.alignedMismatchPercent === null ? "n/a" : `${frame.alignedMismatchPercent.toFixed(2)}%`}
+        <Explainer term="aligned-diff" scope={anchor} /> · SSIM{" "}
+        {frame.structuralSimilarity === null ? "n/a" : frame.structuralSimilarity.toFixed(3)}
+        <Explainer term="ssim" scope={anchor} /> · {frame.mode}/{frame.source}
+        <Explainer
+          term={frame.mode === "fidelity" ? "fidelity-mode" : "baseline-mode"}
+          scope={anchor}
+        />
       </p>
 
       {frame.alignedMismatchPercent !== null && threshold !== null && (
-        <Meter value={frame.alignedMismatchPercent} threshold={threshold} flagged={frame.flagged} />
+        <Meter
+          value={frame.alignedMismatchPercent}
+          threshold={threshold}
+          flagged={frame.flagged}
+          anchor={anchor}
+        />
       )}
 
       {frame.history !== null && (
-        <HistoryStrip history={frame.history} threshold={threshold} frame={frame.frame} />
+        <HistoryStrip
+          history={frame.history}
+          threshold={threshold}
+          frame={frame.frame}
+          anchor={anchor}
+        />
       )}
 
       <FrameView
         runId={runId}
         frame={frame.frame}
+        anchor={anchor}
         flagged={frame.flagged}
         images={frame.images}
         regions={frame.regions}
@@ -269,18 +326,42 @@ function Frame({
  * line" without having to compare two numbers. Copied from the CLI report's
  * meter (`Argus/src/report.ts`) rather than re-derived.
  */
-function Meter({ value, threshold, flagged }: { value: number; threshold: number; flagged: boolean }) {
+function Meter({
+  value,
+  threshold,
+  flagged,
+  anchor,
+}: {
+  value: number;
+  threshold: number;
+  flagged: boolean;
+  anchor: string;
+}) {
   const pct = threshold > 0 ? Math.min(100, (value / threshold) * 50) : value > 0 ? 100 : 0;
   return (
-    <div className={styles.meter} role="img" aria-label={`${value.toFixed(2)}% against a ${threshold}% threshold`}>
-      <div className={styles.meterTrack}>
+    <div className={styles.meter}>
+      <div
+        className={styles.meterTrack}
+        role="img"
+        aria-label={`${value.toFixed(2)}% against a ${threshold}% threshold`}
+      >
         <div
           className={`${styles.meterFill} ${flagged ? styles.over : styles.under}`}
           style={{ width: `${pct.toFixed(1)}%` }}
         />
         <div className={styles.meterMark} style={{ left: "50%" }} />
       </div>
-      <span className={styles.meterLegend}>threshold {threshold}%</span>
+      {/*
+        The "?" moved out of the `role="img"` element and the label moved with
+        it. A button inside an image role is not reachable as a button — the
+        element is announced as one graphic with an alt text, and its children
+        stop existing for a screen reader. The bar keeps the role; the legend
+        beside it is ordinary text.
+      */}
+      <span className={styles.meterLegend}>
+        threshold {threshold}%
+        <Explainer term="threshold" scope={`${anchor}-meter`} />
+      </span>
     </div>
   );
 }

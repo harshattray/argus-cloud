@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Explainer } from "../../_components/cloud/explainer";
 import styles from "./report.module.css";
 
 /**
@@ -62,6 +63,8 @@ export function asFindings(value: unknown): Finding[] {
 interface Shot {
   src: string;
   caption: string;
+  /** Glossary key for the caption's "?". */
+  term: string;
   /** Overlay rectangles, drawn on the diff only. */
   regions: Region[];
 }
@@ -69,6 +72,7 @@ interface Shot {
 export function FrameView({
   runId,
   frame,
+  anchor,
   flagged,
   images,
   regions,
@@ -79,6 +83,17 @@ export function FrameView({
 }: {
   runId: string;
   frame: string;
+  /**
+   * The frame's positional anchor (`frame-3`), used to keep this frame's
+   * explainer element ids apart from the next frame's.
+   *
+   * **It is not `frame`, and that is the whole reason it is a separate prop.**
+   * A frame label is upload-supplied — spaces, quotes, a `#`, or the same text
+   * as another frame — and `page.tsx` already refuses to build an id out of one.
+   * A popover id is referenced by value from a `popovertarget` attribute, which
+   * is the same argument a second time.
+   */
+  anchor: string;
   flagged: boolean;
   images: FrameImages;
   regions: Region[];
@@ -97,19 +112,19 @@ export function FrameView({
   const shots: Shot[] = [];
   if (images.build || images.reference || images.diff) {
     if (images.build) {
-      shots.push({ src: images.build, caption: "Build", regions: [] });
+      shots.push({ src: images.build, caption: "Build", term: "build", regions: [] });
     }
     if (images.reference) {
-      shots.push({ src: images.reference, caption: "Reference", regions: [] });
+      shots.push({ src: images.reference, caption: "Reference", term: "reference", regions: [] });
     }
     if (images.diff) {
-      shots.push({ src: images.diff, caption: "Difference", regions });
+      shots.push({ src: images.diff, caption: "Difference", term: "diff-overlay", regions });
     }
   } else if (images.thumbnail) {
     // A clean frame ships one downscaled JPEG instead of three full artifacts
     // (Pathway 2 item 7). Showing it as a single pane is the honest layout —
     // two empty boxes beside it would read as missing images.
-    shots.push({ src: images.thumbnail, caption: "Build (thumbnail)", regions: [] });
+    shots.push({ src: images.thumbnail, caption: "Build (thumbnail)", term: "build", regions: [] });
   }
 
   const aspect = natural ? natural.height / Math.max(1, natural.width) : null;
@@ -178,6 +193,7 @@ export function FrameView({
       ) : (
         <SyncedShots
           shots={shots}
+          anchor={anchor}
           tall={tall}
           aspect={aspect}
           active={active}
@@ -190,6 +206,7 @@ export function FrameView({
 
       <FindingsList
         findings={findings}
+        anchor={anchor}
         explained={explained}
         active={active}
         onHighlight={(index) => setActive((current) => (current === index ? null : index))}
@@ -199,6 +216,7 @@ export function FrameView({
         <ExplainControls
           runId={runId}
           frame={frame}
+          anchor={anchor}
           analysisCredits={analysisCredits}
           deepCredits={deepCredits}
           onFindings={(next) => {
@@ -224,6 +242,7 @@ export function FrameView({
  */
 function SyncedShots({
   shots,
+  anchor,
   tall,
   aspect,
   active,
@@ -233,6 +252,7 @@ function SyncedShots({
   onZoom,
 }: {
   shots: Shot[];
+  anchor: string;
   tall: boolean;
   aspect: number | null;
   active: number | null;
@@ -280,7 +300,10 @@ function SyncedShots({
       {shots.map((shot, index) => (
         <figure key={shot.caption} className={styles.shotFrame}>
           <figcaption>
-            <span className={styles.shotTag}>{shot.caption}</span>
+            <span className={styles.shotTag}>
+              {shot.caption}
+              <Explainer term={shot.term} scope={anchor} />
+            </span>
             <span className={styles.shotZoom} aria-hidden="true">
               click to zoom
             </span>
@@ -306,7 +329,22 @@ function SyncedShots({
               <div className={styles.regionLayer}>
                 {shot.regions.map((region, i) => (
                   <span
-                    key={`${region.x},${region.y},${region.width},${region.height}`}
+                    /*
+                     * The index, not the geometry.
+                     *
+                     * The key used to be `x,y,w,h`, which is unique right up
+                     * until two findings name the same rectangle — and they do:
+                     * case 03's `norma-hero.png` has an `injection-suspected`
+                     * finding and a `layout` finding on the identical box, so
+                     * React saw duplicate keys and reserved the right to drop
+                     * one of the overlays. Found by seeding real recorded
+                     * findings, not by a test.
+                     *
+                     * The position is also the right key on its own terms: the
+                     * highlight compares `active` — a position in this list — to
+                     * `i`, so position is what identifies a box here.
+                     */
+                    key={i}
                     className={active === i ? `${styles.region} ${styles.active}` : styles.region}
                     style={{
                       left: `${(region.x / natural.width) * 100}%`,
@@ -337,11 +375,13 @@ function SyncedShots({
  */
 function FindingsList({
   findings,
+  anchor,
   explained,
   active,
   onHighlight,
 }: {
   findings: Finding[];
+  anchor: string;
   explained: boolean;
   active: number | null;
   onHighlight: (index: number) => void;
@@ -386,21 +426,30 @@ function FindingsList({
                 <p className={styles.injectionNote}>
                   Possible injected instruction in the captured content — this is a warning about
                   the page&apos;s content, not a visual finding.
+                  <Explainer term="injection-suspected" scope={`${anchor}-f${index}`} />
                 </p>
               )}
+              {/* `.findingHead` wraps too, so each "?" is grouped with what it
+                  explains rather than left to wrap on its own. */}
               <div className={styles.findingHead}>
-                <span className={`${styles.badge} ${badge}`}>{finding.confidence ?? "unrated"}</span>
+                <span className={styles.controlGroup}>
+                  <span className={`${styles.badge} ${badge}`}>{finding.confidence ?? "unrated"}</span>
+                  <Explainer term="confidence" scope={`${anchor}-f${index}`} />
+                </span>
                 <span className={styles.findingCat}>{finding.category ?? "finding"}</span>
                 {finding.region && (
-                  <button
-                    type="button"
-                    className={styles.findingRegion}
-                    aria-pressed={active === index}
-                    onClick={() => onHighlight(index)}
-                  >
-                    {finding.region.x},{finding.region.y} · {finding.region.width}×
-                    {finding.region.height}
-                  </button>
+                  <span className={styles.controlGroup}>
+                    <button
+                      type="button"
+                      className={styles.findingRegion}
+                      aria-pressed={active === index}
+                      onClick={() => onHighlight(index)}
+                    >
+                      {finding.region.x},{finding.region.y} · {finding.region.width}×
+                      {finding.region.height}
+                    </button>
+                    <Explainer term="region-box" scope={`${anchor}-f${index}`} />
+                  </span>
                 )}
               </div>
               <p className={styles.findingObs}>{finding.observation ?? ""}</p>
@@ -437,12 +486,14 @@ function FindingsList({
 function ExplainControls({
   runId,
   frame,
+  anchor,
   analysisCredits,
   deepCredits,
   onFindings,
 }: {
   runId: string;
   frame: string;
+  anchor: string;
   analysisCredits: number;
   deepCredits: number;
   onFindings: (findings: Finding[]) => void;
@@ -474,22 +525,35 @@ function ExplainControls({
   }
 
   return (
-    <div className={styles.controls}>
-      <input
-        type="password"
-        className={styles.input}
-        placeholder="org API key"
-        aria-label="Organization API key"
-        value={apiKey}
-        onChange={(event) => setApiKey(event.target.value)}
-      />
-      <button type="button" className={styles.button} onClick={() => explain(false)} disabled={busy || !apiKey}>
-        {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
-      </button>
-      <button type="button" className={styles.button} onClick={() => explain(true)} disabled={busy || !apiKey}>
-        {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
-      </button>
-      {error && <span className={styles.error}>{error}</span>}
-    </div>
+    <>
+      <p className={styles.controlsHead}>
+        Hosted AI
+        <Explainer term="credits" scope={`${anchor}-ctl`} label="What are credits?" />
+      </p>
+      <div className={styles.controls}>
+        <input
+          type="password"
+          className={styles.input}
+          placeholder="org API key"
+          aria-label="Organization API key"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+        />
+        {/* Button and "?" in one group, so a narrow viewport wraps them together. */}
+        <span className={styles.controlGroup}>
+          <button type="button" className={styles.button} onClick={() => explain(false)} disabled={busy || !apiKey}>
+            {busy ? "Explaining…" : `Explain (${analysisCredits} credit${analysisCredits === 1 ? "" : "s"})`}
+          </button>
+          <Explainer term="explain" scope={`${anchor}-ctl`} />
+        </span>
+        <span className={styles.controlGroup}>
+          <button type="button" className={styles.button} onClick={() => explain(true)} disabled={busy || !apiKey}>
+            {`Deep explain (${deepCredits} credit${deepCredits === 1 ? "" : "s"})`}
+          </button>
+          <Explainer term="deep-explain" scope={`${anchor}-ctl`} />
+        </span>
+        {error && <span className={styles.error}>{error}</span>}
+      </div>
+    </>
   );
 }

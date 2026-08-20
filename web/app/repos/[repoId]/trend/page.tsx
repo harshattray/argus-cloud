@@ -10,6 +10,7 @@ import {
 import { getDb } from "../../../../lib/db";
 import { readTheme } from "../../../../lib/theme";
 import { CloudFooter, CloudMasthead } from "../../../_components/cloud/cloud-shell";
+import { Explainer } from "../../../_components/cloud/explainer";
 import { TrendChart } from "../../trend-chart";
 import styles from "../../trends.module.css";
 
@@ -105,47 +106,66 @@ export default async function TrendPage({
 
         <section className={styles.section}>
           <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>History</h2>
+            <h2 className={styles.sectionTitle}>
+              History
+              <Explainer term="history" scope="trend" />
+            </h2>
             <p className={styles.sectionNote}>
               Computed from runs we hold. A local run only knows about itself.
             </p>
           </div>
           <dl className={styles.facts}>
-            <Fact term="First drifted at">
+            <Fact term="First drifted at" explain="first-drift">
               {trend.firstDriftCommit === null ? (
                 <span className={styles.muted}>never exceeded the threshold</span>
               ) : (
                 <code>{trend.firstDriftCommit.slice(0, 10)}</code>
               )}
             </Fact>
-            <Fact term="Times flagged">
+            <Fact term="Times flagged" explain="recurrence">
               {trend.recurrence} run{trend.recurrence === 1 ? "" : "s"}
             </Fact>
             <Fact term="Runs shown">{trend.points.length}</Fact>
-            <Fact term="Measured">{trend.points.length - trend.skipped}</Fact>
+            <Fact term="Measured" explain="skipped">
+              {trend.points.length - trend.skipped}
+            </Fact>
           </dl>
           <Caveats trend={trend} modes={modes} />
         </section>
 
         <section className={styles.section}>
           <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>Aligned mismatch over commits</h2>
-            <p className={styles.sectionNote}>Oldest first.</p>
+            <h2 className={styles.sectionTitle}>
+              Aligned mismatch over commits
+              <Explainer term="aligned-diff" scope="chart" />
+            </h2>
+            <p className={styles.sectionNote}>
+              Oldest first.
+              <Explainer term="sparkline" scope="chart" />
+            </p>
           </div>
           <div className={styles.chartWrap}>
             <TrendChart trend={trend} />
+            {/*
+              The legend is where a reader decides what each stroke means, so it
+              is where the definitions belong — a "?" on the chart itself would
+              have to explain three unrelated things at once.
+            */}
             <ul className={styles.legend}>
               <li>
                 <span className={`${styles.swatch} ${styles.swatchTrend}`} /> aligned mismatch
+                <Explainer term="aligned-diff" scope="legend" />
               </li>
               <li>
                 <span className={`${styles.swatch} ${styles.swatchThreshold}`} /> threshold, as each
                 run set it
+                <Explainer term="threshold-line" scope="legend" />
               </li>
               {trend.transitions.length > 0 && (
                 <li>
                   <span className={`${styles.swatch} ${styles.swatchTransition}`} /> measurement
                   changed
+                  <Explainer term="measurement-change" scope="legend" />
                 </li>
               )}
             </ul>
@@ -161,11 +181,23 @@ export default async function TrendPage({
             <table className={styles.runs}>
               <thead>
                 <tr>
-                  <th>Commit</th>
+                  <th>
+                    Commit
+                    <Explainer term="commit" scope="trendruns" />
+                  </th>
                   <th>When</th>
-                  <th>Measured as</th>
-                  <th className={styles.num}>Aligned mismatch</th>
-                  <th className={styles.num}>Threshold</th>
+                  <th>
+                    Measured as
+                    <Explainer term="fidelity-mode" scope="trendruns" />
+                  </th>
+                  <th className={styles.num}>
+                    Aligned mismatch
+                    <Explainer term="aligned-diff" scope="trendruns" />
+                  </th>
+                  <th className={styles.num}>
+                    Threshold
+                    <Explainer term="threshold" scope="trendruns" />
+                  </th>
                   <th />
                 </tr>
               </thead>
@@ -221,10 +253,22 @@ export default async function TrendPage({
   );
 }
 
-function Fact({ term, children }: { term: string; children: React.ReactNode }) {
+function Fact({
+  term,
+  explain,
+  children,
+}: {
+  term: string;
+  /** Glossary key. `term` here is the visible label, not a lookup. */
+  explain?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className={styles.fact}>
-      <dt>{term}</dt>
+      <dt>
+        {term}
+        {explain && <Explainer term={explain} scope="fact" />}
+      </dt>
       <dd>{children}</dd>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Explainer } from "../../_components/cloud/explainer";
 import styles from "./report.module.css";
 
 /**
@@ -111,7 +112,10 @@ export function SharePanel({ runId }: { runId: string }) {
 
   return (
     <section className={styles.share}>
-      <h2 className={styles.shareHead}>Share this report</h2>
+      <h2 className={styles.shareHead}>
+        Share this report
+        <Explainer term="share-link" scope="panel" />
+      </h2>
       <p className={styles.shareNote}>
         A share link opens this one run, read-only, with no account and no Explain button. The URL
         is shown once when it is created — it cannot be recovered afterwards, only revoked.

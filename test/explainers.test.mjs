@@ -1,0 +1,402 @@
+// The "?" popovers on the Cloud pages, and the glossary behind them.
+//
+// Run: npm test
+// Run one suite:  node test/explainers.test.mjs
+//
+// **What this suite can and cannot prove.** Nothing here renders React, so it
+// cannot show that a bubble appears in the right place — that was checked in a
+// browser against both themes and is recorded in `FinishedSPEC.md`. What it
+// checks is everything that can break *silently*:
+//
+//   - a page asking for a definition that does not exist. The component throws,
+//     but only when that page renders, so a typo in a rarely-visited branch
+//     ships and is found by a customer.
+//   - two popovers sharing an element id. `popovertarget` resolves by id, so the
+//     second "?" on a page would open the first one's definition — a wrong
+//     answer, confidently given, with nothing in any log.
+//   - the typography reset. A popover inherits down the DOM, and every trigger
+//     on these pages hangs off an uppercased label. Without the reset the
+//     definition renders in all caps, which shipped once.
+//   - a frame label reaching an id. Labels are upload-supplied.
+//
+// One counter-test, in the sense of CLAUDE.md rule 3:
+//
+//   X2.4b — the id scheme without its scope, i.e. `x-<term>`. Every check about
+//           uniqueness still passes when there is one frame, and collides the
+//           moment a run has two — which is the ordinary case.
+
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const WEB = path.join(ROOT, "web");
+
+let failures = 0;
+function check(id, condition, detail) {
+  const ok = Boolean(condition);
+  console.log(`${ok ? "PASS" : "FAIL"}  ${id}  ${detail}`);
+  if (!ok) failures++;
+}
+
+/**
+ * Comments stripped — a regex will happily match the prose above a rule.
+ * (`cloudShell` §3t makes the same point about CSS.)
+ *
+ * It applies to source as much as to stylesheets, and X4.3 proved it: the
+ * component's doc comment *explains why it does not use `useState`*, so a check
+ * that grepped the raw file for `useState` failed against a file that does not
+ * use it. A test can be wrong about the thing it is testing.
+ */
+const decomment = (text) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+/** Every `.tsx` under a directory, recursively. */
+async function tsxUnder(dir) {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...(await tsxUnder(full)));
+    } else if (entry.name.endsWith(".tsx")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+// ═══ X1 — the glossary is a lookup table, so its keys have to behave ═══
+//
+// `glossary.ts` is TypeScript and the suite runs against `dist/`, which does not
+// build `web/`. The entries are parsed out of the source instead of imported:
+// less precise than running the module, and it is the ids and the prose that
+// matter here, both of which are literals.
+
+const glossarySrc = await readFile(path.join(WEB, "lib/glossary.ts"), "utf-8");
+const entries = [...glossarySrc.matchAll(/^\s{4}id:\s*"([^"]+)",\n\s{4}term:\s*"([^"]+)",\n\s{4}def:\s*"((?:[^"\\]|\\.)*)",/gm)].map(
+  (m) => ({ id: m[1], term: m[2], def: m[3] })
+);
+
+{
+  check("X1.1", entries.length >= 30, `the glossary parsed (${entries.length} entries)`);
+
+  const ids = entries.map((e) => e.id);
+  const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
+  check("X1.2", dupes.length === 0, `every id is unique${dupes.length ? ` — collides: ${dupes.join(", ")}` : ""}`);
+
+  // The id becomes part of an HTML element id and is referenced by value from a
+  // `popovertarget` attribute. Anything outside this set is a bug waiting for
+  // the one browser that quotes attributes differently.
+  const unsafe = ids.filter((id) => !/^[a-z][a-z0-9-]*$/.test(id));
+  check("X1.3", unsafe.length === 0, `every id is id-safe lower-kebab${unsafe.length ? ` — bad: ${unsafe.join(", ")}` : ""}`);
+
+  // The file's own rule: "if a definition needs a second sentence to explain the
+  // first, the first sentence is wrong." This does not police sentence count —
+  // several definitions legitimately add a second clause — it catches the empty
+  // and the placeholder.
+  const thin = entries.filter((e) => e.def.trim().length < 25);
+  check("X1.4", thin.length === 0, `no definition is a stub${thin.length ? ` — thin: ${thin.map((t) => t.id).join(", ")}` : ""}`);
+
+  check(
+    "X1.5",
+    entries.every((e) => e.term.trim().length > 0),
+    "every entry has a visible term, which is the bubble's heading"
+  );
+
+  // The two lists are separate on purpose: `/report` on the marketing site
+  // prints GLOSSARY and describes the *local* HTML report, which has no history,
+  // no credits and no share links. A cloud-only word in that list would define
+  // something the page it appears on cannot do.
+  const cloudOnly = ["first-drift", "recurrence", "credits", "share-link", "history"];
+  const cloudBlock = glossarySrc.slice(glossarySrc.indexOf("CLOUD_GLOSSARY"));
+  check(
+    "X1.6",
+    cloudOnly.every((id) => cloudBlock.includes(`id: "${id}"`)),
+    "history, first drift, recurrence, credits and share links live in CLOUD_GLOSSARY, not the marketing one"
+  );
+}
+
+// ═══ X2 — every term a page asks for exists, and every id is unique ═══
+
+/**
+ * Terms reached only through an expression, listed by hand.
+ *
+ * A static scan cannot resolve `term={frame.flagged ? "flagged" : "clean"}` —
+ * and it must not try, because the neighbouring
+ * `term={frame.mode === "fidelity" ? "fidelity-mode" : "baseline-mode"}` also
+ * contains the string `"fidelity"`, which is not a key and never was. Pulling
+ * every quoted string out of a `term={…}` expression would fail on that.
+ *
+ * `Shot.term` is the same shape one indirection away: the value is a literal in
+ * a table, not in the JSX.
+ *
+ * So they are enumerated. The list is short, it is checked against the glossary
+ * below, and X2.6 checks the count of dynamic sites has not grown — because the
+ * failure this guards against is somebody adding a *third* expression form and
+ * this file quietly not covering it.
+ */
+const DYNAMIC_TERMS = [
+  "flagged",
+  "clean", // page.tsx — the frame's pass/fail badge
+  "fidelity-mode",
+  "baseline-mode", // page.tsx — how the frame was measured
+  "build",
+  "reference",
+  "diff-overlay", // frame-view.tsx — the Shot table's captions
+];
+
+const pages = await tsxUnder(path.join(WEB, "app"));
+const used = [];
+let dynamicSites = 0;
+for (const file of pages) {
+  const src = decomment(await readFile(file, "utf-8"));
+  for (const m of src.matchAll(/<Explainer\s[^>]*term="([^"]+)"/g)) {
+    used.push({ term: m[1], file: path.relative(ROOT, file) });
+  }
+  // Components that forward a key to an `<Explainer>` — `CloudMasthead`, `Stat`,
+  // `Fact` — all name the prop `explain`, deliberately, so one rule finds them.
+  // `Fact` also has a `term` prop, and it is a *label*, not a key; the naming
+  // split is what keeps this scan from reading "First drifted at" as an id.
+  for (const m of src.matchAll(/\bexplain="([^"]+)"/g)) {
+    used.push({ term: m[1], file: path.relative(ROOT, file) });
+  }
+  // `term={…}` that is not the plain `{explain}` forward — i.e. a key the scan
+  // above could not read. Counted, not parsed: see DYNAMIC_TERMS for why.
+  dynamicSites += [...src.matchAll(/<Explainer\s[^>]*term=\{(?!explain\})/g)].length;
+}
+
+/**
+ * The `Shot` table's captions, which reach an Explainer through `term={shot.term}`.
+ *
+ * Extracted rather than listed, because they *are* literals — just one field
+ * away from the JSX. Counting them among the "dynamic" sites was the first
+ * attempt and it was regex golf: one entry uses the `regions` shorthand and the
+ * pattern quietly matched three of four. A check that silently undercounts is
+ * worse than no check, so this reads the keys themselves.
+ */
+const shotTerms = [
+  ...decomment(await readFile(path.join(WEB, "app/r/[runId]/frame-view.tsx"), "utf-8")).matchAll(
+    /\bterm:\s*"([a-z][a-z0-9-]*)"/g
+  ),
+].map((m) => m[1]);
+
+{
+  const known = new Set(entries.map((e) => e.id));
+  check("X2.1", used.length >= 25, `the Cloud pages ask for ${used.length} definitions`);
+
+  const missing = used.filter((u) => !known.has(u.term));
+  check(
+    "X2.2",
+    missing.length === 0,
+    missing.length === 0
+      ? "every term a page asks for is in the glossary"
+      : `unknown terms: ${missing.map((m) => `${m.term} (${m.file})`).join(", ")}`
+  );
+
+  const unknownDynamic = DYNAMIC_TERMS.filter((t) => !known.has(t));
+  check(
+    "X2.2b",
+    unknownDynamic.length === 0,
+    unknownDynamic.length === 0
+      ? `the ${DYNAMIC_TERMS.length} terms reached through an expression are all defined too`
+      : `unknown dynamic terms: ${unknownDynamic.join(", ")}`
+  );
+
+  const unknownShots = [...new Set(shotTerms.filter((t) => !known.has(t)))];
+  check(
+    "X2.2c",
+    shotTerms.length >= 4 && unknownShots.length === 0,
+    unknownShots.length === 0
+      ? `all ${shotTerms.length} image-caption keys are defined`
+      : `unknown caption keys: ${unknownShots.join(", ")}`
+  );
+
+  // If another computed term appears, this file stops covering it — and the
+  // symptom would be a "?" that throws when somebody opens that one page.
+  check(
+    "X2.6",
+    dynamicSites === 3,
+    `${dynamicSites} explainer terms are computed rather than written (expected 3; add them to DYNAMIC_TERMS if this grew)`
+  );
+
+  // The other direction is a warning, not a failure: a term can legitimately be
+  // defined for the marketing glossary and never popped up on a Cloud page —
+  // `unaligned-diff` and `raw-diff` are on `/report` and are not numbers the
+  // hosted page shows.
+  const reached = new Set([...used.map((u) => u.term), ...DYNAMIC_TERMS]);
+  const unused = entries.filter((e) => !reached.has(e.id));
+  console.log(`      note: ${unused.length} defined terms are never popped up on a Cloud page (${unused.map((u) => u.id).join(", ") || "none"})`);
+
+  // Element ids must be unique per page, and the component builds them as
+  // `x-<scope>-<term>`. Every call that could repeat on one page has to pass a
+  // scope — the frame components take an `anchor` for exactly this.
+  const componentSrc = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
+  check(
+    "X2.3",
+    /const id = `x-\$\{scope === undefined \? "" : `\$\{scope\}-`\}\$\{term\}`/.test(componentSrc),
+    "the element id is built from scope and term"
+  );
+
+  // Anything rendered once per frame must carry a scope, or a two-frame run has
+  // duplicate ids. Checked by reading the call sites in the per-frame files.
+  const perFrame = ["app/r/[runId]/frame-view.tsx", "app/r/[runId]/history-strip.tsx"];
+  let scoped = 0;
+  let unscoped = 0;
+  for (const rel of perFrame) {
+    const src = await readFile(path.join(WEB, rel), "utf-8");
+    for (const m of src.matchAll(/<Explainer\s[^>]*?\/>/gs)) {
+      if (/scope=/.test(m[0])) scoped++;
+      else unscoped++;
+    }
+  }
+  check("X2.4", unscoped === 0 && scoped > 0, `every per-frame explainer carries a scope (${scoped} scoped, ${unscoped} bare)`);
+
+  // X2.4b — the counter-test. Drop the scope and build the ids the naive way.
+  // One frame is fine; the second frame collides with the first, and
+  // `popovertarget` resolves an id to the *first* match in the document, so the
+  // second frame's "?" silently opens the first frame's bubble.
+  {
+    const terms = ["aligned-diff", "ssim", "baseline-mode"];
+    const naive = [];
+    for (const frame of ["frame-0", "frame-1"]) {
+      for (const t of terms) {
+        naive.push(`x-${t}`); // no scope
+        void frame;
+      }
+    }
+    const withScope = [];
+    for (const frame of ["frame-0", "frame-1"]) {
+      for (const t of terms) {
+        withScope.push(`x-${frame}-${t}`);
+      }
+    }
+    const naiveUnique = new Set(naive).size === naive.length;
+    const realUnique = new Set(withScope).size === withScope.length;
+    check(
+      "X2.4b",
+      !naiveUnique && realUnique,
+      `unscoped ids collide across frames (${new Set(naive).size} of ${naive.length} distinct); scoped ids do not (${new Set(withScope).size} of ${withScope.length})`
+    );
+  }
+
+  // A frame label is upload-supplied: spaces, quotes, `#`, or the same text as
+  // another frame. `page.tsx` already refuses to build an anchor out of one, and
+  // a popover id is referenced by value from an attribute — the same argument.
+  const frameView = await readFile(path.join(WEB, "app/r/[runId]/frame-view.tsx"), "utf-8");
+  check(
+    "X2.5",
+    !/<Explainer[^>]*scope=\{`?\$?\{?frame[.}]/.test(frameView) && /scope=\{anchor\}/.test(frameView),
+    "per-frame scopes come from the positional anchor, never from the frame label"
+  );
+}
+
+// ═══ X3 — the stylesheet, where the failures are invisible ═══
+
+{
+  const css = decomment(await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8"));
+  const bubble = css.slice(css.indexOf(".explainerBubble"));
+
+  // The reset. A popover is in the top layer but inherits down the DOM, and
+  // every trigger here hangs off a label styled with uppercase and tracking.
+  // Without these the definition renders in the voice of its neighbour.
+  for (const [id, prop] of [
+    ["X3.1", "text-transform: none"],
+    ["X3.2", "letter-spacing: normal"],
+    ["X3.3", "text-align: left"],
+  ]) {
+    check(id, bubble.includes(prop), `the bubble resets ${prop.split(":")[0]}, which it inherits from its label`);
+  }
+
+  // X3.1b — the counter-test, evaluated by hand. `.statLabel` is
+  // `text-transform: uppercase`, and the trigger is inside it. Without the reset
+  // the cascade gives the bubble `uppercase` too.
+  const statLabelUpper = /\.statLabel\s*\{[^}]*text-transform:\s*uppercase/.test(
+    decomment(await readFile(path.join(WEB, "app/r/[runId]/report.module.css"), "utf-8"))
+  );
+  check(
+    "X3.1b",
+    statLabelUpper && bubble.includes("text-transform: none"),
+    "a trigger's own label really is uppercase, so the reset is doing work rather than being decorative"
+  );
+
+  // Anchored positioning is progressive. The base rules must stand on their own,
+  // because a browser without `position-area` applies only those and gets the
+  // UA's centred popover — a deliberate fallback, not a broken tooltip.
+  const supportsAt = css.indexOf("@supports (position-area: block-end)");
+  check("X3.4", supportsAt !== -1, "the anchored rules sit behind @supports");
+  check(
+    "X3.5",
+    css.indexOf(".explainerBubble") < supportsAt,
+    "the unanchored rules are declared first, so they are a complete fallback on their own"
+  );
+  check(
+    "X3.6",
+    css.slice(supportsAt).includes("position-try-fallbacks"),
+    "fallback positions exist, so a '?' at the foot or the right edge does not open off-screen"
+  );
+
+  // No `anchor-name`. It would have to be unique per instance, which a CSS
+  // module cannot generate without an inline style — and `style-src-attr` is
+  // already carrying more than anyone wants (PATHWAYS carried-forward item 2).
+  check(
+    "X3.7",
+    !css.includes("anchor-name"),
+    "no anchor-name: the popover's implicit anchor is used, so no per-instance inline style is needed"
+  );
+
+  check(
+    "X3.8",
+    bubble.includes("display: none") && bubble.includes(":popover-open"),
+    "the bubble is hidden until opened by the browser, not by JavaScript"
+  );
+}
+
+// ═══ X4 — zero client JavaScript on the /repos tree ═══
+//
+// `FinishedSPEC.md` §3v claims these pages render entirely on the server. A
+// `useState` tooltip would have made that sentence false — and put a hydration
+// boundary around a chart that currently arrives in the first byte.
+
+{
+  const tree = await tsxUnder(path.join(WEB, "app/repos"));
+  const clientFiles = [];
+  for (const file of tree) {
+    const src = await readFile(file, "utf-8");
+    if (/^\s*["']use client["']/m.test(src)) {
+      clientFiles.push(path.relative(ROOT, file));
+    }
+  }
+  check("X4.1", clientFiles.length === 0, `the /repos tree has no client components${clientFiles.length ? `: ${clientFiles.join(", ")}` : ""}`);
+
+  const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
+  check("X4.2", !/^\s*["']use client["']/m.test(component), "the Explainer itself is a server component");
+  check(
+    "X4.3",
+    !/useState|useEffect|onClick/.test(decomment(component)),
+    "it uses the native popover API rather than React state, so it ships no JavaScript"
+  );
+  check(
+    "X4.4",
+    component.includes("popoverTarget") && component.includes('popover="auto"'),
+    "the browser supplies the top layer, light dismiss and Escape"
+  );
+}
+
+// ═══ X5 — a bubble is never clipped by the card it sits in ═══
+//
+// `.card` is `overflow: hidden` and `.tableWrap` scrolls. A positioned <div>
+// inside either would be cut off or drag a scrollbar; a popover is in the top
+// layer and escapes both. This checks the two facts that make that true, so
+// nobody "simplifies" the popover into a div and finds out on a table header.
+
+{
+  const surface = decomment(await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8"));
+  const trends = decomment(await readFile(path.join(WEB, "app/repos/trends.module.css"), "utf-8"));
+  check("X5.1", /\.card\s*\{[^}]*overflow:\s*hidden/.test(surface), ".card really does clip its overflow");
+  check("X5.2", /\.tableWrap\s*\{[^}]*overflow-x:\s*auto/.test(trends), ".tableWrap really does scroll, and carries explainers in its headers");
+  const component = await readFile(path.join(WEB, "app/_components/cloud/explainer.tsx"), "utf-8");
+  check("X5.3", component.includes('popover="auto"'), "so the bubble is a popover, which renders outside both");
+}
+
+console.log(`\n${failures === 0 ? "explainers: all checks green" : `explainers: ${failures} FAILED`}`);
+process.exit(failures === 0 ? 0 : 1);

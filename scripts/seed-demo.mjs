@@ -294,7 +294,7 @@ const checkout = await seedRepo("demo-checkout", CHECKOUT);
 await seedRepo("demo-design-system", DESIGN_SYSTEM);
 
 // ---------------------------------------------------------------------------
-// The latest storefront run gets images, findings and a share link.
+// One storefront run gets images, findings and a share link.
 // ---------------------------------------------------------------------------
 //
 // One run carries the full report experience. The captures are the real
@@ -302,8 +302,16 @@ await seedRepo("demo-design-system", DESIGN_SYSTEM);
 // page, standing in for a shop that does not exist. That is the one thing here
 // borrowed rather than invented, and it is borrowed for pixels only: no score,
 // finding or claim on any demo page comes from that run.
-
-const latest = storefront.runIds[storefront.runIds.length - 1];
+//
+// **It is the last run where `home.png` was over the threshold, not the newest
+// run.** The newest one is week 12, where the regression has been fixed and
+// home.png reads 0.02% — so the demo's one fully-furnished report showed a frame
+// marked "pass" carrying a high-confidence finding about a missing background,
+// and no Explain buttons, because the page only offers those on a flagged frame.
+// A walkthrough opening that page had to explain the page instead of the
+// product. Week 6 is inside the regression the series was written to tell.
+const HERO_WEEK = STOREFRONT[0].series.findLastIndex((pct) => pct > thresholdFor("demo-storefront", 0));
+const hero = storefront.runIds[HERO_WEEK];
 const FIXTURES = path.join(ROOT, "norma-bridge-usecase");
 
 async function artifact(runId, frame, kind, bytes, extension, contentType) {
@@ -318,19 +326,19 @@ async function artifact(runId, frame, kind, bytes, extension, contentType) {
 }
 
 try {
-  await artifact(latest.runId, "home.png", "build", await readFile(path.join(FIXTURES, "screenshots", "norma-product.png")), "png", "image/png");
-  await artifact(latest.runId, "home.png", "reference", await readFile(path.join(FIXTURES, "baseline", "norma-product.png")), "png", "image/png");
-  await artifact(latest.runId, "home.png", "diff", await readFile(path.join(FIXTURES, "diff", "norma-product-diff.png")), "png", "image/png");
+  await artifact(hero.runId, "home.png", "build", await readFile(path.join(FIXTURES, "screenshots", "norma-product.png")), "png", "image/png");
+  await artifact(hero.runId, "home.png", "reference", await readFile(path.join(FIXTURES, "baseline", "norma-product.png")), "png", "image/png");
+  await artifact(hero.runId, "home.png", "diff", await readFile(path.join(FIXTURES, "diff", "norma-product-diff.png")), "png", "image/png");
   await artifact(
-    latest.runId,
+    hero.runId,
     "home.png",
     "regions",
     Buffer.from(JSON.stringify({ version: 1, regions: [{ x: 960, y: 400, width: 336, height: 48 }] })),
     "json",
     "application/json"
   );
-  await artifact(latest.runId, "cart.png", "thumbnail", await readFile(path.join(FIXTURES, "screenshots", "articles-index.png")), "png", "image/png");
-  console.log("  images: attached to the most recent demo-storefront run");
+  await artifact(hero.runId, "cart.png", "thumbnail", await readFile(path.join(FIXTURES, "screenshots", "articles-index.png")), "png", "image/png");
+  console.log(`  images: attached to the demo-storefront run at week ${HERO_WEEK + 1}, where home.png is flagged`);
 } catch (err) {
   console.log(`  images: skipped (${err.message})`);
   console.log("    norma-bridge-usecase/ is missing — every other surface still works.");
@@ -343,7 +351,7 @@ await db.query(
   [
     orgId,
     storefront.repoId,
-    latest.runId,
+    hero.runId,
     "home.png",
     "demo-sample-not-a-real-model-call",
     JSON.stringify({
@@ -376,7 +384,7 @@ await db.query(
   [
     randomUUID(),
     orgId,
-    latest.runId,
+    hero.runId,
     createHash("sha256").update(shareToken).digest("hex"),
     new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
   ]
@@ -393,7 +401,7 @@ for (const frame of ["home.png", "product-detail.png"]) {
     await consumeCredits(db, orgId, 4);
     await recordUsage(db, {
       orgId,
-      runId: latest.runId,
+      runId: hero.runId,
       frame,
       model: "claude-sonnet-5",
       pass: "analysis",
@@ -413,22 +421,19 @@ for (const frame of ["home.png", "product-detail.png"]) {
 
 const balance = await creditBalance(db, orgId);
 
-await printLinks(orgId);
+await printLinks(orgId, hero.runId);
 
-async function printLinks(id) {
+async function printLinks(id, heroRunId) {
   const repos = (await db.query("SELECT id, name FROM repos WHERE org_id = $1 ORDER BY name", [id])).rows;
-  const run = (
-    await db.query(
-      "SELECT id FROM runs WHERE org_id = $1 AND state = 'committed' ORDER BY created_at DESC LIMIT 1",
-      [id]
-    )
-  ).rows[0];
   console.log("\n─── the demo tenant ───────────────────────────────────────────");
   for (const repo of repos) {
     console.log(`  repository   /repos/${repo.id}   (${repo.name})`);
   }
-  if (run) {
-    console.log(`  run report   /r/${run.id}`);
+  // The furnished run, not the newest one. Printing "the newest run" sent a
+  // walkthrough to a page of numbers with no images on it — the one run that
+  // carries captures, findings and regions is the one worth linking.
+  if (heroRunId) {
+    console.log(`  run report   /r/${heroRunId}   (images, findings and a share link)`);
   }
   console.log(
     "\n  Every figure in this tenant is invented.\n" +
@@ -446,7 +451,26 @@ async function printLinks(id) {
 console.log(`\n  ${WEEKS} weekly runs per repository, 6 frames, ${analyses} recorded analyses`);
 console.log(`  credit balance: ${balance} (500 allowance + 200 pack, spent down)`);
 console.log(`\n  upload key (shown once, as in production):\n    ${key.plaintext}`);
-console.log(`  share link:\n    /r/${latest.runId}?share=${shareToken}`);
+console.log(`  share link:\n    /r/${hero.runId}?share=${shareToken}`);
 console.log("\n  NORMA_DEV_OPEN=1 must be set for the /repos pages to answer at all.");
+
+// ---------------------------------------------------------------------------
+// And the real one, beside it.
+// ---------------------------------------------------------------------------
+//
+// Four runs that actually happened, with the images and numbers `norma-scope`
+// recorded at the time. It is a separate organization for the reason the label
+// above exists at all: this tenant's name says "(sample data)", and stamping
+// that on a measurement is Doctrine 2 pointed backwards.
+//
+// Seeded here rather than left to a second command so a walkthrough always has
+// both — invented history deep enough to show what trends do, and real runs to
+// show that any of it is true. `seed-real.mjs` carries the reasoning, including
+// why its credit ledger is deliberately empty.
+const { seedRealRuns, printRealSummary } = await import("./seed-real.mjs");
+const real = await seedRealRuns(db, storage, { reset: true });
+if (real?.rebuilt) {
+  printRealSummary(real);
+}
 
 await db.close();

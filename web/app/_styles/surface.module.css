@@ -313,3 +313,144 @@
 .endorsement {
   flex: none;
 }
+
+/* ---------- explainers ----------
+ *
+ * The "?" beside a number and the bubble it opens. `_components/cloud/explainer.tsx`
+ * carries the reasoning; this is the part that has to survive three grounds and
+ * two positioning models.
+ *
+ * **Everything is a token.** The bubble renders in the top layer, which is
+ * outside the element that carries `data-theme` — but custom properties inherit
+ * through the *DOM* tree, not the layout tree, and the popover's DOM parent is
+ * still inside `.surface`. So the tokens resolve for the theme in force. Hard
+ * colours here would be right in light and wrong in dark, and the top layer is
+ * exactly where nobody would look for the cause.
+ */
+
+.explainer {
+  display: inline-flex;
+  vertical-align: baseline;
+  margin-left: 5px;
+}
+
+.explainerTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--frame-bg);
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  /* An icon-sized control is an easy one to miss on a phone. The button stays
+     15px to the eye and 24px to a finger. */
+  position: relative;
+}
+
+.explainerTrigger::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.explainerTrigger:hover {
+  border-color: var(--clay);
+  background: var(--clay);
+  color: var(--card);
+}
+
+.explainerTrigger:focus-visible {
+  outline: 2px solid var(--clay-deep);
+  outline-offset: 2px;
+}
+
+/*
+ * The bubble.
+ *
+ * These declarations are the *fallback* as much as the base: a browser with no
+ * anchor positioning applies exactly this and gets a centred card, because the
+ * UA stylesheet already centres a popover with `inset: 0; margin: auto`.
+ */
+.explainerBubble {
+  display: none;
+  max-width: min(30rem, calc(100vw - 32px));
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  /*
+   * Typography is reset, not merely set.
+   *
+   * A popover lives in the top layer but inherits down the *DOM* tree, and every
+   * "?" on this page hangs off a label that has been styled to shout: stat
+   * labels are `text-transform: uppercase` with tracking, table headers are
+   * centred, the frame-nav label is small caps. Without these four the bubble
+   * renders its definition in whatever voice its neighbour uses — which is how
+   * the first version of this shipped a paragraph in all caps.
+   *
+   * The `font` shorthand above resets size, weight and family. It does not touch
+   * any of these.
+   */
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  text-align: left;
+  /* A frame label can be one 400-character word. The bubble is not the place to
+     find that out. */
+  overflow-wrap: anywhere;
+}
+
+.explainerBubble:popover-open {
+  display: block;
+}
+
+.explainerTerm {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clay-deep);
+}
+
+.explainerDef {
+  display: block;
+  color: var(--ink-soft);
+}
+
+/*
+ * Anchored to the button that opened it, where the browser can do that.
+ *
+ * `popovertarget` creates the implicit anchor reference, so no `anchor-name` is
+ * needed — which matters, because a name would have to be unique per instance
+ * and a CSS module cannot generate one without an inline style.
+ *
+ * `position-try-fallbacks` handles the two edges: a "?" near the bottom of the
+ * viewport flips the bubble above the button, and one near the right edge flips
+ * which side it spans. Without them a popover at the foot of a long report opens
+ * off-screen.
+ */
+@supports (position-area: block-end) {
+  .explainerBubble {
+    position-area: block-end span-inline-end;
+    position-try-fallbacks:
+      block-start span-inline-end,
+      block-end span-inline-start,
+      block-start span-inline-start;
+    margin: 6px 0 0;
+    max-width: min(23rem, calc(100vw - 32px));
+    width: max-content;
+  }
+}

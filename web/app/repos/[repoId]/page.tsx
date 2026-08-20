@@ -12,6 +12,7 @@ import {
 import { getDb } from "../../../lib/db";
 import { readTheme } from "../../../lib/theme";
 import { CloudFooter, CloudMasthead } from "../../_components/cloud/cloud-shell";
+import { Explainer } from "../../_components/cloud/explainer";
 import { Sparkline } from "../sparkline";
 import styles from "../trends.module.css";
 
@@ -105,16 +106,19 @@ export default async function RepoPage({
         />
 
         <div className={styles.stats}>
-          <Stat value={String(overview.totalRuns)} label="Runs" />
-          <Stat value={String(overview.frames.length)} label="Frames" />
+          <Stat value={String(overview.totalRuns)} label="Runs" explain="run" />
+          <Stat value={String(overview.frames.length)} label="Frames" explain="frame" />
           {/*
             Frames whose *own* most recent run flagged them — not the flagged
             count of the newest run, which is a different number whenever a
-            frame was skipped. The label says which one it is.
+            frame was skipped. The label says which one it is, and now the "?"
+            says it again in the one place a reader who doubts the number will
+            look.
           */}
           <Stat
             value={String(flaggedNow)}
             label="Frames flagged now"
+            explain="flagged-now"
             tone={flaggedNow > 0 ? styles.danger : styles.success}
           />
         </div>
@@ -124,10 +128,14 @@ export default async function RepoPage({
         {overview.frames.length > 0 && (
           <section className={styles.section}>
             <div className={styles.sectionHead}>
-              <h2 className={styles.sectionTitle}>Frames</h2>
+              <h2 className={styles.sectionTitle}>
+                Frames
+                <Explainer term="frame" scope="frames" />
+              </h2>
               <p className={styles.sectionNote}>
                 Up to the last {SPARK_POINTS} runs of each frame, oldest first. Open one for its
                 full trend.
+                <Explainer term="sparkline" scope="frames" />
               </p>
             </div>
             <div className={styles.frames}>
@@ -159,11 +167,26 @@ export default async function RepoPage({
   );
 }
 
-function Stat({ value, label, tone }: { value: string; label: string; tone?: string }) {
+function Stat({
+  value,
+  label,
+  tone,
+  explain,
+}: {
+  value: string;
+  label: string;
+  tone?: string;
+  /** Glossary key. Named to match `CloudMasthead` and `Fact`, so one rule finds
+      every component that forwards a term to an `<Explainer>`. */
+  explain?: string;
+}) {
   return (
     <div className={tone ? `${styles.stat} ${tone}` : styles.stat}>
       <span className={styles.statValue}>{value}</span>
-      <span className={styles.statLabel}>{label}</span>
+      <span className={styles.statLabel}>
+        {label}
+        {explain && <Explainer term={explain} scope="repo" />}
+      </span>
     </div>
   );
 }
@@ -195,18 +218,33 @@ function Runs({ overview }: { overview: RepoOverview }) {
   return (
     <section className={styles.section}>
       <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>Runs</h2>
-        <p className={styles.sectionNote}>Newest first. Pending uploads are not listed.</p>
+        <h2 className={styles.sectionTitle}>
+          Runs
+          <Explainer term="run" scope="runs" />
+        </h2>
+        <p className={styles.sectionNote}>
+          Newest first. Pending uploads are not listed.
+          <Explainer term="pending-run" scope="runs" />
+        </p>
       </div>
       <div className={styles.tableWrap}>
         <table className={styles.runs}>
           <thead>
             <tr>
-              <th>Commit</th>
+              <th>
+                Commit
+                <Explainer term="commit" scope="runs" />
+              </th>
               <th>Branch</th>
               <th>When</th>
-              <th className={styles.num}>Compared</th>
-              <th className={styles.num}>Flagged</th>
+              <th className={styles.num}>
+                Compared
+                <Explainer term="frames-compared" scope="runs" />
+              </th>
+              <th className={styles.num}>
+                Flagged
+                <Explainer term="flagged" scope="runs" />
+              </th>
               <th />
             </tr>
           </thead>

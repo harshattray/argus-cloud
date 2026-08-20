@@ -28,6 +28,8 @@
     "sweep-uploads": "npm run build && node scripts/sweep-uploads.mjs",
     "seed:dev": "npm run build && node scripts/seed-dev.mjs",
     "seed:demo": "npm run build && node scripts/seed-demo.mjs",
+    "seed:real": "npm run build && node scripts/seed-real.mjs",
+    "capture:cloud": "node scripts/capture-cloud-screens.mjs",
     "schema-drift": "npm run build && node scripts/schema-drift.mjs",
     "adopt-schema": "npm run build && node scripts/adopt-schema.mjs",
     "calibrate:hosted": "npm run build && node scripts/calibrate-hosted.mjs"
@@ -48,6 +50,7 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
+    "playwright-core": "^1.62.1",
     "typescript": "^7.0.2"
   },
   "dependencies": {

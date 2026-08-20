@@ -675,6 +675,42 @@
   flex-wrap: wrap;
 }
 
+/*
+ * A control and its "?" wrap as one thing.
+ *
+ * `.controls` wraps, and a bare `<Explainer>` beside a button is a flex item in
+ * its own right — so at a narrow width the three question marks broke onto the
+ * next line together and sat under the row, three orphans belonging to nothing.
+ * Grouping is what ties each one to the control it explains.
+ */
+.controlGroup {
+  display: inline-flex;
+  align-items: center;
+  /* Zero, not the row's gap: `.explainer` carries its own 5px left margin, and
+     adding the row's 8-9px on top would space a "?" further from its control
+     than that control is from its neighbour. */
+  gap: 0;
+}
+
+/*
+ * The label above the Explain row.
+ *
+ * The row used to open with an unlabelled password field, so the first thing a
+ * reader met was a box asking for a key with no statement of what pressing the
+ * button next to it would do or cost. The heading also gives the credits
+ * definition somewhere to hang that is not a fourth item in the button row.
+ */
+.controlsHead {
+  display: flex;
+  align-items: center;
+  margin: 18px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
 .input {
   background: var(--frame-bg);
   color: var(--ink);

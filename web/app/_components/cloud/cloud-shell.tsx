@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import type { Theme } from "../../../lib/theme";
 import { YuticEndorsement } from "../YuticEndorsement";
+import { Explainer } from "./explainer";
 import { ThemeSwitch } from "./theme-switch";
 import styles from "../../_styles/surface.module.css";
 
@@ -40,6 +41,7 @@ export function CloudMasthead({
   meta,
   theme,
   path,
+  explain,
 }: {
   title: string;
   crumbs?: Crumb[];
@@ -48,6 +50,12 @@ export function CloudMasthead({
   theme: Theme | null;
   /** Where the theme switch should send the viewer back to. */
   path: string;
+  /**
+   * Glossary key for a "?" beside the page title — what *kind of thing* this
+   * page is showing. Pages whose title is a customer's own frame or repository
+   * name pass nothing: explaining "demo-storefront" is not a thing this can do.
+   */
+  explain?: string;
 }) {
   return (
     <header className={styles.masthead}>
@@ -77,7 +85,10 @@ export function CloudMasthead({
         </nav>
       )}
 
-      <h1 className={styles.title}>{title}</h1>
+      <h1 className={styles.title}>
+        {title}
+        {explain && <Explainer term={explain} scope="page" />}
+      </h1>
       {meta && <p className={styles.runmeta}>{meta}</p>}
     </header>
   );

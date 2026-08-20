@@ -1915,6 +1915,155 @@ dogfooded history on a deployed instance, per FUTURENORMA §4.
 
 ---
 
+### 3w. Explainers, a real tenant, and a screenshot set ✅ (2026-08-20)
+
+Three things, from Harsha's review of the Cloud pages. A fourth — a "generated
+by *username*" line in the report header — was **deferred to Step 6 by decision
+on the same day**; the reasoning and the settled policy are in `PATHWAYS.md`
+Pathway 5.
+
+**Every number on a Cloud page can now explain itself.** A small "?" beside each
+figure opens a plain-language definition: 103 of them on a seven-frame report,
+covering the stat strip, each frame's aligned mismatch / SSIM / mode, the meter,
+the history facts, both charts and their legends, the findings' confidence and
+region, the Explain prices, the share panel, and every column header on both
+tables.
+
+The text is not written in the pages. It comes from `web/lib/glossary.ts`, which
+the public `/report` page already prints as a list — so the definition a prospect
+reads before signing up is the one they read afterwards. Cloud-only words
+(history, first drift, recurrence, credits, share links) live in a second export,
+because `/report` documents the *local* HTML report and a local run has none of
+those things.
+
+Three constraints shaped the implementation, in this order:
+
+| Constraint | What it ruled out | What it left |
+|---|---|---|
+| No client JavaScript on `/repos/` — §3v claims exactly that | a `useState` tooltip, which would put a hydration boundary around a chart that currently arrives in the first byte | the native HTML popover: `popovertarget` on a plain `<button>`. The browser supplies the top layer, light dismiss, Escape and focus handling, and ships nothing to do it |
+| No new inline styles — `style-src-attr 'unsafe-inline'` is a carried-forward item, not an invitation | positioning from a `style` attribute; also `anchor-name`, which would need to be unique per instance and so could only come from one | CSS anchor positioning off the popover's *implicit* anchor, behind `@supports`, with the UA's centred popover as the fallback |
+| `.card` is `overflow: hidden` and `.tableWrap` scrolls | a positioned `<div>`, which would be clipped in a card and drag a scrollbar in a table header | the top layer, which escapes both |
+
+Two defects found by opening the page rather than by a test:
+
+- **The definitions rendered in capitals.** A popover sits in the top layer but
+  inherits down the *DOM*, and every trigger hangs off a label styled
+  `text-transform: uppercase` with tracking. The `font` shorthand resets size,
+  weight and family and touches neither of those.
+- **Three "?" wrapped away from their buttons.** `.controls` and `.findingHead`
+  are wrapping flex rows, and a bare explainer is a flex item in its own right —
+  so at a narrow width the question marks broke onto the next line together and
+  sat under the row belonging to nothing. Each is now grouped with what it
+  explains. The Explain row also gained a **"Hosted AI"** heading, because it
+  previously opened with an unlabelled password field.
+
+**`npm run seed:real` — a second tenant, and every number in it is a
+measurement.** Ten runs that actually happened, read out of the summaries
+`norma-scope` wrote at the time: the portfolio capture in `norma-bridge-usecase/`
+and cases 01, 02 (six scenarios), 03 and 05 in `test-run/`. 59 frame rows, 151
+images, 22.3 MB, and the 11 real Sonnet 5 findings from case 03 — including the
+two that turned out wrong and the `injection-suspected` one.
+
+It is a **separate organization** from the demo tenant, and it is the same rule
+that names that one. `DEMO — … (sample data)` exists so nobody mistakes an
+invented figure for a measurement; `REAL — Normascope's own runs (measured)`
+exists so nobody stamps "(sample data)" on a figure that is one. `seed-demo`
+builds both, so a walkthrough has invented history deep enough to show what
+trends do and real runs to show that any of it is true.
+
+Four things it deliberately does not do:
+
+- **No `usage_events`.** Case 03 was a real billed call — 3,753/409 on Haiku
+  4.5 and 6/3,772/2,696 on Sonnet 5 — but that spend went through the CLI
+  against a personal key, before the hosted meter existed. There is no per-frame
+  breakdown and the printed estimate used the Sonnet price since corrected
+  (§3s). A hosted usage row would claim this system metered that call. The
+  balance sits at a full 500 and the ledger is empty.
+- **No invented provenance.** One run carries a branch — case 05, whose README
+  records `demo/normascope-visual-verification` — and no run carries a commit
+  SHA, because none of them recorded one. An earlier draft put `main` on three
+  runs and a different, plausible branch on case 05, contradicting the README
+  two directories away.
+- **Nothing computed.** `flagged`, the percentages, SSIM, mode and source are
+  copied from the summary, never recomputed. V2.2 re-reads all 59 rows against
+  their source files.
+- **Case 02's scenarios are their own repository.** Each is an independent
+  one-line change measured against the same baseline and reverted — six
+  experiments, not six commits. Joined into one history the trend line climbs to
+  87% and falls back to 0.4%, which reads as "it broke and somebody fixed it"
+  and is a story about a codebase that never existed.
+
+> **Real data found a real bug in a page that had shipped.** The diff overlay
+> keyed its region boxes on `x,y,w,h` — unique until two findings name the same
+> rectangle, which case 03's `norma-hero.png` does: an `injection-suspected`
+> finding and a `layout` finding on the identical box. React saw duplicate keys
+> and reserved the right to drop one of the overlays. Keyed on position now,
+> which is also what the highlight compares against.
+
+**`npm run capture:cloud` — the pages, both themes, one command.** 20 shots into
+`docs/screenshots/cloud/` with a generated manifest: repository view, frame
+trend, a flagged run report, a clean one, a definition open, and the share view,
+each in light and dark. Playwright driving the Chrome already on the machine —
+`playwright-core`, no 150 MB browser download.
+
+They go to `docs/`, **not** `web/public/`: anything under `public/` is served by
+the deployed site at a guessable URL, and these are pictures of a surface that
+404s in production. Moving a chosen one into `web/public/screens/` is a
+deliberate act for a page that will display it.
+
+Four things the first version got wrong, each fixed and each recorded because
+they are the ways an automated screenshot lies:
+
+| It did this | Why | Now |
+|---|---|---|
+| Wrote sixteen screenshots of "Not found" without complaining | File-backed PGlite is one writer. Seeding while the dev server holds `.pgdata` leaves the script reading new ids off disk and the server serving old ones | Reads the `<h1>` and exits 1 with the cause. A file named `real-run-report-light.png` containing "Not found" is worse than no file |
+| Photographed a lone "Difference" pane | "Most images" picked case 03 — seven diff overlays, no captures — over a run with all three kinds | Distinct kinds decide it; volume only breaks the tie |
+| Named a file `-flagged` showing zero flagged frames | The best run was chosen for completeness and named for intent | The name says what the picture contains |
+| Charted `cart.png`, the frame seeded deliberately flat | Every demo frame has twelve runs, so alphabetical order broke the tie | Longest history, then the one that has actually moved |
+
+**The demo tenant's hero run moved, for the same reason.** Its images, findings
+and share link were attached to the *newest* storefront run — week 12, where the
+regression has been fixed and `home.png` reads 0.02%. So the one fully-furnished
+demo report showed a frame marked "pass" carrying a high-confidence finding about
+a missing background, and no Explain buttons, because the page only offers those
+on a flagged frame. They now hang off the last run where `home.png` is over its
+threshold, inside the regression the series was written to tell.
+
+**Evidence.** `test/explainers.test.mjs` (31 checks) and
+`test/realSeed.test.mjs` (21). Suite totals: **930 on PGlite, 958 against a real
+Postgres server**, across 30 suites.
+Guards watched failing before being trusted:
+
+| Break | Went red |
+|---|---|
+| `text-transform: none` and `letter-spacing: normal` dropped from the bubble | X3.1, X3.2, X3.1b |
+| One term misspelled in a page | X2.2, naming the file |
+| A per-frame explainer's `scope` removed | X2.4 |
+| `branch: "main"` invented on runs that recorded none | V2.4 |
+| `flagged` recomputed as `pct > threshold` instead of copied | V2.5b |
+| A capture directory renamed | V1.1 |
+
+Checked in a browser in both themes: 103 triggers and 103 popovers on the real
+seven-frame report, no duplicate ids, no unresolved targets, anchor positioning
+active, and a bubble opening flush under its trigger.
+
+**What this does not prove.** Same standing as §3u and §3v — seeded data on a
+laptop, `/repos/` still 404s in production. Two limits specific to this work:
+
+- **The suite cannot render React.** It checks the glossary, the ids, the CSS
+  reset, the `@supports` split and the absence of client components; it cannot
+  show a bubble appearing in the right place. That was a browser check and is
+  recorded as one.
+- **X2.2's scan is static.** Five terms are reached through an expression and
+  are listed by hand in the suite. A sixth would not be covered — X2.6 fails if
+  the count grows, which converts a silent gap into a failing check.
+- **V2.5b is a counter-test that does not bite, and says so.** Recomputing
+  `flagged` instead of copying it agrees on all 59 rows, because no recorded
+  value sits exactly on its threshold. The check asserts the code rather than
+  the data, and the output states which half is real.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
