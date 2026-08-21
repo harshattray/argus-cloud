@@ -216,6 +216,49 @@ R2 leg has never carried a real artifact**, and nothing is deployed. See
 > The one rule that outlives the preview: new Cloud features belong in
 > `argus-cloud/web/`, never in the portfolio repo.
 
+### The two environments, and what is separate between them — 2026-08-21
+
+There are now two deployments, and **every piece of state one of them touches is
+its own.** That is the whole design; a preview sharing anything with production
+is a preview that can damage it.
+
+| | Production | Preview |
+|---|---|---|
+| Host | `normascope.com` (serves on `www`, apex 308s to it) | `preview.normascope.com` |
+| Branch | `main` | **`staging`** — pinned as the domain's git branch |
+| Database | Neon `main` | Neon **`staging`**, a schema-only branch with its own rows |
+| GitHub OAuth | its own app | **a separate app**, so a leaked preview secret reaches nothing |
+| `AUTH_SECRET` | its own | its own, different |
+| R2 | `normascope-cloud` | its own bucket and credentials |
+| Reachable by | anyone | **Vercel Authentication (Standard Protection)** |
+
+**`NEXT_PUBLIC_SITE_URL` must be the preview's own host on Preview.** Left as
+production, the preview's sign-in links point at production — where the token it
+minted does not exist — and the sign-in page cannot tell the two apart, so the
+failure is silent. `GITHUB_OAUTH_REDIRECT_URI` exists for the same reason and is
+deliberately *not* the same fact: the redirect URI is an address registered with
+a third party, the site URL is a canonical marketing address, and they coincide
+on production only by accident.
+
+**Nothing that is not production may be indexed.** Vercel stamps a noindex on
+its own `*.vercel.app` URLs and does *not* do it for a custom name, so
+`robots.ts` closes any non-production deployment to crawlers and `middleware.ts`
+stamps `X-Robots-Tag` on every response there. Without both, the preview would
+be a fully indexable copy of the site competing with the real one on unreleased
+copy.
+
+**Two scripts exist because three connection strings do.** Vercel marks the
+database URLs Sensitive, so neither can be read back to compare:
+`scripts/db-identity.mjs` asks a database which one it is **without writing to
+it** — including whether the deployment you were just clicking through wrote
+there — and `scripts/grant-access.mjs` names the database it acted on rather
+than guessing a site URL. The mistake both exist to prevent is provisioning an
+organization into production while believing it is staging.
+
+`scripts/golive-check.mjs` grades either deployment over the wire and **refuses
+to run** when something is standing in front of one, rather than reporting on
+whatever answered.
+
 ### What the preview did
 
 Upload a `summary.json` (optionally with `report.html`, stored in R2) → browse

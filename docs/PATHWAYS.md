@@ -2233,6 +2233,47 @@ a React text node like everything else on that page. And the column has to
 tolerate runs that predate it: the header simply omits the line, the way it
 already omits a branch or a commit that was never recorded.
 
+#### Standing up a preview environment — the order that matters
+
+Done 2026-08-21 for `preview.normascope.com`. Written down because half of these
+steps only reveal themselves by being skipped, and the failures are quiet.
+
+1. **Vercel first, DNS second.** Add the domain, pin its **Git Branch** to
+   `staging`, then create the CNAME with the value Vercel displays — it is
+   project-specific and not the one an existing subdomain uses. Lower the TTL
+   while getting it right.
+2. **A separate OAuth app**, not a second redirect URI on production's. A leaked
+   preview secret then reaches nothing. Never enable GitHub's wildcard redirect
+   matching to cover previews: `https://*.vercel.app/…` would let any Vercel app
+   in the world receive our authorization codes.
+3. **Set `NEXT_PUBLIC_SITE_URL` to the preview's own host.** Left as production,
+   the preview mails sign-in links pointing at production, where the token does
+   not exist — and the generic response means nobody can tell.
+4. **Set `GITHUB_OAUTH_REDIRECT_URI`** to the preview's callback. It is a
+   separate fact from the site URL and only coincides on production.
+5. **Every secret is per-environment in Vercel.** `AUTH_SECRET` set for
+   Production only means the preview boots, renders `/login`, and throws on the
+   first POST — the page short-circuits before the database when there is no
+   session cookie, so rendering proves nothing.
+6. **Lower the preview's email budget** (`AUTH_EMAIL_DAILY_BUDGET`). The ceiling
+   is per-database, so two environments each get their own — and they share one
+   Resend account, whose free plan caps the day at 100. Two independent 50s
+   exhausts it, and production is what starts failing.
+7. **Its own storage bucket and credentials.** Both environments run retention
+   sweeps, organization deletion and the abandoned-upload sweeper, and all three
+   delete objects. A shared bucket puts production bytes within reach of a
+   preview bug.
+8. **Redeploy.** Environment changes do not reach an existing deployment.
+9. **Check it over the wire**, not by reading settings:
+   `VERCEL_AUTOMATION_BYPASS_SECRET=… node scripts/golive-check.mjs https://…`
+
+**Deployment protection and the auth flows.** Vercel Authentication intercepts
+every path with a redirect to `vercel.com/sso-api` carrying the original URL —
+including an OAuth `code` or a sign-in token — in a query parameter. A browser
+holding the bypass cookie is never intercepted, so unlocking the browser once
+keeps credentials off that path entirely; the cookie is per-browser, so a link
+opened on a second device lands on the login page instead.
+
 #### Re-branching staging — the step that is not obvious
 
 A Neon **schema only** branch copies table structures and **no rows**. That

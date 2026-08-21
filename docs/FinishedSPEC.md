@@ -2739,6 +2739,43 @@ token; `/login` and both callbacks carry `Referrer-Policy: no-referrer` and
 `no-store`; verified against a production build — strict nonce CSP, 14 of 14
 scripts nonced, and the session cookie invisible to page JavaScript.
 
+**The tooling this needed, and why each piece exists.** None of it was planned;
+each came from a specific way that deploying went wrong.
+
+| Added | The failure it answers |
+|---|---|
+| `golive-check` **L9** (15 checks) | The session layer as *deployed*: `/login` under the strict nonce policy with `no-referrer` and `no-store`, `/repos` redirecting signed out, the sign-in endpoint refusing no-origin and cross-origin, a dead link setting no cookie, and the GitHub start route's `redirect_uri` — plus a fetch of the registered callback proving nothing in front of it drops the query string |
+| `golive-check` **L10** | A deployment gaining storage credentials without its CSP gaining the origin. `/r/` then renders every screenshot blocked, with no error and nothing red — this repo's most expensive shipped bug |
+| `golive-check` refusal guard | Pointed at a protected preview it followed the SSO redirect and graded **vercel.com**, reporting `L9.1 PASS /login responds 200`. It does; Vercel has a `/login` |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Checking a preview that should stay private |
+| `scripts/db-identity.mjs` | Two Neon branches are indistinguishable by schema. It identifies one by **traffic** — `auth_events` is written by a sign-in and nothing else — and only reads |
+| `scripts/grant-access.mjs` | Owner claims and invitations before there is a checkout to make them |
+
+**Four defects the first real deployment found, none findable from a test:**
+
+1. **The check script graded the wrong host** and said `PASS` about it. Its
+   replacement guard then refused to run *while holding a working secret*,
+   because the canonical probe was a plain `fetch` that never carried the bypass
+   header — the one request that decides where every later request goes.
+2. **`/login` swallowed the refusal.** A GitHub link refused for an
+   already-signed-in person redirected there with `?error=link`, was bounced
+   onward by the already-signed-in redirect, and landed back on `/repos` looking
+   exactly like success.
+3. **Sign-out had no control.** Both routes were built and tested and no page
+   reached either, so a ninety-day session had no exit.
+4. **`grant-access.mjs` named production** for a claim written to staging,
+   because it fell back to the production default whenever
+   `NEXT_PUBLIC_SITE_URL` was unset — which is always, on a laptop.
+
+**And one that had been shipping since the first waitlist confirmation:** both
+email templates referenced `.svg` marks, and **Gmail does not render SVG at
+all**. Every message either template has ever sent showed a broken image and
+blue underlined alt text where the wordmark should be. Both now draw in one
+shell (`src/emailLayout.ts`) with PNG marks served from a fixed public origin —
+never the sending deployment, whose own assets sit behind deployment protection
+and answer a mail client's image proxy with a login page. `E5` was narrowed to
+links and `E5b` added for images, so a revert of that decision fails.
+
 **Not done, and not claimed:**
 
 - ~~**The GitHub round trip has never touched github.com.**~~ **Closed
