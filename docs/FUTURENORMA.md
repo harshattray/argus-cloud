@@ -16,10 +16,18 @@ claim is proven the only way it can be: **20 separate processes against one
 budget of 5 authorise exactly 5**, while the naive per-process counter run
 through the same harness authorises all 20. `FinishedSPEC.md` §3aa.
 
-**What is not built, and is not claimed:** the two consoles, the account pages,
-deletion UI and privacy controls — the rest of Step 6. The GitHub round trip has
-never touched github.com (it needs a registered OAuth app), and no invitation
-email is sent yet.
+**Both sign-in methods are proven on a deployment, not a laptop.** A magic link
+went through Resend to a real inbox, was clicked, consumed its owner claim and
+opened the organization; GitHub authorization completed against github.com and
+was **refused** for an unlinked account, which is the correct answer and the
+proof that every step before the rule ran for real. `preview.normascope.com`
+runs `staging` against its own Neon branch, and `scripts/golive-check.mjs`
+grades it over the wire.
+
+**What is not built, and is not claimed:** the two consoles, the account pages
+(including linking a GitHub identity to an existing session, without which the
+GitHub button is unreachable once signed in), deletion UI, privacy controls, and
+the invitation email — the rest of Step 6.
 
 Before that, **2026-08-21** — **Step 5 is done. Phase J is closed.** R2 exists
 (bucket `normascope-cloud`, private, Eastern North America beside the

@@ -2646,7 +2646,8 @@ Pathway 5 and §10.7 5A.1–5A.13. Harsha closed Open decision 4 the same day:
 | `npm audit`, production deps | ✅ **0** |
 | New suites | `auth` (101 checks) and `authAbuse` (63 on PGlite, **67** on real Postgres — the four extra are the 20-process budget test and its counter-test, which PGlite cannot run) |
 | Migration range | `001`–`021`; `021_auth_sessions.sql` adds sessions, identities, login tokens, invitations, owner claims, the throttle and the auth audit log, plus `orgs.owner_user_id` |
-| The whole loop in a browser | ✅ unclaimed organization → link requested → link clicked → owner claimed → `/repos` renders the tenant, cookie invisible to page script, replayed link refused |
+| The whole loop in a browser | ✅ **on a deployment, 2026-08-21** — `preview.normascope.com`, a Neon staging branch, Resend, and a real inbox. Unclaimed organization → link requested → emailed → clicked → claim consumed → owner installed → `/repos` renders the tenant. `auth_events` carries the sequence: `magic-link-sent allowed`, `owner-claimed allowed`, `magic-link-consumed allowed` |
+| **The GitHub round trip, against github.com** | ✅ **2026-08-21 — no longer stubbed.** `github-started allowed` then `github-refused (no-linked-account)`: state verified, the code exchanged with GitHub, the profile and *verified* emails fetched, and the no-silent-merge rule applied to refuse an unlinked account. **The refusal is the pass** — §10.7 5A.7 makes a matching address evidence for a link flow and not permission to merge two users. Everything before the rule had only ever run against an injected `fetch` |
 
 **The claim that needed real processes.** A global daily email budget held in
 process memory is not a global anything — the platform decides how many
@@ -2740,10 +2741,13 @@ scripts nonced, and the session cookie invisible to page JavaScript.
 
 **Not done, and not claimed:**
 
-- **The GitHub round trip has never touched github.com.** The exchange, the
-  state check and the account matching are proven against an injected `fetch`.
-  A registered OAuth app is Harsha's to provide — `Blocked` in the sense
-  CLAUDE.md means, an account rather than missing local software.
+- ~~**The GitHub round trip has never touched github.com.**~~ **Closed
+  2026-08-21** — a separate preview OAuth app, `GITHUB_OAUTH_REDIRECT_URI`
+  pointing at the preview's own callback, and a real authorization completed
+  from a browser. Two defects surfaced on that first run and neither was
+  findable from a test: `/login` swallowed the refusal message for an
+  already-signed-in person, and the sign-out route had been built with no
+  control on any page reaching it.
 - **No invitation email is sent.** `scripts/grant-access.mjs` prints the link.
   The send belongs with the organization console's invite form and will use the
   `invite_org_day` / `invite_address_day` ceilings, which are built and tested.
