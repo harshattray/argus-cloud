@@ -60,11 +60,18 @@ export default async function LoginPage({
   const destination = safeNext(next, AFTER_SIGN_IN);
 
   const session = await currentSession();
-  if (session) {
+  const message = error ? (ERRORS[error] ?? null) : null;
+
+  // Signed in and nothing to say: they do not need a sign-in form.
+  //
+  // **Signed in *with* something to say: say it.** Redirecting unconditionally
+  // swallowed the one case that matters — a GitHub link refused for an
+  // already-signed-in person bounced through here and landed back on /repos
+  // looking exactly like success. The refusal is correct and the silence was
+  // not: somebody would click it three times and never learn why.
+  if (session && !message) {
     redirect(destination);
   }
-
-  const message = error ? (ERRORS[error] ?? null) : null;
   const githubHref = `/api/auth/github/start?next=${encodeURIComponent(destination)}`;
 
   return (
@@ -77,10 +84,11 @@ export default async function LoginPage({
           <img className={styles.onDark} src="/normascope-cloud-light.svg" alt="" aria-hidden="true" width={140} height={44} />
         </span>
 
-        <h1 className={styles.title}>Sign in</h1>
+        <h1 className={styles.title}>{session ? "That didn't work" : "Sign in"}</h1>
         <p className={styles.lede}>
-          Normascope Cloud is for organizations with a subscription. If you were invited, use the address the
-          invitation was sent to.
+          {session
+            ? "You're still signed in — nothing has changed about your session."
+            : "Normascope Cloud is for organizations with a subscription. If you were invited, use the address the invitation was sent to."}
         </p>
 
         {message && (
@@ -89,9 +97,17 @@ export default async function LoginPage({
           </p>
         )}
 
-        <SignInForm />
+        {/* No sign-in form for someone who is already signed in; the only thing
+            they need is the message above and the way back. */}
+        {session ? (
+          <a className={styles.secondary} href={destination}>
+            Back to your organization
+          </a>
+        ) : (
+          <SignInForm />
+        )}
 
-        {githubConfigured() && (
+        {!session && githubConfigured() && (
           <>
             <div className={styles.divider}>or</div>
             {/* A link, not a form: the start route is a GET that only issues a
@@ -103,10 +119,12 @@ export default async function LoginPage({
           </>
         )}
 
+        {!session && (
         <p className={styles.footnote}>
           No account? Normascope Cloud is invitation and subscription only —{" "}
           <a href="/cloud">read what it does</a> or ask the person who set up your organization.
         </p>
+        )}
       </main>
     </div>
   );
