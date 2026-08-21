@@ -75,8 +75,23 @@ function check(id, condition, detail) {
  */
 const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 
-/** The header every request here sends, probe included. */
-const bypassHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+/**
+ * The preview phrase, for a deployment behind this repo's own gate.
+ *
+ * **Without it every check would pass against the unlock screen.** `get()`
+ * follows redirects, so a gated `/login` lands on `/unlock` and answers 200 —
+ * and `L9.1 PASS /login responds 200` would be true of a page that is not
+ * `/login`. That is the same failure as grading `vercel.com`, except it never
+ * leaves the domain, so the registrable-domain guard cannot see it.
+ *
+ * Supplied, the script unlocks itself once and carries the cookie, exactly as a
+ * person's browser does. Absent, the guard below refuses to report.
+ */
+const previewPhrase = process.env.PREVIEW_PASSWORD?.trim();
+
+/** Headers every request here sends, canonical probe included. */
+const sharedHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+const bypassHeaders = sharedHeaders;
 
 let canonical = origin;
 try {
@@ -102,7 +117,62 @@ async function get(pathname, init) {
   return record;
 }
 
+/**
+ * Unlock the preview, the way a browser does, before anything is measured.
+ *
+ * One form post to the gate's own exchange, then the cookie rides on every
+ * later request. Done before the first `get()` so no check ever sees the
+ * unlock screen.
+ */
+if (previewPhrase) {
+  const unlocked = await fetch(`${canonical}/api/preview-unlock`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      ...sharedHeaders,
+      "content-type": "application/x-www-form-urlencoded",
+      // The gate refuses a cross-origin post, which is the CSRF half
+      // `SameSite` does not cover. A script has to say who it is.
+      origin: canonical,
+      "sec-fetch-site": "same-origin",
+    },
+    body: new URLSearchParams({ password: previewPhrase }).toString(),
+  }).catch(() => null);
+
+  const cookie = unlocked?.headers.get("set-cookie") ?? "";
+  const token = /np_preview=([^;]+)/.exec(cookie)?.[1];
+  if (!token) {
+    console.error(
+      `${canonical} refused the phrase in PREVIEW_PASSWORD.\n\n` +
+        "The gate answers a wrong phrase, an unset one and a throttled attempt identically, so this\n" +
+        "cannot say which — check the value against Vercel's Preview environment, and that the\n" +
+        "deployment carrying the gate has actually been deployed.\n"
+    );
+    process.exit(2);
+  }
+  sharedHeaders.cookie = `np_preview=${token}`;
+  if (!quiet) {
+    console.log("note: unlocked the preview gate — checks below run against the site, not the unlock screen\n");
+  }
+}
+
 const home = await get("/");
+
+/**
+ * Stop when the deployment is answering with its own unlock screen.
+ *
+ * The registrable-domain guard below cannot see this: `/unlock` is on the same
+ * host, so nothing looks redirected. What gives it away is where the probe
+ * *landed*.
+ */
+if (home.landed === "/unlock") {
+  console.error(
+    `${canonical} is behind this repo's preview gate — every path lands on /unlock, so the checks\n` +
+      "below would describe that screen rather than the deployment. Set PREVIEW_PASSWORD to the\n" +
+      "phrase in Vercel's Preview environment and run this again.\n"
+  );
+  process.exit(2);
+}
 
 /**
  * Stop rather than report, when the canonical probe left the domain entirely.
