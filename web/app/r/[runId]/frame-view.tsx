@@ -21,11 +21,15 @@ import styles from "./report.module.css";
  * against this page rather than the one it replaced.
  *
  * **Images are plain `<img>` from presigned URLs, never `next/image`.** Decided
- * 2026-08-19: `next/image` runs bytes through `sharp`, and three high-severity
- * libvips advisories need attacker-chosen image bytes to matter. Uploaded
- * screenshots are exactly that. `security/audit-allowlist.json` records those
- * advisories on the stated ground that we do not do this, so a `next/image`
- * here would invalidate an accepted risk rather than merely change a renderer.
+ * 2026-08-19: `next/image` runs bytes through `sharp` to re-encode them, and a
+ * customer's screenshot is attacker-choosable bytes handed to a decoder written
+ * in C. The three libvips advisories that made this urgent are gone with the
+ * next 16 upgrade, but the reason is not — `sharp` still ships inside `next`,
+ * and the next advisory against it will arrive on a day nobody is looking.
+ *
+ * **The rule is enforced, not merely written here.** `test/reportPage.test.mjs`
+ * R8 scans this tree and `web/app/repos` for the import; R8.2b is the
+ * counter-test that proves the scanner can actually find one.
  */
 
 /** Past this, a capture is a full-page export and is scrolled, not squashed. */

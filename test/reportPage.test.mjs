@@ -20,9 +20,12 @@
 //   R5.3b — a presigned TTL taken from the default rather than the viewer's
 //           remaining access. It hands a 30-second share link image URLs that
 //           outlive it, so revocation is partial.
+//   R8.2b — the `next/image` scanner run over source that does import it. A
+//           scan whose passing state is "found nothing" is indistinguishable
+//           from a scan that cannot find anything.
 
 import { randomUUID, createHash, randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -404,6 +407,67 @@ const repoA = await makeRepo(orgA, "web");
       NORMA_STORAGE_ENDPOINT: "https://acct.r2.cloudflarestorage.com",
     }) === "https://normascope-cloud.acct.r2.cloudflarestorage.com",
     "virtual-hosted prefixes the bucket onto the endpoint host — and storage.test.mjs S5.7 checks that answer against the URL R2 actually signs");
+}
+
+// ═══ R8 — uploaded bytes never reach `sharp` ═══
+{
+  // **Why this arrived with the next 16 upgrade.** Until 2026-08-21 this rule
+  // was held by an entry in `security/audit-allowlist.json`: three high-severity
+  // `sharp` advisories were accepted on the stated ground that no uploaded image
+  // goes through `next/image`, and `audit-check.mjs` re-read that sentence on
+  // every run. Next 16 clears the advisories, so the entry had to go — and the
+  // rule it carried would have been left standing on a source comment alone.
+  // That is CLAUDE.md rule 1: a comment claiming an invariant is not the
+  // invariant.
+  //
+  // The rule outlives the advisory. `next/image` hands bytes to `sharp` to
+  // re-encode; a customer's screenshot is bytes we did not produce, and the
+  // optimiser is a decoder written in C. Decided 2026-08-19 (`PATHWAYS.md`
+  // §10.5 3A): artifacts render as a plain `<img>` from a short-lived presigned
+  // URL, so the application is not in the byte path at all.
+  const REPORT_TREES = ["web/app/r", "web/app/repos"];
+  const IMPORT = /from\s+["']next\/image["']|require\(\s*["']next\/image["']\s*\)/;
+
+  async function sourcesUnder(dir) {
+    const out = [];
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return out; // A tree that does not exist yet cannot violate the rule.
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...(await sourcesUnder(full)));
+      else if (/\.(tsx?|jsx?|mjs)$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  }
+
+  const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const offenders = [];
+  let scanned = 0;
+  for (const tree of REPORT_TREES) {
+    for (const file of await sourcesUnder(path.join(REPO, tree))) {
+      scanned++;
+      if (IMPORT.test(await readFile(file, "utf8"))) offenders.push(path.relative(REPO, file));
+    }
+  }
+
+  check("R8.1", scanned > 0, `the scan found source to read (${scanned} files under ${REPORT_TREES.join(", ")})`);
+  check("R8.2", offenders.length === 0,
+    offenders.length === 0
+      ? "no next/image anywhere the customer's own uploads are rendered"
+      : `next/image imported where uploads render: ${offenders.join(", ")}`);
+
+  // R8.2b — the counter-test, in the sense of CLAUDE.md rule 3. A pattern that
+  // never matches anything looks exactly like a tree that is clean, and this is
+  // a scan whose passing state is "found nothing".
+  check("R8.2b",
+    IMPORT.test('import Image from "next/image";') &&
+      IMPORT.test("const Image = require('next/image')") &&
+      !IMPORT.test('import { Screenshot } from "../_components/Screenshot";'),
+    "the scanner reports a real next/image import and does not report an ordinary one");
 }
 
 await rm(root, { recursive: true, force: true });

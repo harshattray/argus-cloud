@@ -2336,9 +2336,28 @@ is present.
 | J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request — **same caveat** |
 | J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
 | J3.4 upload from the private-preview org as a real `team` org | ✅ org provisioned, `canUpload=true` through the real entitlement path, 5 files uploaded |
-| J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
-| J2.3 delete a run then an org, prefixes empty **in the bucket** | ◐ the data now exists; the deletion has not been run |
-| J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+| J4 preview code retired | ✅ branch merged and **deployed**, 1131 lines deleted, 11 → 10 functions |
+| J2.3 delete a run then an org, prefixes empty **in the bucket** | ✅ proven against production R2 — see below |
+| J4 `norma_*` tables and `normascope-cloud-*` objects | ⊘ **left in place by decision, 2026-08-21** — see below |
+
+**J2.3, in two halves, because deletion has two ways to be wrong.**
+
+The first is deleting too much. `norma-scope@0.8.1` from npm re-uploaded the same
+run into the preview org: **5 files already stored, 0 re-sent** — content
+addressing, so a second run of identical artifacts costs no transfer and no
+storage. Two runs, ten artifact rows, **five distinct objects**, `bytes_stored`
+unchanged at 357,971. Deleting that second run removed 6 rows and **0 objects**,
+because every blob was still referenced by the run that stayed, and all five
+survived.
+
+The second is deleting too little — the expensive one, since bytes nobody can
+reach are bytes we keep paying for. A throwaway org uploaded a synthetic run of
+**random pixels**, deliberately unique so nothing could deduplicate onto blobs
+the preview org owns. Deleting it removed **3 objects, 4 rows, 336,714 bytes**;
+a re-check found 0 of 3 present, and a `deletePrefix` sweep over the whole org
+prefix returned **0** — the claim is that the bucket holds nothing under it, not
+that the keys we happened to record are gone. The org delete then took its row,
+and the preview org's five objects were untouched throughout.
 
 **The private preview uploaded a real run, and it is Harsha's own.** The
 portfolio's `.bridge/` holds a genuine comparison from 2026-07-31 — three frames,
@@ -2355,23 +2374,30 @@ refuses uploads from unpaid plans is the one control between "free" and the
 thing we charge for, and granting the preview an exception is the easiest way to
 stop testing it.
 
-**The deployment is ninety commits behind this branch, and that changes what the
-J3 results mean.** `main` is at `e42810d`, the website merge. Everything since —
-the rebuilt report page, trends, the Cloud shell, the storage origin in the CSP,
-and the Phase J checks above — is unreleased. So:
+**The deployment was ninety commits behind, and finding that out is what the
+upload was worth.** Before the merge, `main` was still at `e42810d` — the
+website merge — so the rebuilt report page, trends, the Cloud shell and the
+storage origin in the CSP had never been released. The shared report rendered
+the real numbers and served `img-src 'self' data:`, no R2 origin, because
+`src/storage/origin.ts` did not exist on `main`: every uploaded screenshot would
+have been blocked. That is precisely the failure S5.7 was written to catch,
+arriving by the one route S5.7 cannot see — the check was right, the code was
+right, and the deployment was old.
 
-- **J2.1 and J2.2 stand.** The suite ran this branch's code against the real
-  bucket, and bucket privacy is a property of R2 rather than of any build.
-- **J3.1, J3.2 and J3.3 describe `main`, not what we are about to ship.** They
-  are true of the live site and they do not prove the branch behaves the same.
-  They have to be re-run after a deploy.
+**Merged and deployed 2026-08-21 (PR #16), and re-verified after.** The live CSP
+now carries `https://normascope-cloud.<account>.r2.cloudflarestorage.com`, which
+also settles the case S5.7 had never exercised: **virtual-hosted addressing is
+what R2 signs, and it is what we declare.**
 
-**One consequence is already visible.** The shared report renders and carries the
-real numbers, but `img-src` on the live page is `'self' data:` — no R2 origin,
-because `storageImageOrigin` and `src/storage/origin.ts` do not exist on `main`.
-Every uploaded screenshot would be blocked by the policy. This is exactly the
-failure S5.7 was written to catch, arriving through the one route S5.7 cannot
-see: the check is correct, the code is correct, and the deployment is old.
+| Re-run against the new deployment | Result |
+|---|---|
+| `golive-check` L1–L8 | all pass, including the bucket probe |
+| `/repos/{unknown}` anonymously | the not-found state, no data |
+| The five presigned image URLs on the shared report | **all five serve** — 106426, 107017 and 87991 as `image/png`, 30833 and 25704 as `image/jpeg`, matching the database byte for byte |
+
+**Steps 3 and 4 are validated.** Their gates ask what a prospect can see; a
+prospect can now open a share link and see a real run of Harsha's own project,
+with its three captures, its numbers and its history, served from R2.
 
 **The timing is the evidence that it was R2 and not the local stand-in.** The
 storage suite takes 4.6s against MinIO on `localhost` and **71.3s** against
@@ -2423,20 +2449,188 @@ unconfirmed** — the check exists but that run has not been reported back.
 function count to fall from 11 to 7. Vercel does not turn underscore-prefixed
 paths into functions, so `api/_norma/*` never counted; the real drop is 11 → 10.
 
-**What this does not prove.** J2.3 has its data now but has not been run: nothing
-has deleted a run and then an org and confirmed both prefixes are empty *in the
-bucket*, which is the check that protects against paying to store bytes nobody
-can reach. It is deliberately not run yet — run `a52bdc55` is the only real run
-in production, and it is the one that would validate Steps 3 and 4.
+**The published CLI is the one that was tested, not the local build.**
+`norma-scope@0.8.1` went to npm on 2026-08-21 and was installed fresh into an
+empty project — 5 packages, no `@anthropic-ai/sdk`, so the optional peer stays
+optional. Its `--dry-run` reported exactly what `COMMANDS.md` now claims: three
+files for the flagged frame, one thumbnail each for the two that passed. That
+release also fixed docs which had described the pre-thumbnail behaviour since
+`773ac3d` — the wrong thing to be stale about, since it is a statement of what
+leaves a user's machine.
 
-**And Steps 3 and 4 still cannot be validated, for a reason that is not about
-them.** Their gates ask what a prospect can see. The prospect would see `main`,
-which does not contain either of them. Nothing is wrong with the work; it has
-simply never been released.
+**The preview's data outlives its code, and that is the decision.** The `norma_*`
+tables stay in the portfolio's shared Turso database and the
+`normascope-cloud-*` objects in its shared bucket — **Harsha's call,
+2026-08-21**. Both stores also hold the articles, claps and admin data; a wrong
+`DROP` or a wrong prefix there costs more than the few megabytes it reclaims.
+Recorded as closed, not as a deferred task, so nothing re-opens it later.
 
-The preview's data also outlives its code: the `norma_*` tables are still in the
-portfolio's shared Turso database and the `normascope-cloud-*` objects are still
-in its bucket.
+---
+
+### 3z. `next` 15 → 16, and the guard the audit allowlist used to hold ✅ (2026-08-21)
+
+**`npm audit` is 0.** `web/package.json` moved from `next@^15.5.0` to
+`^16.3.1`, and the three accepted high-severity advisories — `next`, `postcss`,
+`sharp`, all reached through next's bundled copies — are gone with it. This is
+the change decided on 2026-08-19 (`FUTURENORMA.md` §4 open decision 3b) and
+gated in `PATHWAYS.md` §7, taken before launch and on its own.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1058 checks across 32 suites**, typecheck both packages, web build, audit clean |
+| Suite against real Postgres | ✅ **1086 checks** (`scripts/test-db.sh`) |
+| `npm audit`, production deps | ✅ **0** — 0 critical, 0 high, 0 moderate, 0 low |
+| Every route keeps its rendering mode | ✅ diffed against the 15.5.23 table — identical, one cosmetic reflow of the `/legal/[slug]` SSG group |
+| The nonce CSP still stamps every script | ✅ **11 of 11 scripts nonced, 0 unnonced, 0 violations** on `/r/` against a production `next start` |
+| `golive-check` against that build | ✅ L1–L8 pass except L1.2, which only says `http://localhost` is not `https` |
+| Hydration | ✅ a client component on `/` ran its handler after the click |
+
+**The nonce check is the one that mattered.** A blank `/r/` in production is
+this repo's most expensive shipped bug, and its cause was a CSP a build
+silently stopped satisfying. Route modes and header text can both look right
+while the page renders nothing, so the evidence here is a browser against a
+production build, not a passing suite.
+
+**`middleware.ts` is deprecated in 16, and the rename is not cosmetic.** The
+2026-08-16 trial recorded "Middleware" → "Proxy" as a relabel in build output.
+It is more than that: Next 16's own source says *"Proxy always runs on Node.js
+runtime"* and refuses route segment config in the file. Built both ways to check
+rather than trusting the sentence — `middleware.ts` still compiles to
+`server/edge/chunks/…` and a `middleware-manifest` entry, while `proxy.ts`
+compiles to `server/middleware.js` with `require()` and `setup-node-env`, and
+the manifest entry disappears. **So the rename moves the CSP and gate layer from
+Edge to Node**, on a matcher that covers every document including the statically
+prerendered marketing pages. Left on `middleware.ts` deliberately: the
+deprecation is a warning and not an error, nothing in the file needs Node (it
+uses Web Crypto on purpose), and moving every page view onto a Node function in
+one region is a latency and cost decision, not a rename. **Open, and named in
+§9.**
+
+**Two other Next 16 deprecations, both live.** `export const runtime = "edge"`
+on `/api/pitch-unlock` and `/api/admin-unlock` prints "The Edge Runtime is
+deprecated" on every build. Same shape of decision as the proxy one, and it
+belongs with it.
+
+**Deleting the allowlist entries had to move a rule first.** `audit-check.mjs`
+fails on a stale entry, so the three had to go — the check itself reported
+`STALE next`, `STALE postcss`, `STALE sharp` and refused to pass, which is the
+file's anti-rot rule working. But the `sharp` entry was not only bookkeeping: it
+carried the standing rule that **uploaded images never go through `next/image`**,
+and `audit-check.mjs` re-read that sentence on every run. Deleting it would have
+left the rule on a source comment alone — CLAUDE.md rule 1.
+
+The rule is now `test/reportPage.test.mjs` **R8**, scanning `web/app/r` and
+`web/app/repos` for the import. **R8.2b is the counter-test** — a scan whose
+passing state is "found nothing" is indistinguishable from a scan that cannot
+find anything, so the same pattern is run over source that does import
+`next/image` and has to report it. And the guard was watched failing: an import
+added to `frame-view.tsx` turned R8.2 red naming the file, then was removed
+(CLAUDE.md rule 3). `security/audit-allowlist.json` is now empty, with a note
+saying that is the goal state and that a claim inside an entry moves before the
+entry is deleted.
+
+**`jsx` moved from `preserve` to `react-jsx` and `next-env.d.ts` switched from a
+`/// <reference path>` to imports.** Both were written by Next, not by hand.
+Checked that `tsc --noEmit` still passes with **no `.next` present**, because
+`verify` and CI typecheck the web app before building it and a fresh clone has
+nothing there to import.
+
+**CI needed one edit.** The audit job carried a comment saying raw `npm audit`
+"would stay red until the next 15 → 16 decision is taken". It is green now.
+
+#### The upgrade had been proven on the wrong runtime
+
+Checking whether CI could run Next 16 turned up something worse than a version
+bump. The pipeline held **three different Node versions**, none of them the one
+that runs the product:
+
+| Where | Was | Is |
+|---|---|---|
+| Vercel — the functions that actually serve customers | **24.x** (and Vercel's maximum) | 24.x, unchanged |
+| CI | 20 | **reads `engines.node`** |
+| A laptop | 22 | 24, nudged by `EBADENGINE` |
+| `@types/node`, both packages | **26.1.1** | `^24.13.3` |
+
+**So every check that had ever passed, including this upgrade, was green on a
+runtime production does not execute** — and the type checker was describing a
+Node two majors newer still, which accepts APIs that are not there and stays
+silent until something calls one.
+
+**`ci.yml` did carry a rationale, and reading it is what found the bug.** It
+said *"Match the deployment target, not the newest release"* and then named 20,
+citing the ERESOLVE defect in `norma-scope 8e96b5e` that bit only on an older
+runtime. The rule is right; the number belonged to a different artifact. That
+concern is about **strangers installing the published CLI**, which is Argus.
+Nobody installs argus-cloud — it is private and never published — so the only
+runtime that matters here is Vercel's.
+
+**Fixed as one source rather than four numbers.** `engines.node` in the root
+`package.json` is now the only place the version is written. Vercel reads that
+field to choose the runtime, and all four CI jobs read the same field through
+`setup-node`'s `node-version-file: package.json` — verified against the action's
+source, which falls through `volta.node` and `devEngines.runtime` (neither
+present here) to `engines.node`. Raising it in one place raises the deployment
+and CI together.
+
+A `.nvmrc` was written and then deleted: a second file saying "24" is precisely
+the drift this change exists to remove. A laptop on the wrong Node now gets
+`npm warn EBADENGINE ... required: { node: '24.x' }` on install instead.
+
+| Run | Result |
+|---|---|
+| `npm run verify` on **Node 24.19.0**, with Node 24 types | ✅ 1058 checks, audit clean |
+| Suite against real Postgres on Node 24 | ✅ **1086 checks** |
+| `npm run verify` on Node 20.20.2 | ✅ green — recorded because it is what CI *was* running, not because it still matters |
+
+#### The Vercel Toolbar cannot work here, and Next 16 is what said so
+
+**The first preview deployment failed**, and nothing local could have predicted
+it:
+
+> `Cannot patch preview comments when immutable static file upload is enabled.
+> Upgrade to next@v16.3.0-canary.32 or newer to resolve this.`
+
+**The suggested upgrade was impossible.** `16.3.1` is newer than
+`16.3.0-canary.32` and is the newest release published. Taking the error's
+advice was not an available move, which is the first sign the error is about a
+setting rather than a dependency.
+
+**The real finding: the Vercel Toolbar has never worked on this site.** It wants
+`https://vercel.live` in `script-src`, `img-src`, `frame-src` and `font-src`,
+`wss://ws-us3.pusher.com` in `connect-src`, and `'unsafe-inline'` in
+`style-src`. `middleware.ts` grants none of it in either policy, and
+`vercel.live` appears nowhere in the repository. So it has been blocked on every
+deployment since the CSP landed — invisibly, because a blocked script logs to a
+console nobody reads.
+
+Next 16 changed the failure mode, not the fact. Static files now upload
+immutable, so Vercel can no longer patch the toolbar in after the build, and a
+silent block became a red build.
+
+**Fixed by turning it off, in both environments explicitly** (2026-08-21):
+Project → Settings → General → Vercel Toolbar → Pre-Production **Off**,
+Production **Off**. Production was on "Default (controlled at the team level)",
+which resolves somewhere nobody can see from the project and can change without
+anyone touching this repo — the same inherited-value drift this session removed
+from the Node version and the audit allowlist. The preview build went green and
+the uploaded images render on it.
+
+**Nothing was lost.** Turning off a feature the CSP already blocks costs
+nothing. Widening the policies to recover it would put a third-party script and
+inline styles on `/r/` and `/admin` — the two trees rendering model output,
+upload-supplied labels and other people's email addresses — in exchange for a
+comment widget on a private preview. `middleware.ts` carries that instruction so
+the next person to meet this error does not spend an afternoon on the version
+number.
+
+**The process lesson is the sequencing, not the checking.** Every local check
+was run and green: the suite on two runtimes, real Postgres, route modes, the
+nonce CSP in a browser against a production build. None of them can see a
+platform interaction — only a deployment can. The upgrade should have been
+pushed for a preview build as soon as `verify` went green, with the
+documentation written while it ran, instead of five commits later. This repo's
+own most expensive recent bug was a correct build and a stale deployment; the
+same shape nearly repeated.
 
 ---
 
@@ -2887,12 +3081,13 @@ one thing the page owes them, which is a way back.
 
 ---
 
-## 5. The preview — temporary, in the portfolio repo
+## 5. The preview — retired 2026-08-21
 
-Live at `harshaattray.com/normascope-cloud` — **confirmed still serving 200 on
-2026-08-10.** Access-gated, single-tenant on purpose.
-`api/_norma/{login,runs,run,explain}.ts` behind one dispatcher, plus two
-frontend routes. Committed @ `b4eeb86`, deployed.
+**Gone.** It lived at `harshaattray.com/normascope-cloud`: access-gated,
+single-tenant on purpose, `api/_norma/{login,runs,run,explain}.ts` behind one
+dispatcher plus two frontend routes, committed @ `b4eeb86`. The retirement
+branch is merged and deployed — 1131 lines removed, portfolio functions 11 → 10,
+the route 404s. What follows is what it proved while it ran.
 
 Verified in production 2026-07-29 with a real Bose-landing run: findings
 returned with `firstDriftCommit` and `recurrence`, result-cache hit was free,
@@ -2901,9 +3096,11 @@ returned with `firstDriftCommit` and `recurrence`, result-cache hit was free,
 > ⚠️ That run predates `b3db0c7` (§2a). Its *plumbing* evidence — enrichment,
 > cache, R2 delivery — still stands; any **score** it produced does not.
 
-Shares the portfolio's Turso DB and R2 bucket; all tables prefixed `norma_`,
-objects `normascope-cloud-*`. **Still scheduled for deletion at Phase J4.**
-Portfolio is at 11 of Vercel Hobby's 12 functions.
+It shared the portfolio's Turso DB and R2 bucket; all tables prefixed `norma_`,
+objects `normascope-cloud-*`. **Those rows and objects stay — decided
+2026-08-21** (§3y): the stores are shared with the articles, claps and admin
+data, and reaching into them for a few megabytes is the worse trade. Portfolio
+is at 10 of Vercel Hobby's 12 functions.
 
 ---
 
@@ -3076,8 +3273,9 @@ this section and are deliberately absent.
 | Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
-| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.23 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is still proposed, not signed off** — all three entries have `acceptedBy: null` and print UNCONFIRMED every run until a name goes on them. The sharp question is now answered: uploaded artifacts render as plain `<img>` from presigned URLs and never reach the optimiser (decided 2026-08-19, `PATHWAYS.md` §10.5 3A). **All three close when `next` 16 lands** — decided 2026-08-19 to take that upgrade before launch as its own change, which takes `npm audit` to 0 |
-| The next 16 upgrade is untried | **Closed as an unknown 2026-08-16. Closed as a decision 2026-08-19: take it, before launch, as its own change** (`FUTURENORMA.md` §4 open decision 3b; gated in `PATHWAYS.md` §7). Trialled in a throwaway worktree at `next@16.3.1` with the current work applied: `npm audit` goes to **0 vulnerabilities**, the suite is **635/635 green**, typecheck and build pass, every route keeps its rendering mode, and the nonce CSP still stamps every script with zero unnonced and zero violations. One cosmetic change: the build output renames "Middleware" to "Proxy". 15.5.23 is already the newest 15.x — it carries the `backport` dist-tag — so staying put means staying on a line that only receives backports. **The upgrade is still not done** — the trial worktree was thrown away, so this row records a decision and evidence, not a shipped change |
+| ~~3 high-severity dependency advisories~~ | **Closed 2026-08-21** (§3z). `next` 16.3.1 landed and `npm audit` reports **0** in production dependencies. `security/audit-allowlist.json` is empty. The `sharp` entry carried a rule as well as an acceptance — uploaded images never through `next/image` — and that rule moved to `test/reportPage.test.mjs` R8 with a counter-test before the entry was deleted |
+| ~~The next 16 upgrade is untried~~ | **Done 2026-08-21** (§3z). `web/package.json` is on `^16.3.1`: verify green at **1058 checks**, **1086** against real Postgres, audit 0, every route keeping its rendering mode, and 11 of 11 scripts nonced with zero violations on a production build in a browser. The trial's one claim that did not survive contact: "Middleware → Proxy" is not cosmetic — the rename moves that layer to the Node runtime, so it was left for its own decision (below) |
+| **`middleware.ts` is deprecated, and moving off it changes runtime** | **Open, named 2026-08-21** (§3z). Next 16 warns on every build; the replacement `proxy.ts` **always runs on Node**, verified by building both ways — `middleware.ts` produces edge chunks, `proxy.ts` produces `server/middleware.js` with `require()`. The matcher covers every document on the site, so the move puts every marketing page view through a Node function in one region. Nothing in the file needs Node. Same decision covers `runtime = "edge"` on `/api/pitch-unlock` and `/api/admin-unlock`, also deprecated. Not urgent — a warning, not an error — but it is a Next 17 deadline, and three comments claiming "this runs on the Edge runtime" change with it |
 | The economic path is implemented twice | **Closed** (§3g). One module, `economicPath.ts`; no other file may move money. The extraction found two live defects — see below |
 | Provider dollars held when credits run out | **Closed** (§3g, P9.9–P9.11). Was real and untested: an org refused for credits left its provider reservation held for the full TTL, quietly reducing the global ceiling for every other org |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |

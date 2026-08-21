@@ -2,18 +2,45 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-21** — **storage is real, and Phase J's one-off greps
-are suites now.** R2 exists (bucket `normascope-cloud`, private, Eastern North
-America beside the `us-east-1` database and `iad1` functions), and the suite has
-run against it: **1085 checks across thirty-two suites on real R2**, 1055 on the
-filesystem driver. J2.1, J2.2, J3.1, J3.2 and J3.3 are met; the preview's *code*
-is deleted from the portfolio (11 → 10 functions). Two Phase J items are not
-met and are named in `FinishedSPEC.md` §3y: no real run has uploaded to R2, so
-J2.3's "the bucket prefix is empty" is untested, and the preview's `norma_*`
-tables and `normascope-cloud-*` objects still exist. Three checks that were
-written as go-live-day actions now run on every push — `test/bundleSecrets.test.mjs`,
-a CI job against a real S3 API, and `scripts/golive-check.mjs`, which reads what
-the deployment returns over the wire rather than what the build contains.
+Last updated: **2026-08-21** — **Step 5 is done. Phase J is closed.** R2 exists
+(bucket `normascope-cloud`, private, Eastern North America beside the
+`us-east-1` database and `iad1` functions), and the suite has run against it:
+**1085 checks across thirty-two suites on real R2**, 1055 on the filesystem
+driver. J1–J4 are met: J2.3 was proven in both directions against production R2,
+J3.4 uploaded a real run from a real `team` org, and the portfolio preview's
+retirement branch is **merged and deployed** (11 → 10 functions,
+`/normascope-cloud` gone). The preview's leftover `norma_*` tables and
+`normascope-cloud-*` objects are **deliberately left in place — Harsha's call,
+2026-08-21**; they are a few megabytes in a shared database and bucket, and
+touching a shared store to reclaim them is a worse trade than leaving them.
+Three checks that were written as go-live-day actions now run on every push —
+`test/bundleSecrets.test.mjs`, a CI job against a real S3 API, and
+`scripts/golive-check.mjs`, which reads what the deployment returns over the
+wire rather than what the build contains.
+
+**The `next` 15 → 16 major is done, same day.** `16.3.1`, `npm audit` **0**, the
+allowlist empty, verify green at **1058 checks** and **1086** against real
+Postgres, and 11 of 11 scripts nonced with zero CSP violations on a production
+build opened in a browser — the check that matters, because a blank `/r/` is
+what a broken CSP looks like. `FinishedSPEC.md` §3z. One thing the earlier trial
+had wrong: `middleware.ts` → `proxy.ts` is **not** cosmetic — `proxy.ts` always
+runs on Node — so that rename is held as its own decision.
+
+**And CI was testing the wrong runtime.** Vercel runs these functions on **Node
+24**; CI ran 20, a laptop ran 22, and `@types/node` described 26 — so every
+check that had ever passed, this upgrade included, was green somewhere
+production does not run. `engines.node` in the root `package.json` is now the
+only place the version is written: Vercel reads that field, and all four CI jobs
+read it too. Verify is green on Node 24 at 1058 checks, 1086 on real Postgres.
+
+**One deployment setting changed with it.** The first preview build failed —
+Vercel could not patch its Comments toolbar into Next 16's immutable static
+output. The toolbar had never worked here anyway: it needs `vercel.live` in five
+CSP directives and this site grants none of them. **Vercel Toolbar is now off
+for Pre-Production and Production, both set explicitly rather than inherited**
+(2026-08-21). Do not widen the CSP to get it back; `middleware.ts` says why.
+
+**Next: Step 6 — auth, orgs and the two consoles.**
 
 Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
 is a tenant of real runs to show in them.** Every figure on `/r/` and `/repos/`
@@ -142,49 +169,35 @@ R2 leg has never carried a real artifact**, and nothing is deployed. See
 > Paddle production checkout demands an approved domain; a free `*.vercel.app`
 > covers Step 5 if anything needs to be shown before then.
 
-> **⚠️ Legacy: the portfolio preview.**
+> **The portfolio preview is retired — 2026-08-21.**
 >
-> An older access-gated preview runs as a protected route inside the portfolio
+> An access-gated preview used to run as a protected route inside the portfolio
 > repo (`harshaattray.com/normascope-cloud`, repo
 > `github.com/harshattray/my-website`). It was a **stopgap so the hosted
-> experience could be demoed before any infrastructure existed**. It is *not*
-> where the site will live, it is not the product, and it gets **deleted at Step
-> 5** (BuildV5 Phase J4).
+> experience could be demoed before any infrastructure existed**. Its code is
+> deleted and the retirement branch is **merged and deployed**: the route 404s
+> and the portfolio is at 10 Vercel functions, down from 11. The access code and
+> its `NORMASCOPE_CLOUD_PASSWORD` env var are dead — nothing serves them.
 >
-> **Rules while it still exists:**
-> - Never link to `/normascope-cloud` from any public page, sitemap, or nav.
-> - Never put anything in it that must survive — treat the data as disposable.
-> - Keep the daily model-spend cap on (`NORMASCOPE_CLOUD_DAILY_BUDGET_USD`); the API
->   balance is prepaid and small.
-> - Don't grow it into the real product. New Cloud features belong in
->   `argus-cloud/web/`; the preview only gets what's needed to *evaluate* them.
-> - The preview shares the portfolio's Turso database and R2 bucket. All its tables
->   are prefixed `norma_` and its R2 objects `normascope-cloud-*`, so removing it later
->   is a clean delete.
+> **Its data was deliberately left in place — Harsha's call, 2026-08-21.** The
+> `norma_*` tables sit in the portfolio's shared Turso database and the
+> `normascope-cloud-*` objects in its shared bucket, a few megabytes in stores
+> that also hold the articles, claps and admin data. Reaching into a shared
+> store to reclaim that is a worse trade than leaving it. **This is closed, not
+> pending** — do not re-open it as a task.
+>
+> The one rule that outlives the preview: new Cloud features belong in
+> `argus-cloud/web/`, never in the portfolio repo.
 
-### Access (single credential, private preview)
-
-| | |
-|---|---|
-| URL | `https://harshaattray.com/normascope-cloud` |
-| Access code | `hKJpzlEAfxfOUW4oEHywLr4z` |
-| Stored | Vercel env `NORMASCOPE_CLOUD_PASSWORD` (production), and `.normascope-cloud-password` locally (gitignored) |
-| Session | 30-day JWT with role `normascope-cloud`, held in `sessionStorage` |
-| Daily model spend cap | `$0.75` (`NORMASCOPE_CLOUD_DAILY_BUDGET_USD`) |
-
-To rotate: `vercel env rm NORMASCOPE_CLOUD_PASSWORD production`, then
-`vercel env add`, then redeploy. Old sessions survive until the JWT expires —
-to kill them immediately, rotate `JWT_SECRET` instead (this also logs out the
-site admin, so rotate deliberately).
-
-### What the preview can do today
+### What the preview did
 
 Upload a `summary.json` (optionally with `report.html`, stored in R2) → browse
 runs → open a run → per-frame scores → **Explain** / **Deep explain** with live
 history enrichment and a running spend meter. Verified in production on
 2026-07-29 with a real Bose-landing run: findings returned with
 `firstDriftCommit` and `recurrence`, result cache hit was free, 2.5MB report
-served from R2.
+served from R2. All of it now exists in `argus-cloud/web/` on
+`normascope.com`, on real infrastructure.
 
 ---
 
@@ -837,7 +850,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 2 | Artifact pipeline | both | 1 | ✅ **Done 2026-08-19** — `norma-scope upload` ships, hosted explain is crop-grounded, re-calibrated |
 | 3 | The report page | argus-cloud | 2 | ✅ **Built 2026-08-19** — images, findings, history and share UI; the gate's "a prospect can compare" needs Step 5 |
 | 4 | Trends | argus-cloud | 2 | ✅ **Built 2026-08-20** — repo view, frame trend chart, trends API; the "publish a real dogfood trend" claim under it needs Step 5 |
-| 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | ◐ **G suite green on real R2 2026-08-21**; database and URL live; preview code deleted. Open: one real upload (J2.3), the preview org (J3.4), the preview's tables and objects |
+| 5 | Cloud infrastructure go-live | argus-cloud | 1–4 | ✅ **Done 2026-08-21** — G suite green on real R2, database and URL live, a real run uploaded from a real `team` org, deletion proven both ways, preview retired and deployed |
 | 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
 | 8 | Launch gates | both | 7 | E1, E6, legal pages, trademark, refund runbook |
@@ -903,13 +916,28 @@ issued, and there is no session layer until Step 6. Nothing about that is a gap
 in the trends work — it is Step 6 arriving after Step 4 in this order, which was
 the plan.
 
-**Step 5 is most of the way through, as of 2026-08-21.** Storage is real and the
-suite has run against it; the deployment passes its own header, gate and secret
-checks. What is left is not infrastructure — it is **one real upload**. J2.3 asks
-that deleting a run empties its prefix in the bucket, and no run has put anything
-there yet. That same upload is what would validate Steps 3 and 4, whose gates ask
-what a prospect can see rather than what the code does. `FinishedSPEC.md` §3y
-carries the evidence and the open list.
+**Step 5 is all but done, as of 2026-08-21 — and Steps 3 and 4 are validated
+with it.** Storage is real, the suite has run against it, and the branch is
+merged and deployed (PR #16). A share link now opens a real run of Harsha's own
+project: three captures, its numbers, its history, images served from R2 through
+presigned URLs the live CSP allows. That is the sentence Steps 3 and 4 have been
+waiting for, and it needed a deployment rather than more code.
+
+**J2.3 is proven too**, against production R2 and in both directions: deleting a
+run whose blobs another run shares removes rows and no objects, while deleting a
+run of genuinely unique bytes empties the prefix — checked by sweeping the whole
+prefix, not by re-heading keys we already knew about. `norma-scope@0.8.1` is on
+npm and is the build that was tested.
+
+**Phase J is closed — 2026-08-21.** The portfolio's retirement branch is merged
+and deployed, and the preview's leftover `norma_*` tables and
+`normascope-cloud-*` objects are **left in place by decision**: they are a few
+megabytes inside a shared database and bucket, and a wrong `DROP` or a wrong
+prefix there costs more than the storage does. `FinishedSPEC.md` §3y carries the
+evidence.
+
+**Next: the `next` 15 → 16 major** (Open decisions 3b — decided 2026-08-19,
+pre-launch, its own change), **then Step 6.**
 
 ### The capture test applied to this path
 
@@ -1150,10 +1178,10 @@ Step 6.
 
 ---
 
-### Step 5 — Go live → `BuildV5.md` Phase J ◐ mostly met 2026-08-21
+### Step 5 — Go live → `BuildV5.md` Phase J ✅ done 2026-08-21
 
-The first step needing accounts. Postgres, R2, a URL, and deleting the portfolio
-preview.
+The first step needing accounts. Postgres, R2, a URL, and retiring the portfolio
+preview. All four are in hand.
 
 **Re-run the entire G suite against real R2.** Presigning, `Content-Length`
 pinning, and TTL behave differently against a real service than a local stub,
@@ -1174,29 +1202,25 @@ exception — and the portfolio's own comparison from 2026-07-31 went up through
 the presigned path: 5 files, run `a52bdc55`, all five objects in the bucket with
 sizes matching the database.
 
-**What is still open, and why each is not paperwork:**
+**J2.3 is proven, in both directions.** Deleting a run whose blobs another run
+shares removed rows and **no** objects; deleting a run of deliberately unique
+random pixels emptied its prefix, checked by sweeping the whole prefix rather
+than re-heading keys already known. `norma-scope@0.8.1` from npm is the build
+that was tested — what a customer gets, not a local build.
 
-1. **The branch has never been released.** `main` is at `e42810d` and this
-   branch is **ninety commits ahead**. The report page, trends, the Cloud shell
-   and the storage origin in the CSP are all unreleased, so Steps 3 and 4 cannot
-   be validated no matter how good they are — a prospect would be looking at
-   `main`. The visible symptom today: the shared report renders the real numbers
-   but `img-src` is `'self' data:`, so every uploaded screenshot would be
-   blocked. **This is the next decision, and it is Harsha's.**
-2. **J2.3 — the deletion half is unrun.** The data exists now, but nothing has
-   deleted a run and then an org and confirmed both prefixes are empty *in the
-   bucket*. Held deliberately: `a52bdc55` is the only real run in production and
-   it is the one that would demonstrate Steps 3 and 4.
-3. **J4 — the preview's data outlives its code.** The routes, handlers and
-   `_lib/norma.ts` are deleted (portfolio branch `retire-normascope-cloud-preview`,
-   1131 lines, functions 11 → 10), but the `norma_*` tables are still in the
-   portfolio's **shared** Turso database and the `normascope-cloud-*` objects in
-   its shared bucket. Shared is the word that matters: a wrong `DROP` or a wrong
-   prefix takes out the articles, claps and admin data beside them.
+**J4 is met and the preview is gone.** The routes, handlers and `_lib/norma.ts`
+are deleted and the branch `retire-normascope-cloud-preview` is **merged and
+deployed** — 1131 lines, portfolio functions 11 → 10.
+
+**The preview's `norma_*` tables and `normascope-cloud-*` objects stay where
+they are — Harsha's call, 2026-08-21.** They live in the portfolio's *shared*
+Turso database and bucket, beside the articles, claps and admin data. A wrong
+`DROP` or a wrong prefix there costs more than the few megabytes it would
+reclaim. Closed, not deferred.
 
 **Needs from Harsha:** ~~items 1–5~~ **provided** (Vercel, Neon 2026-08-13, R2
-2026-08-21, secrets) · item 7 was given for the code and is still needed for the
-tables and objects.
+2026-08-21, secrets) · ~~item 7~~ **settled 2026-08-21** — the code was retired,
+the data stays. Nothing outstanding.
 
 ---
 
@@ -1446,7 +1470,7 @@ Figma plugins, auto-fix PRs, CI blocking by default.
 | Needed at | Item |
 |---|---|
 | Step 2 | `ANTHROPIC_API_KEY` + small balance (~$0.20 for G4) |
-| Step 5 | ~~Vercel project~~ · ~~Postgres (Neon/Supabase)~~ **2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · ~~R2 bucket + credentials~~ **2026-08-21 — `normascope-cloud`, private, ENAM, bucket-scoped Object Read & Write token** · ~~`NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET`~~ · confirmation to drop the preview's `norma_*` tables and `normascope-cloud-*` objects — the code is deleted, the data is not |
+| Step 5 | ~~Vercel project~~ · ~~Postgres (Neon/Supabase)~~ **2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · ~~R2 bucket + credentials~~ **2026-08-21 — `normascope-cloud`, private, ENAM, bucket-scoped Object Read & Write token** · ~~`NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET`~~ · ~~confirmation on the preview's `norma_*` tables and `normascope-cloud-*` objects~~ **settled 2026-08-21 — code retired and deployed, data stays** |
 | Step 5 (now) | `DATABASE_URL` set in the Vercel project itself — the local `web/.env.local` copy does not travel, and the guard in `src/db.ts:61` makes a deploy without it fail rather than lose signups |
 | ~~Step 5 (optional)~~ | ~~`normascope.com` early~~ **provided 2026-08-13** — registered at Spaceship; **DNS still on the registrar's parking nameservers**, so delegation to Vercel is the remaining step |
 | Step 7 | Paddle sandbox account; then business verification for production (the domain is in hand) |
@@ -1480,25 +1504,42 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    > quoted to anyone — including in a sales call — and make the ladder's
    > Starter no smaller than it. Needed for the pricing page at Step 8.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
-3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19: yes,
-   before launch, as its own dedicated change.** It clears all three accepted
-   high-severity advisories — `npm audit` goes to **0** — which is the reason,
-   not any wish to use `next/image`. The screenshot decision is independent and
-   unchanged: uploaded artifacts stay on plain `<img>` with presigned URLs
-   (`PATHWAYS.md` §10.5 3A). Also: 16 is the active-LTS line while 15 is
-   maintenance, 15.5.23 is already the newest 15.x and carries the `backport`
-   dist-tag, and Node 22 here clears 16's Node 20.9+ floor.
+3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19, and
+   shipped 2026-08-21 at `16.3.1`** — `FinishedSPEC.md` §3z. `npm audit` is
+   **0**, `security/audit-allowlist.json` is empty, verify is green at 1058
+   checks and 1086 against real Postgres, every route kept its rendering mode,
+   and a production build in a browser served 11 of 11 scripts nonced with zero
+   CSP violations. The screenshot decision is unchanged and now enforced:
+   uploaded artifacts stay on plain `<img>` with presigned URLs
+   (`PATHWAYS.md` §10.5 3A), held by `test/reportPage.test.mjs` R8 rather than by
+   the allowlist entry the upgrade deleted.
 
-   **Pre-launch because it gets more expensive later** — migrating while
-   customer reports and uploaded artifacts are live is a different job than
-   migrating now. The 2026-08-16 trial is the evidence it is cheap today:
-   `next@16.3.1` in a throwaway worktree, 635/635 suite green, typecheck and
-   build passing, every route keeping its rendering mode, the nonce CSP still
-   stamping every script with zero unnonced and zero violations
-   (`FinishedSPEC.md` §8). Expected work: async request APIs,
-   `middleware.ts` → `proxy.ts`, and a look at Turbopack defaults — the trial
-   saw the rename only as a cosmetic relabel in build output, so confirm which
-   of these actually bind before planning around them.
+   Of the three pieces of expected work, only one bound. Async request APIs were
+   already done — every `params` in the app is a `Promise` and awaited.
+   Turbopack is the default builder in 16 and changed nothing. The rename was
+   mis-scoped: see 3c.
+3c. **Whether to move `middleware.ts` → `proxy.ts` — open, raised 2026-08-21.**
+   Next 16 deprecates the `middleware` file convention and warns on every build.
+   The 2026-08-16 trial called the change cosmetic; it is not. **`proxy.ts`
+   always runs on the Node runtime** — Next's own source says so and refuses
+   route segment config in the file — and building it both ways confirms it:
+   `middleware.ts` compiles to edge chunks with a `middleware-manifest` entry,
+   `proxy.ts` compiles to `server/middleware.js` with `require()` and no entry.
+
+   **So this is a runtime move, not a rename.** That file issues every CSP the
+   site serves and gates `/pitch` and `/admin`, on a matcher covering every
+   document — including the statically prerendered marketing pages. Moving it
+   puts every page view through a Node function in `iad1` instead of an edge
+   function near the visitor. Nothing in the file needs Node; it uses Web Crypto
+   deliberately.
+
+   **Recommendation: stay on `middleware.ts` for now.** The deprecation is a
+   warning, not an error, and the cost side of the trade is unmeasured. Do it as
+   its own change before Next 17, with the same decision covering
+   `runtime = "edge"` on `/api/pitch-unlock` and `/api/admin-unlock` — also
+   deprecated in 16 — and with the three comments that say "this runs on the
+   Edge runtime" (`middleware.ts`, `lib/gate.ts`, `lib/clientRate.ts`) corrected
+   in the same change.
 4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
    first. Designer seats are a differentiator; shipping OAuth alone delays it.
 

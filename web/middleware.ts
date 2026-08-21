@@ -19,6 +19,29 @@ import { gateFor, gateToken } from "./lib/gate";
  * document on the site, and `next.config.mjs` still issues none, so there is
  * one source for the fact and no chance of a page receiving two policies that
  * a browser would intersect into something nobody designed.
+ *
+ * **No third-party origin appears in either policy, and that has a cost worth
+ * naming: the Vercel Toolbar and Comments cannot work on this site.** Vercel
+ * asks for `https://vercel.live` in `script-src`, `img-src`, `frame-src` and
+ * `font-src`, `wss://ws-us3.pusher.com` in `connect-src`, and `'unsafe-inline'`
+ * in `style-src`. None of it is here, so the toolbar has been blocked on every
+ * deployment this site has ever had — silently, because a blocked script logs
+ * to a console nobody was reading.
+ *
+ * **Next 16 made that silence into a build failure.** Static files now upload
+ * immutable, so Vercel can no longer patch the toolbar in after the fact, and a
+ * preview build dies with *"Cannot patch preview comments when immutable static
+ * file upload is enabled. Upgrade to next@v16.3.0-canary.32 or newer."* The
+ * suggested upgrade is impossible and would not help: 16.3.1 is newer, and is
+ * the newest release there is. **The fix is the project setting, not the
+ * dependency** — Vercel Toolbar off for both Pre-Production and Production
+ * (2026-08-21). Explicitly off in both, rather than left on "Default", so a
+ * team-level edit cannot switch it back on and break a build nobody changed.
+ *
+ * Do not widen these policies to get the toolbar back. It would mean a
+ * third-party script and inline styles on `/r/` and `/admin` — the two trees
+ * that render model output, upload-supplied labels, and other people's email
+ * addresses — bought for a comment widget on a private preview.
  */
 
 /**

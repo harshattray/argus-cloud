@@ -13,6 +13,24 @@
   "workspaces": [
     "web"
   ],
+  "//engines": [
+    "The one place the Node version is stated. Vercel reads engines.node to pick",
+    "the runtime for the deployed functions, and .github/workflows/ci.yml reads",
+    "the same field via setup-node's node-version-file. Raising it here raises",
+    "the deployment and CI together.",
+    "",
+    "24 because that is what Vercel runs and the highest it offers (confirmed",
+    "2026-08-21). CI said 20 until then, so every check that had ever passed —",
+    "including the next 15 to 16 upgrade — was proven on a runtime production",
+    "does not execute. Node 20 also reached end of life in April 2026.",
+    "",
+    "Keep @types/node on the same major. Types describing a newer Node than the",
+    "one that runs accept APIs that are not there, and nothing goes red until it",
+    "runs."
+  ],
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "test": "npm run build && node scripts/run-tests.mjs",
     "build": "node scripts/embed-migrations.mjs && node scripts/embed-legal.mjs && node scripts/embed-page-dates.mjs && node scripts/embed-image-sizes.mjs && tsc",
@@ -48,7 +66,7 @@
   "homepage": "https://github.com/harshattray/argus-cloud#readme",
   "private": "true",
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^24.13.3",
     "@types/pg": "^8.20.0",
     "playwright-core": "^1.62.1",
     "typescript": "^7.0.2"
