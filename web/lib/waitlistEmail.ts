@@ -14,6 +14,15 @@
  *
  * Deliberately no dependencies and no server-only imports, so it is safe in a
  * client bundle.
+ *
+ * **There is a sibling, and it is not a copy of this.** `normaliseAddress` in
+ * `argus-cloud/authCrypto.js` does the same trim-and-lowercase for the session
+ * layer. It cannot live here — that module imports `node:crypto` and this one
+ * must stay client-safe — and this cannot live there for the same reason in
+ * reverse. What keeps them from drifting is that the *server* only ever calls
+ * one of them: the login route normalises with `normaliseAddress` and the
+ * waitlist route with `normaliseEmail`, and neither stores what the other
+ * produced. `test/auth.test.mjs` A0 holds the pair to the same answers.
  */
 
 /** RFC 5321 caps a path at 256 octets including the angle brackets. */

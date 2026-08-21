@@ -71,7 +71,12 @@ export type OpsAlertKind =
   | "deletion-failed"
   | "breaker-unreset"
   | "alert-channel-broken"
-  | "reservation-leak";
+  | "reservation-leak"
+  // Raised by `authThrottle.ts`, not by `collectOpsSignals`. The daily sign-in
+  // email budget is consumed on the request path, so the crossing is noticed
+  // where it happens rather than by a scheduled sweep — by the time the next
+  // sweep ran, the day's budget could be gone.
+  | "email-budget";
 
 export type OpsSeverity = "warning" | "critical";
 

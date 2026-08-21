@@ -12,6 +12,7 @@ import {
 } from "argus-cloud/trendData.js";
 import { getDb } from "../../../lib/db";
 import { readTheme } from "../../../lib/theme";
+import { currentSession, membershipFor } from "../../../lib/session";
 import { CloudFooter, CloudMasthead } from "../../_components/cloud/cloud-shell";
 import { Explainer } from "../../_components/cloud/explainer";
 import { Sparkline } from "../sparkline";
@@ -64,12 +65,22 @@ export default async function RepoPage({
   const { page: pageParam } = await searchParams;
   const theme = await readTheme();
 
-  if (!repoViewOpen()) {
-    return <NotFound theme={theme ?? undefined} />;
-  }
   const db = await getDb();
   const owner = await repoOrg(db, repoId);
   if (!owner) {
+    return <NotFound theme={theme ?? undefined} />;
+  }
+
+  // Membership in the organization that owns this repository, or the local
+  // development door. The org id is read from the repository row and compared
+  // against what the *session* holds — a repository id in the URL is a request,
+  // not a permission (PATHWAYS §10.7 5A).
+  //
+  // The refusal is the same "not found" a nonexistent repository gets, so
+  // probing ids cannot map out another tenant.
+  const session = await currentSession();
+  const permitted = membershipFor(session, owner.orgId) !== null || repoViewOpen();
+  if (!permitted) {
     return <NotFound theme={theme ?? undefined} />;
   }
   const page = pageNumber(pageParam);
@@ -84,10 +95,10 @@ export default async function RepoPage({
     <div className={styles.page} data-theme={theme ?? undefined}>
       <main className={styles.sheet}>
         {/*
-          The organization is the top of the trail and is deliberately not a
-          link — listing an organization's repositories needs a session to know
-          whose organization it is (Pathway 5), so a linked ancestor would
-          promise a page that does not exist.
+          The organization is the top of the trail, and since Step 6 it is a
+          link: `/repos` lists what the tenant has, which needed a session to
+          know whose organization was asking. It stays unlinked for the
+          development door, where there is no session and the list would 404.
 
           It earns its place twice over: it is the only surface that names the
           tenant, which is what makes `seed-demo`'s "DEMO — … (sample data)"
@@ -95,7 +106,10 @@ export default async function RepoPage({
         */}
         <CloudMasthead
           title={overview.repo.name}
-          crumbs={[{ label: owner.orgName }, { label: overview.repo.name }]}
+          crumbs={[
+            session ? { label: owner.orgName, href: "/repos" } : { label: owner.orgName },
+            { label: overview.repo.name },
+          ]}
           theme={theme}
           path={`/repos/${owner.id}${page > 1 ? `?page=${page}` : ""}`}
           meta={

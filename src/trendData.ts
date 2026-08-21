@@ -363,19 +363,90 @@ export async function resolveRepo(
 /**
  * Whether the caller may see a repository-wide view at all.
  *
- * **There is no session layer yet, so this is the whole of it.** A share token
- * is a capability for exactly one run (`share_links.run_id`), which is the right
- * shape for the report page and the wrong shape here: a repository view lists
- * other runs, other frames and other commits, so honouring a run's token on it
- * would widen every share link ever issued into a tenant-wide read. Step 6
- * brings GitHub OAuth and magic links, and this function is what it replaces.
+ * **A session is now the answer, and this is the local-development door beside
+ * it.** A share token is a capability for exactly one run
+ * (`share_links.run_id`), which is the right shape for the report page and the
+ * wrong shape here: a repository view lists other runs, other frames and other
+ * commits, so honouring a run's token on it would widen every share link ever
+ * issued into a tenant-wide read. That is still true and still refused.
  *
- * Until then `/repos/` answers only behind `NORMA_DEV_OPEN`, the same local
- * door `reportData.authorize` opens, and 404s in production — where the variable
- * is unset — rather than being reachable by anyone who can guess a repository id.
+ * What changed at Step 6 is that there is a third possibility — a signed-in
+ * person who belongs to the organization that owns the repository. The page
+ * checks that first (`web/lib/session.ts` → `repoOrg`), and falls back to this
+ * for a laptop with `NORMA_DEV_OPEN=1` and no session. No deployment sets the
+ * variable, so in production this returns false and the session is the only way
+ * in.
  */
 export function repoViewOpen(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NORMA_DEV_OPEN === "1";
+}
+
+export interface RepoListEntry {
+  id: string;
+  name: string;
+  runCount: number;
+  lastRunAt: string | null;
+  /** Frames flagged in the most recent run, or null when there is no run yet. */
+  flaggedInLastRun: number | null;
+}
+
+/**
+ * Every repository in one organization, busiest first — the page above
+ * `/repos/{repoId}`.
+ *
+ * PATHWAYS Pathway 6 carried this as open item 2: *"There is no repository
+ * list. It would have to answer 'what does this organization have', which needs
+ * a session to know whose organization it is."* It does, and now there is one.
+ *
+ * `orgId` comes from the caller's membership list, never from a URL — the page
+ * above this one resolves it from the session.
+ */
+export async function orgRepos(db: Db, orgId: string, limit = 100): Promise<RepoListEntry[]> {
+  const rows = await db.query<{
+    id: string;
+    name: string;
+    run_count: string | number;
+    last_run_at: string | Date | null;
+  }>(
+    `SELECT r.id, r.name,
+            COUNT(runs.id) AS run_count,
+            MAX(runs.created_at) AS last_run_at
+       FROM repos r LEFT JOIN runs ON runs.repo_id = r.id AND runs.org_id = r.org_id
+      WHERE r.org_id = $1
+      GROUP BY r.id, r.name
+      ORDER BY MAX(runs.created_at) DESC NULLS LAST, r.name
+      LIMIT $2`,
+    [orgId, Math.max(1, Math.min(500, limit))]
+  );
+
+  const entries: RepoListEntry[] = [];
+  for (const row of rows.rows) {
+    // One extra query per repository, bounded by the limit above. A single
+    // window-function query would do it in one round trip; this stays legible,
+    // and the page it feeds lists an organization's repositories, which is tens
+    // of rows and not thousands. Revisit if that stops being true.
+    const flagged = row.last_run_at
+      ? Number(
+          (
+            await db.query<{ n: string | number }>(
+              `SELECT COUNT(*) AS n FROM frame_stats
+                WHERE org_id = $1 AND repo_id = $2 AND flagged = true
+                  AND run_id = (SELECT id FROM runs WHERE repo_id = $2 AND org_id = $1
+                                 ORDER BY created_at DESC LIMIT 1)`,
+              [orgId, row.id]
+            )
+          ).rows[0]?.n ?? 0
+        )
+      : null;
+    entries.push({
+      id: row.id,
+      name: row.name,
+      runCount: Number(row.run_count),
+      lastRunAt: row.last_run_at ? iso(row.last_run_at) : null,
+      flaggedInLastRun: flagged,
+    });
+  }
+  return entries;
 }
 
 /**

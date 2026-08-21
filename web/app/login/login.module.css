@@ -1,0 +1,171 @@
+/*
+ * The sign-in page.
+ *
+ * Composed from `_styles/surface.module.css`, so the palette and the three
+ * theme states are the shared ones and this file adds only what a single
+ * centred card needs. Copying the token block would have made a second product
+ * that happens to look similar — CLAUDE.md rule 1, and the reason
+ * `surface.module.css` exists at all.
+ */
+
+.page {
+  composes: surface from "../_styles/surface.module.css";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 34px 30px 30px;
+}
+
+/*
+ * The wordmark, in whichever of the two files suits the theme.
+ *
+ * `.onLight` / `.onDark` come from `_styles/surface.module.css` and are already
+ * driven by the same three-state rules the rest of the surface uses. Rendering
+ * one file and hoping is what the first cut of this page did: the light mark
+ * has dark lettering, so half of "normascope cloud" disappeared on a dark
+ * background.
+ */
+.mark {
+  display: block;
+  margin-bottom: 26px;
+}
+
+.onLight {
+  composes: onLight from "../_styles/surface.module.css";
+}
+
+.onDark {
+  composes: onDark from "../_styles/surface.module.css";
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+}
+
+.lede {
+  margin: 0 0 26px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--frame-bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 1px;
+}
+
+.button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--clay);
+  color: #fff;
+  font: 600 14px/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--clay-deep);
+}
+
+.button[disabled] {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.secondary {
+  composes: button;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  text-align: center;
+  text-decoration: none;
+  display: block;
+  box-sizing: border-box;
+}
+
+.secondary:hover {
+  background: var(--frame-bg);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 18px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* Both states are announced to assistive technology by `role="status"` on the
+ * element, not by colour alone. */
+.notice {
+  margin: 16px 0 0;
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.problem {
+  composes: notice;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.footnote {
+  margin: 24px 0 0;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.footnote a {
+  color: var(--clay);
+}

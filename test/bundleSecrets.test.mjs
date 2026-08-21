@@ -132,6 +132,13 @@ const SERVER_ONLY = [
   "ADMIN_PASSWORD",
   "PITCH_PASSWORD",
   "RESEND_API_KEY",
+  // The session layer's two. `AUTH_SECRET` keys every throttle subject, audit
+  // subject, OAuth state and login challenge; the GitHub secret is the other
+  // half of the code exchange. Neither has any business in a browser bundle,
+  // and the sign-in page is a client component, so the risk is live rather
+  // than theoretical.
+  "AUTH_SECRET",
+  "GITHUB_OAUTH_CLIENT_SECRET",
   "PADDLE_API_KEY",
   "PADDLE_WEBHOOK_SECRET",
   "BACKUP_ENCRYPTION_KEY",

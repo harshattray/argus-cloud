@@ -3,6 +3,7 @@ import { authorize, loadRun, type FrameReport } from "argus-cloud/reportData.js"
 import { getDb } from "../../../lib/db";
 import { getStorage } from "../../../lib/storage";
 import { readTheme } from "../../../lib/theme";
+import { currentSession } from "../../../lib/session";
 import { CloudFooter, CloudMasthead, type Crumb } from "../../_components/cloud/cloud-shell";
 import { Explainer } from "../../_components/cloud/explainer";
 import { FrameView } from "./frame-view";
@@ -30,8 +31,10 @@ import styles from "./report.module.css";
  * page is passed through `dangerouslySetInnerHTML`, and the corpus is re-run
  * against this page rather than inherited from the one it replaces.
  *
- * Access is share-token gated until session auth lands at Step 6;
- * `NORMA_DEV_OPEN=1` opens it for local development only.
+ * Access is either a session that belongs to the run's organization or a share
+ * token naming this one run; `NORMA_DEV_OPEN=1` opens it for local development.
+ * `reportData.authorize` holds all three and says why the org list may only ever
+ * come from the session.
  */
 
 export const dynamic = "force-dynamic";
@@ -60,7 +63,13 @@ export default async function ReportPage({
   const theme = await readTheme();
 
   const db = await getDb();
-  const access = await authorize(db, runId, share);
+  // Membership first, share token second — `authorize` takes the org list from
+  // the session and never from the request. A member of one organization
+  // holding a share link for another's run still gets the share view.
+  const session = await currentSession();
+  const access = await authorize(db, runId, share, {
+    orgIds: session?.memberships.map((m) => m.orgId) ?? [],
+  });
   if (!access) {
     return <NotFound theme={theme ?? undefined} />;
   }
