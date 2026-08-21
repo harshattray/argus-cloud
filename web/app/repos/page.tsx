@@ -6,6 +6,7 @@ import { readTheme } from "../../lib/theme";
 import { activeMembership, currentSession, ACTIVE_ORG_COOKIE } from "../../lib/session";
 import { CloudFooter, CloudMasthead } from "../_components/cloud/cloud-shell";
 import { cookies } from "next/headers";
+import { SessionControls } from "./session-controls";
 import styles from "./trends.module.css";
 
 /**
@@ -68,6 +69,7 @@ export default async function ReposPage() {
             </p>
           </section>
           <CloudFooter />
+          <SessionControls signedInAs={session.user.display_name} />
         </main>
       </div>
     );
@@ -140,6 +142,7 @@ export default async function ReposPage() {
         )}
 
         <CloudFooter />
+        <SessionControls signedInAs={session.user.display_name} />
       </main>
     </div>
   );
