@@ -52,7 +52,18 @@ const ROOT = path.resolve(HERE, "..");
 const SOURCE = path.join(ROOT, "web", "lib", "waitlistConfirmationEmail.ts");
 const PUBLIC_DIR = path.join(ROOT, "web", "public");
 
-const OUT = await mkdtemp(path.join(tmpdir(), "normascope-email-"));
+/**
+ * Compiled **inside the repository**, not in the system temp directory.
+ *
+ * The template now imports the shared email shell as `argus-cloud/emailLayout.js`
+ * — a bare specifier, resolved by walking up from the importing file to a
+ * `node_modules` that has it. From `/tmp` that walk finds nothing and the import
+ * fails with ERR_MODULE_NOT_FOUND, so the suite could not load the module it
+ * exists to check. Compiling under the repo root puts the workspace link back on
+ * the path. `test/.tmp-*` is already gitignored, which is why it goes there
+ * rather than beside the root.
+ */
+const OUT = await mkdtemp(path.join(HERE, ".tmp-email-"));
 execFileSync(
   process.execPath,
   [
@@ -66,10 +77,16 @@ execFileSync(
     OUT,
     SOURCE,
   ],
-  // From the temp directory, not the repo root. Naming a file on the command
-  // line while a `tsconfig.json` sits in the working directory is TS5112, and
-  // TypeScript treats it as an error rather than a warning.
-  { stdio: "pipe", cwd: OUT }
+  // Two constraints that pull opposite ways, so they are satisfied separately.
+  //
+  // The **output** goes inside the repo, or the compiled module cannot resolve
+  // `argus-cloud/emailLayout.js` — a bare specifier is found by walking up to a
+  // `node_modules`, and from the system temp directory that walk finds nothing.
+  //
+  // The **working directory** stays outside it, because naming a file on the
+  // command line while a `tsconfig.json` is discoverable from the cwd is TS5112,
+  // which TypeScript treats as an error rather than a warning.
+  { stdio: "pipe", cwd: tmpdir() }
 );
 const COMPILED = pathToFileURL(path.join(OUT, "waitlistConfirmationEmail.js")).href;
 
@@ -149,10 +166,39 @@ check(
 const staged = await load("https://preview.example.dev");
 const stagedHtml = staged.waitlistConfirmationHtml();
 
+/**
+ * **Changed deliberately, 2026-08-21, and narrowed rather than weakened.**
+ *
+ * This asserted that `NEXT_PUBLIC_SITE_URL` redirected *every link and image*.
+ * The reasoning it carried — "a preview deploy that mails production links is
+ * worse than one that mails nothing" — is about **links**, and it still holds
+ * exactly as written: a preview mailing a production link sends someone to an
+ * app where the thing they were sent does not exist.
+ *
+ * It does not hold for **images**, and following it broke them. A preview's own
+ * assets sit behind Vercel Deployment Protection, so a mail client's image proxy
+ * fetches the wordmark and gets an SSO redirect — a broken image in a real
+ * person's inbox. The mark is byte-identical on every deployment, so pointing at
+ * the sending one buys nothing and costs the logo.
+ *
+ * So: links follow the deployment, images follow `EMAIL_ASSET_ORIGIN`
+ * (`emailLayout.ts`). Both halves are checked, and E5b is the one that would
+ * catch a well-meaning revert of this decision.
+ */
+const stagedLinks = [...stagedHtml.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
+const stagedImages = [...stagedHtml.matchAll(/<img[^>]+src="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
+
 check(
   "E5",
-  stagedHtml.includes("https://preview.example.dev/") && !stagedHtml.includes(DEFAULT_SITE),
-  "NEXT_PUBLIC_SITE_URL redirects every link and image, so a preview never mails production URLs"
+  stagedLinks.length > 0 && stagedLinks.every((u) => u.startsWith("https://preview.example.dev")),
+  `every link follows NEXT_PUBLIC_SITE_URL, so a preview never mails production links (${stagedLinks.length} checked)`
+);
+
+check(
+  "E5b",
+  stagedImages.length > 0 && stagedImages.every((u) => u.startsWith(DEFAULT_SITE)),
+  `every image comes from the public asset origin instead (${stagedImages.length} checked) — a preview's own ` +
+    "assets are behind deployment protection, and a mail client's image proxy gets a login page"
 );
 
 check(

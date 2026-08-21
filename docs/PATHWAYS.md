@@ -492,14 +492,25 @@ No paid Cloud launch is verified until the relevant pathways have evidence for:
   an upload exceeding the pinned `Content-Length`, an unsigned read, an expired
   URL, and the upload protocol's own size and hash verification. CI runs them on
   every push against MinIO; they have been run once against R2. `FinishedSPEC.md` §3y;
-- [ ] webhook signature, session, CSRF, and key-revocation tests;
+- [ ] webhook signature, session, CSRF, and key-revocation tests — **the session
+  and CSRF halves landed 2026-08-21** (`FinishedSPEC.md` §3aa): server-side
+  sessions with rotation, idle and absolute expiry, per-device and global
+  revocation, membership removal taking effect on the next request, OAuth state
+  bound to the initiating browser, same-origin checks on every state-changing
+  route, and the outbound-email ceilings proven across 20 processes with a
+  naive counter-test beside them. Webhook signature and key revocation are
+  unchanged;
 - [ ] backup restore, retention, deletion, and incident-drill evidence —
   **three of four.** Retention and deletion are proven (`FinishedSPEC.md` §3j),
   and a real backup was restored and compared table by table on 2026-08-14
   (§3k). **No incident drill has been run**, and backups are not yet scheduled
   against the production database;
 - [ ] redacted audit logs and working operator alerts/kill switches —
-  **alerts only.** Spend and operational alerts reach a configured webhook or
+  **alerts, plus the authentication half of the audit log (2026-08-21).**
+  `auth_events` records every sign-in, refusal and failure with keyed hashes
+  rather than addresses or IPs, keyed per purpose so two leaked tables cannot be
+  joined; the email budget is a kill switch an operator can set to zero. The
+  rest below stands: Spend and operational alerts reach a configured webhook or
   mailbox, and an alert claimed but never delivered is itself an alert (§3k).
   The breaker is the one kill switch that exists; the scoped pauses and the
   redacted audit log are Phase 6 work;
@@ -641,6 +652,123 @@ refunds, chargebacks, cancellation, grace-period expiry, and concurrent
 requests at the entitlement boundary. The organization must never receive
 credits without a verified payment event, incur provider cost after entitlement
 has been revoked, or lose data solely because payment failed.
+
+#### Registration-to-deletion lifecycle
+
+The launch flow is payment-first for a solo customer:
+
+```text
+visitor
+  → Get Cloud
+  → Paddle checkout
+  → signed, verified webhook
+  → org + plan + credits + pending owner claim
+  → GitHub or magic-link authentication
+  → user + identity + owner membership
+  → authenticated Cloud access
+```
+
+Rules for each state:
+
+- An abandoned checkout creates no usable Cloud account, no active tenant and
+  no entitlement. Any pending owner claim is expiring state, not access.
+- A payment webhook is the only launch path that provisions a paid solo
+  organization. Retries are idempotent by processor event/customer/subscription
+  reference and cannot create duplicate orgs, claims or grants.
+- The checkout email is not itself authentication. It becomes the claim target;
+  the buyer must prove control through a magic link or a GitHub account with a
+  matching verified email.
+- A buyer whose GitHub email differs from the checkout email must use the
+  checkout email or an audited recovery path. Do not silently attach the
+  subscription based on a browser-supplied address.
+- An invited employee does not pay and does not create a second subscription.
+  An admin invitation leads to GitHub/email authentication and membership in
+  the paying organization.
+- A person may have an individual account with no organization only as a
+  limited identity/security surface. It cannot browse, upload, spend, create a
+  free Cloud tenant or receive customer data.
+- A free CLI user can use local Normascope without a Cloud account. The free
+  CLI must not be forced through Cloud registration.
+
+The normal cancellation path ends access at the paid-period boundary. A failed
+renewal enters `past_due` for the documented **14-day grace period**. During
+grace, existing hosted data and shares remain available, no new monthly
+allowance is granted, and new work follows the configured grace policy. After
+grace, `lapsed` is read-only: reports/history remain available, while uploads,
+hosted AI and new paid work stop. Renewal restores the organization and the
+next allowance exactly once. Refunds and chargebacks use their processor-
+confirmed effective times.
+
+#### Retention deadline after lapse
+
+The launch policy is:
+
+```text
+paid period → 14-day grace → lapsed read-only → 90-day deletion deadline
+```
+
+The 90-day deadline begins at the organization’s transition to `lapsed`, not
+at the creation time of each run. Implement this with an explicit lifecycle
+deadline such as `orgs.retention_expires_at` or an equivalent authoritative
+deletion record. Do not infer the customer promise from a generic age-based
+sweep.
+
+The deadline is paused or overridden only by a documented legal hold,
+accounting obligation or active renewal. The operator console must show the
+reason, actor, deadline, hold/override state and next deletion action. The
+customer console must show the lapsed state, deletion date, renewal action and
+export action clearly.
+
+Before the deadline, renewal must cancel the scheduled deletion safely and
+restore the organization without duplicating credits or resurrecting revoked
+keys. After the deadline, the deletion job removes organization rows, storage,
+artifacts, sessions, memberships and keys according to the verified deletion
+workflow. Keep only the minimum anonymized/accounting evidence required by the
+documented legal policy.
+
+#### Export before deletion
+
+Owners/admins can request an export while the organization is active, past due
+or lapsed, until deletion begins. Export is a bounded asynchronous job:
+
+- the requester must have the role and recent authentication;
+- the job records scope, requested time, requester, state, counts, bytes and
+  errors;
+- the result contains repositories, runs, commits, frames, trends, report
+  metadata, findings, usage events, credit ledger records, retained artifacts,
+  share metadata and a manifest of omitted/expired data;
+- API keys, session cookies/tokens, magic-link tokens, OAuth secrets, provider
+  credentials and internal operator data are never exported;
+- large artifacts are delivered through short-lived authorized downloads rather
+  than an unbounded request or permanent public URL;
+- the download expires and the receipt records creation, expiry and requester;
+- export requests and downloads are audited and organization-scoped;
+- export failures are retryable and visible, not silently reported as complete.
+
+The organization deletion confirmation must show the export option and explain
+what will and will not be included before requiring:
+
+```text
+recent authentication
+  → typed organization name
+  → export offered
+  → irreversible confirmation
+  → immediate key/session revocation
+  → retry-safe deletion job
+  → completion receipt
+```
+
+Personal account deletion is a separate action. It deletes the user's
+identities, sessions, invitations and preferences, but never deletes an
+organization the user does not own. An owner must transfer ownership or delete
+the organization first. A deleted organization does not delete unrelated
+members' personal accounts or their memberships elsewhere.
+
+Lifecycle acceptance tests must cover abandoned checkout cleanup, webhook
+replay, owner claim races, invited employees, cancellation at period end,
+failed-renewal grace, lapse deadline, renewal before deletion, export contents
+and exclusions, export expiry, deletion retry, legal hold, personal deletion,
+owner transfer and cross-tenant export refusal.
 
 ### Provider-agnostic hard-cost management
 
@@ -1020,6 +1148,206 @@ currently evidence about distribution.
 The first inbound links are the other free lever: the npm package page and the
 GitHub repository already carry some authority with Google and neither links to
 `normascope.com` today.
+
+### Paid-launch website and waitlist cutover
+
+The public site has two deliberately different states. Do not implement the
+paid-launch state early by making the waitlist pretend to be authentication.
+
+#### State A — current demand test
+
+The current site explains both products, with the free/local CLI as the proof
+and Cloud as the future hosted product. The Cloud CTA writes a waitlist row.
+The waitlist does not create an account, organization, session, subscription
+or access entitlement.
+
+#### State B — paid Cloud launch
+
+At the launch cutover:
+
+- the homepage hero, primary navigation, metadata and dominant CTA make Cloud
+  the product being sold;
+- the free/local Normascope CLI moves to a clearly labeled secondary area,
+  with installation, CLI documentation and local-first messaging still easy to
+  find;
+- `Log in` is available wherever Cloud access is relevant;
+- `Get Cloud` / `Start Cloud` leads to the paid checkout and owner-claim flow;
+- `Register` leads to an allowed Cloud path—paid owner claim or invitation—not
+  an unrestricted free Cloud tenant;
+- all old waitlist CTAs are removed from navigation, footer, metadata and
+  transactional copy;
+- the Cloud page explains the subscription, shared organization model, credits,
+  retention, hosted data flow, AI limitations and the free CLI boundary;
+- old pre-launch URLs receive intentional redirects or an explicit retired
+  state, with no accidental indexing of the old waitlist funnel.
+
+The free CLI remains free forever and remains complete. The positioning changes,
+not the CLI contract: local `check`, `compare`, reports, the Action and the
+free/local workflows cannot be weakened to force a Cloud account.
+
+#### Cutover runbook
+
+Run the transition as one versioned release:
+
+1. Record a cutover timestamp and freeze the current waitlist export.
+2. Verify Cloud checkout, webhook provisioning, owner claim, GitHub OAuth,
+   magic links, invitations, organization switching and logout before changing
+   the public CTA.
+3. Deploy the Cloud-first copy and login/register navigation.
+4. Disable new waitlist writes or return a clear retired message; do not leave
+   an apparently successful form that nobody monitors.
+5. Send one launch notification to qualified waitlist addresses using a
+   bounded, auditable batch. Deduplicate by the existing normalized address;
+   do not send repeated launch mail on deployment retries.
+6. Route failures to `help@normascope.com` and record delivery failures without
+   exposing the waitlist export publicly.
+7. Verify redirects, canonical URLs, sitemap, robots rules, analytics events,
+   both themes, mobile layout, accessibility, CSP and the free CLI path.
+8. Preserve the waitlist for its declared retention period, then delete or
+   anonymize it. A waitlist record is not an account and must not be treated as
+   consent for unrelated marketing.
+
+#### Public contact routing
+
+The launch site and legal pages use these addresses consistently:
+
+| Address | Route questions here | Must not do |
+|---|---|---|
+| `help@normascope.com` | Login, invitations, Cloud usage, account and product support | Ask customers to email passwords, magic-link tokens or API keys |
+| `queries@normascope.com` | General questions, privacy requests and non-sales correspondence | Become the hidden support or billing system |
+| `business@normascope.com` | Sales, partnerships, procurement and commercial requests | Grant customer-data or operator-console access |
+
+Use `auth@normascope.com` for transactional login/invitation mail and
+`alerts@normascope.com` for operational alerts. Those senders must not be
+presented as public support addresses. Configure and test SPF, DKIM, DMARC,
+reply handling, bounce handling and monitored ownership before launch.
+
+The old `waitlist@normascope.com` address may forward during a short transition
+window. It must be removed from primary copy, legal contact sections and error
+pages when the waitlist is retired. Contact changes require updating the site,
+generated legal artifacts, email templates, support runbook and privacy/data
+flow documentation together.
+
+### Preview, production demo and customer environment contract
+
+Do not use one shared production test account to cover deployment QA, product
+demos and customer operation. Build three explicit environment paths.
+
+#### Preview/staging environment
+
+Preview is for code and deployment verification. It must use:
+
+- a separate preview database and storage bucket/prefix;
+- preview-only OAuth client IDs, webhook endpoints, API keys and session secrets;
+- preview-only email sender or a sink/test mailbox, never customer-facing auth
+  mail by accident;
+- billing disabled or connected only to a provider sandbox;
+- synthetic seed data and disposable users;
+- preview environment variables on every Vercel preview deployment;
+- no production customer rows, storage objects, API keys, session cookies or
+  provider credentials.
+
+Vercel may create a new immutable deployment URL for every build. Configure a
+stable alias, recommended as `preview.normascope.com`, to the current preview
+deployment or dedicated staging branch. The alias must not be mistaken for a
+production environment: its deployment target, database, storage, email and
+OAuth configuration remain preview-only. Test the alias after every deployment
+and verify that its `NEXT_PUBLIC_SITE_URL`, OAuth redirect URI and email links
+use the alias rather than a stale deployment URL.
+
+#### Production demo tenant
+
+External demos use a dedicated synthetic organization in production only when a
+real Cloud console is needed. Seed it as a named tenant, for example:
+
+```text
+DEMO — Normascope Cloud
+├── synthetic repositories and runs
+├── demo viewer/designer account
+└── separate demo-admin account, only when needed
+```
+
+Required boundaries:
+
+- demo data is synthetic, approved public material, or explicitly consented
+  material; never copy customer screenshots, source, prompts, emails or AI
+  responses into it;
+- the demo organization has no cross-tenant path, customer membership or
+  customer API key;
+- a demo viewer can read only the intended demo reports and trends;
+- demo admin is a separate least-privilege identity and cannot reach the
+  operator console, billing controls, raw storage or customer organizations;
+- never distribute a shared owner password, API key, browser cookie or reusable
+  magic-link URL;
+- disable uploads and hosted AI by default; if a demo needs them, apply a small
+  explicit budget, rate limit, storage quota and alert;
+- disable or hide destructive actions, payment actions, exports and support
+  actions unless they are being demonstrated in a safe sandboxed path;
+- mark the organization and every demo account as demo data in the UI;
+- exclude the tenant from customer revenue, retention, usage, COGS and product
+  adoption metrics, or label it explicitly as non-customer data;
+- support a deterministic reset from a versioned seed snapshot, with an audit
+  event and no impact on any other organization;
+- include demo users, sessions, keys and storage in the same revocation,
+  deletion, backup and access-review procedures as customer data.
+
+For a simple marketing walkthrough, prefer a sanitized single-run share link.
+Use an authenticated demo account only when someone needs the organization
+console. If a demo account must be temporary, give it an expiry and revoke it
+after the session or event. If it is persistent, review it on a fixed cadence.
+
+#### Customer production boundary
+
+Customer production contains only real customer organizations and their data.
+Do not seed fixtures, run destructive tests, reuse demo credentials, or test
+new migrations against customer rows. A support or operator action against a
+customer organization must use the separate audited operator console and
+break-glass rules; it must never be disguised as a test account.
+
+#### Environment and demo acceptance checks
+
+- [ ] A preview deployment cannot read customer database rows or production
+  storage objects, even if a preview URL or org ID is changed by hand.
+- [ ] Preview OAuth callbacks reject production redirect URIs and production
+  callbacks reject preview redirect URIs.
+- [ ] Preview email requests never send customer-facing login or invitation
+  mail without an explicit test configuration.
+- [ ] The stable preview alias continues to point at the intended deployment
+  after a new deployment and all generated links use the alias.
+- [ ] A production demo user can access only the demo organization and intended
+  role surface.
+- [ ] Demo viewer, demo admin, operator and customer roles are tested directly
+  against routes and APIs, not only through navigation.
+- [ ] Demo AI, upload, email, storage and export budgets have hard server-side
+  limits and alerts.
+- [ ] Demo reset is idempotent, audited and cannot delete or mutate another
+  organization.
+- [ ] Demo tenants are excluded or clearly labeled in revenue, usage, COGS,
+  retention and customer analytics.
+- [ ] No shared production password, session token, API key or reusable magic
+  link appears in documentation, screenshots, tickets, logs or chat.
+
+#### Launch acceptance checks
+
+- [ ] There is no visible waitlist CTA on the launch homepage, Cloud page,
+  navigation, footer, legal pages, error pages or email templates.
+- [ ] A visitor can distinguish Cloud purchase/login from free CLI installation
+  in one screen and one navigation path.
+- [ ] A new Cloud purchaser is provisioned exactly once and can claim ownership.
+- [ ] An invited employee can register/login without accidentally creating a
+  second organization or subscription.
+- [ ] A free CLI user can continue using the CLI without Cloud registration.
+- [ ] Waitlist rows are frozen, exportable, access-controlled and not silently
+  converted into accounts.
+- [ ] Launch notification sending is deduplicated, rate-limited, audited and
+  paused safely on provider or global email-budget exhaustion.
+- [ ] `help@`, `queries@` and `business@` are monitored by named owners and do
+  not share credentials or customer-content permissions.
+- [ ] Auth mail uses the dedicated transactional sender; support mail cannot
+  accidentally issue login credentials.
+- [ ] All public and legal copy uses the new product positioning and contact
+  routing, with the paid Cloud terms and privacy disclosures live before
+  checkout.
 
 ### Adoption measurement and product observability
 
@@ -1674,16 +2002,201 @@ without manually opening Cloud.
 
 **Goal:** turn a demo tenant into a safe multi-user product.
 
+> **Status — 2026-08-21: the identity spine is built; the consoles are not.**
+>
+> **Done, with evidence in `FinishedSPEC.md` §3aa:** server-side sessions
+> (rotation, idle and absolute expiry, recent-auth, per-device revoke and revoke
+> all), GitHub OAuth keyed on the immutable subject with state and exact
+> redirect URIs, magic links at 15 minutes and single use, invitations with
+> their state machine, owner claims and the ownership invariant, the redacted
+> auth audit log, the five-ceiling outbound-email budget with its alert and
+> pause, the first-party challenge, `/login`, and session-layer tenant
+> isolation on `/r/` and `/repos` — including `/repos` itself, which is the
+> repository list Pathway 6 carried as its open item 2.
+>
+> **Not done:** both consoles and their shared shell, the account and billing
+> pages, deletion UI, privacy controls, key management UI, the invitation
+> *email*, the "generated by" line, and identity linking from an account page.
+> The GitHub round trip has never run against github.com — it needs a
+> registered OAuth app.
+>
+> **The gate's concurrency half is met**: 20 separate processes against one
+> global email budget of 5 authorise exactly 5, and the naive per-process
+> counter through the same harness authorises all 20.
+
 This pathway builds the complete organization console and the first complete
 operator console surface together. Do not scatter account, billing, usage,
 deletion, and support pages across unrelated routes. Implement the shared shell,
 navigation, role matrix, and page ownership map before adding individual
 workflows.
 
+#### The control-plane hierarchy
+
+There are three layers of account and control UI. They share visual primitives
+but not authority or data visibility:
+
+```text
+Public / unauthenticated
+  └── Individual account
+        ├── Organization A console
+        ├── Organization B console
+        └── Organization switcher
+
+Yutic operator identity
+  └── Operator master console
+        ├── Operations and incidents
+        ├── Organizations and support
+        ├── Revenue and reconciliation
+        ├── Usage, spend and capacity
+        ├── Security and abuse
+        └── Audited controls and break-glass
+```
+
+These layers answer different questions:
+
+| Layer | Who uses it | Owns | Must not see/control |
+|---|---|---|---|
+| Individual account | Any authenticated person | Identity providers, display name, sessions, personal invitations, memberships, notification preferences, personal deletion | Organization data merely because the person exists |
+| Organization console | Owner, admin, member, designer | One organization’s reports, repositories, trends, members, keys, usage, billing and policies according to role | Other organizations, Yutic operations, global provider state |
+| Yutic operator console | Separately authenticated Yutic staff/operator roles | Global health, tenant inventory, billing/reconciliation, provider spend, abuse, backups, scoped operational controls | Casual customer-content access or unrestricted impersonation |
+
+An individual account is not a personal organization dashboard. It is the
+identity and security layer above one or more organization workspaces. A solo
+customer sees one organization because they own one, not because all data is
+implicitly attached to their user row.
+
+##### Individual account dashboard
+
+The account dashboard is user-scoped and must remain useful even when the user
+belongs to several organizations:
+
+- identity: display name, linked GitHub identity, verified email identities and
+  identity-linking/recovery actions;
+- organizations: memberships, role, current organization, pending invitations,
+  leave-organization action, and owner/admin warnings;
+- sessions: current and other browsers/devices, last seen, method, expiry and
+  per-session/all-session revoke;
+- security: recent authentication events, recent-auth status, identity changes,
+  and recovery guidance without exposing raw audit secrets;
+- preferences: notification routing, timezone, reduced motion and UI settings;
+- privacy: personal data export/deletion, data-flow disclosures and support
+  contact routes;
+- support: a safe reference ID and links to `help@normascope.com`, never a
+  request to email passwords, cookies, magic links or API keys.
+
+The account page must not display a combined cross-organization data feed that
+could confuse ownership or leak information. Cross-organization summaries may
+show only non-sensitive membership/status facts unless a future product
+decision explicitly defines an aggregate.
+
+##### Organization console
+
+The organization console has an explicit organization context on every page:
+organization name, environment, subscription state and current role. Its
+sections are:
+
+1. **Overview** — current status, recent activity, unresolved findings,
+   credits, storage, failed/paused work and attention items.
+2. **Runs and reports** — repositories, runs, frames, findings, history and
+   shares; all list views bounded, paginated and organization-scoped.
+3. **Trends** — recurrence, first drift, quality debt and repository/organization
+   trends, with the selected time window and retention boundary visible.
+4. **Explain and automation** — hosted explain, CI explain, automatic-explain
+   policy, caps, skipped work, credits exhausted state and provider pauses.
+5. **Organization** — members, invitations, roles, repositories, API/agent
+   keys, notifications, upload policy and automatic-explain policy.
+6. **Billing and usage** — subscription, renewal, invoices, payment management,
+   monthly allowance, packs, usage ledger, cache hits as free and storage.
+7. **Privacy and data** — upload disclosure, exclusions, retention, exports,
+   deletion, object access and completion receipts.
+
+Every organization summary number must state its time window, timezone, source
+ledger and whether it includes the demo tenant, cache hits, failed work or
+deleted data. The organization dashboard is a control plane, not a decorative
+analytics page: every control has an entitlement, role, confirmation, audit
+event and result state.
+
+##### Yutic operator master dashboard
+
+Yutic needs a separate operator identity and a master dashboard with global
+views. It must not be implemented as “an admin user who can browse every
+customer page.” The master dashboard is a control plane with domain-scoped
+operator roles:
+
+- **Operations** — deployments, route health, queues, latency, errors,
+  database/storage health, backups, restore rehearsals, scheduled jobs and
+  deletion sweeps;
+- **Organizations** — searchable tenant inventory, plan, subscription state,
+  owner/admin count, active sessions, repositories, runs, storage, retention,
+  last activity and support context;
+- **Revenue and reconciliation** — checkout/subscription events, renewals,
+  refunds, chargebacks, credit grants, usage attribution, provider cost,
+  contribution margin and mismatches;
+- **Usage and spend** — global/provider/org/key budgets, reservations,
+  concurrency, cache rate, model/operation cost, storage growth and forecast;
+- **Security and abuse** — login failures, magic-link volume, invitation abuse,
+  suspicious sessions, key events, upload abuse, cross-tenant probes, secret
+  scan blocks and incident timelines;
+- **Customer support** — bounded tenant metadata, subscription state, support
+  contacts, audit references and safe actions such as resend invite or revoke
+  session;
+- **Controls** — scoped pause/resume for hosted AI, uploads, captures, sharing,
+  a provider, an organization or an agent key; every action requires reason,
+  actor, expiry/rollback and an audit event;
+- **Audit and break-glass** — operator actions, sensitive-content access,
+  incident notes, approvals and completion receipts.
+
+The operator home is a summary with drill-down links, not a giant unbounded
+table. Every view needs filters for organization, environment, time window,
+plan, subscription state and severity, plus pagination/export with explicit
+authorization. Global totals must reconcile to organization totals and the
+underlying ledger; a dashboard number without a source query and time window
+is not operational evidence.
+
+Operator access is separate from customer membership. At minimum define
+`support`, `finance`, `reliability`, `security` and `operator-admin` scopes.
+Operator-admin can manage operator access; no ordinary customer admin receives
+operator scope. Customer-content access requires a separate break-glass action
+with reason, exact tenant/resource scope, short expiry, notification/audit and
+no standing impersonation session.
+
+The master dashboard must never offer one unrestricted “disable everything” or
+“impersonate customer” button. Controls are least-privilege, reversible where
+possible, scoped to one resource or organization, and tested for accidental
+cross-tenant effects.
+
+##### Dashboard and control-plane release gate
+
+Before Pathway 5 is complete:
+
+- account, organization and operator routes have separate server authorization;
+- a user can move between organizations without cross-tenant data appearing in
+  a stale page, tab, export or object URL;
+- organization admins can answer “who used what, when, and how much?”;
+- Yutic can answer “what is failing, who is affected, and is spend safe?”;
+- a support operator can help with access without seeing customer content by
+  default;
+- finance can reconcile subscription, credits, usage and provider costs;
+- security can investigate auth, key, upload and tenant-isolation events;
+- reliability can pause one provider/org/key without pausing unrelated tenants;
+- every dashboard query is bounded, paginated, time-windowed and sourceable;
+- direct route/API calls receive the same role decision as navigation;
+- demo, customer and operator data are visibly and technically separated;
+- operator break-glass, destructive actions and control changes are audited;
+- dashboard totals and controls have empty, loading, stale, partial-failure,
+  paused, read-only and permission-denied states.
+
 Implement:
 
 - GitHub OAuth for developers;
-- magic-link access for designers and PMs;
+- magic-link access for designers and PMs — **both ship together**
+  (FUTURENORMA §4 Open decisions 4, closed 2026-08-21);
+- the outbound-email abuse ladder that makes magic links safe to expose:
+  per-address cooldown and daily cap, per-IP and per-subnet hourly caps, a
+  global daily email budget that alerts and then pauses, a challenge after
+  repeated failures, identical responses whether or not the address is
+  registered, and short-lived single-use tokens. **Gate item, not hardening**
+  — FUTURENORMA §4 Step 6 carries the numbers;
 - organization creation, invitations, and roles;
 - upload/agent key creation and revocation;
 - credit balance separated into monthly allowance and purchased packs;
@@ -1719,6 +2232,47 @@ against real identity later.
 a React text node like everything else on that page. And the column has to
 tolerate runs that predate it: the header simply omits the line, the way it
 already omits a branch or a commit that was never recorded.
+
+#### Standing up a preview environment — the order that matters
+
+Done 2026-08-21 for `preview.normascope.com`. Written down because half of these
+steps only reveal themselves by being skipped, and the failures are quiet.
+
+1. **Vercel first, DNS second.** Add the domain, pin its **Git Branch** to
+   `staging`, then create the CNAME with the value Vercel displays — it is
+   project-specific and not the one an existing subdomain uses. Lower the TTL
+   while getting it right.
+2. **A separate OAuth app**, not a second redirect URI on production's. A leaked
+   preview secret then reaches nothing. Never enable GitHub's wildcard redirect
+   matching to cover previews: `https://*.vercel.app/…` would let any Vercel app
+   in the world receive our authorization codes.
+3. **Set `NEXT_PUBLIC_SITE_URL` to the preview's own host.** Left as production,
+   the preview mails sign-in links pointing at production, where the token does
+   not exist — and the generic response means nobody can tell.
+4. **Set `GITHUB_OAUTH_REDIRECT_URI`** to the preview's callback. It is a
+   separate fact from the site URL and only coincides on production.
+5. **Every secret is per-environment in Vercel.** `AUTH_SECRET` set for
+   Production only means the preview boots, renders `/login`, and throws on the
+   first POST — the page short-circuits before the database when there is no
+   session cookie, so rendering proves nothing.
+6. **Lower the preview's email budget** (`AUTH_EMAIL_DAILY_BUDGET`). The ceiling
+   is per-database, so two environments each get their own — and they share one
+   Resend account, whose free plan caps the day at 100. Two independent 50s
+   exhausts it, and production is what starts failing.
+7. **Its own storage bucket and credentials.** Both environments run retention
+   sweeps, organization deletion and the abandoned-upload sweeper, and all three
+   delete objects. A shared bucket puts production bytes within reach of a
+   preview bug.
+8. **Redeploy.** Environment changes do not reach an existing deployment.
+9. **Check it over the wire**, not by reading settings:
+   `VERCEL_AUTOMATION_BYPASS_SECRET=… node scripts/golive-check.mjs https://…`
+
+**Deployment protection and the auth flows.** Vercel Authentication intercepts
+every path with a redirect to `vercel.com/sso-api` carrying the original URL —
+including an OAuth `code` or a sign-in token — in a query parameter. A browser
+holding the bypass cookie is never intercepted, so unlocking the browser once
+keeps credentials off that path entirely; the cookie is per-browser, so a link
+opened on a second device lands on the login page instead.
 
 #### Re-branching staging — the step that is not obvious
 
@@ -1764,7 +2318,11 @@ Scope when it comes: `/admin/limits`, `/admin/waitlist`, `/admin/keys`, and
 whatever Pathway 5 adds beside them.
 
 **Gate:** session-layer tenant probes pass; a designer can read a report without
-GitHub; an admin can explain every credit movement without support.
+GitHub; an admin can explain every credit movement without support; **and no
+sequence of requests from one address, one IP, one subnet, or the whole
+internet can make the service send more mail than its configured budget** —
+proven across concurrent processes against a real Postgres, with the naive
+per-process counter run through the same harness.
 
 #### Account and data deletion
 
@@ -1872,9 +2430,9 @@ only after the basic chart agrees with enrichment. It now does.
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | `/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production | A share token is a capability for one run; honouring it on a repository-wide view would widen every link ever issued into a tenant-wide read. Sessions arrive in Pathway 5 / Step 6, and the landing-page-after-login framing in BuildV5 I1 belongs to that step. |
+| 1 | ~~`/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production~~ | **Closed 2026-08-21.** Sessions landed (Pathway 5). Membership in the organization that owns the repository is the gate; a share token still cannot open a repository-wide view, for the reason this row always gave. `NORMA_DEV_OPEN` survives only as the local door. |
 | 1b | A share view carries no breadcrumb, so it shows no organization name | Deliberate — the trail would name the repository and offer a link the holder cannot open. It has one consequence worth knowing: the demo tenant's `DEMO — … (sample data)` label rides on the breadcrumb, so a demo report sent as a share link is unlabelled. `seed-demo` prints that caveat; a durable fix is a share-view label, which is Pathway 5's territory. |
-| 2 | There is no repository *list* | It would have to answer "what does this organization have", which needs a session to know whose organization it is. The trends API is specified to answer about a frame and never about the tenant, so it cannot supply one either. Pathway 5. |
+| 2 | ~~There is no repository *list*~~ | **Closed 2026-08-21.** `/repos` answers "what does this organization have" from the membership list the session resolved — never from a URL. The trends API is unchanged and still answers only about a frame. |
 | 3 | The x-axis is runs in which the frame was *compared* | A run where the frame is absent entirely is not a point on the chart, where a run that recorded a null measurement is a gap. Both are honest; they are not the same picture, and nothing yet says which happened. |
 | 4 | Quality debt, recurrence resolution, and org-level summaries | Items 5–7 of §10.8. Unblocked as of this build. |
 | 5 | No "generated by" on the report header | No session, so nothing knows who ran the build. Decided 2026-08-20 to wait for Pathway 5 rather than approximate it from an API key label; the policy for when it lands is settled and written up under Pathway 5. |
@@ -2125,8 +2683,9 @@ metering, deletion, and reconciliation in its definition of done.
 6. Deploy the real Cloud infrastructure privately/under a preview URL.
 7. Finish auth, organizations, designers, dashboards, and plan configuration.
 8. Connect Paddle and pass all launch gates.
-9. Enable paid Cloud for qualified waitlist users and validate the $59 entry
-   plan with the first customers.
+9. Switch `normascope.com` to Cloud-first positioning, retire the waitlist,
+   open login/register and paid onboarding, notify qualified waitlist users, and
+   validate the $59 entry plan with the first customers.
 10. Add repository/fair-use and higher-plan expansion from observed demand.
 11. Add contracts, bounded journey evidence, verified repair proposals, and
     enterprise controls when demand justifies them.
@@ -2607,6 +3166,522 @@ identifiers; never expose upload keys after creation.
 Required roles are `admin`, `member`, and `designer`. Every server-side page and
 route must derive `orgId` from the authenticated session/key and apply it to
 every query. A caller-provided org ID is never authorization.
+
+##### 5A.1 Identity and organization rules
+
+Model a person and an organization separately:
+
+```text
+users ──< memberships >── orgs
+  │                         │
+  └── login_identities       ├── repos, runs, artifacts, storage
+                              ├── credits, usage, subscription
+                              └── api_keys
+```
+
+- One user may belong to many organizations, with one role per membership.
+- One organization may have many users and shares one credit wallet and billing
+  state across them.
+- A solo customer gets a one-person organization; there is no second personal
+  data path and no user-owned repository path.
+- A GitHub OAuth identity and a verified email identity may link to the same
+  user. Key GitHub identities by immutable provider subject, not username.
+- A person who authenticates without membership or a valid invitation gets no
+  customer data. Do not create an unrestricted free Cloud account at launch.
+- Invitations are organization-scoped, expiring and single-use. Accepting one
+  creates or activates the membership; having the same email domain alone does
+  not.
+- Organization creation is the paid/provisioned path. The first user becomes
+  owner/admin. Later users are invited by an organization admin.
+
+##### 5A.2 Sessions and active organizations
+
+Use server-side sessions, not self-contained JWT authorization:
+
+- The browser cookie contains only a random session token; store its hash.
+- Store method, creation time, last seen time, expiry, revocation state, and
+  hashed IP/user-agent metadata for the session list.
+- Allow concurrent sessions on multiple browsers and devices.
+- Show active sessions and support revoking one session or all sessions.
+- Membership removal, session revocation and account deletion must be checked
+  on every request and take effect without waiting for a JWT expiry.
+- The selected organization is UI state only. Each request re-resolves the
+  session's membership and role and scopes all queries to that organization.
+- Rotate/renew active sessions, enforce an absolute expiry, use Secure,
+  HttpOnly, SameSite cookies, and require recent authentication for destructive
+  actions, billing changes, key management and organization deletion.
+
+The browser session is not a CLI credential. CLI uploads, GitHub Actions and
+agents use separately labelled, organization-scoped API keys. Keys are shown
+once, hashed at rest, independently revocable, and should normally be separate
+per pipeline or agent. A future CLI device flow may mint a key without exposing
+the browser cookie; it is not part of this step's minimum surface.
+
+##### 5A.3 Provider and abuse behavior
+
+GitHub OAuth and magic links ship in the same Step 6 release, behind the same
+session and membership interface. GitHub is the developer path; magic links
+allow designers and PMs without GitHub accounts. Magic-link requests must use
+the Step 6 outbound-email budget: per-address cooldown, IP/subnet limits,
+global concurrent-safe daily cap, generic responses, short-lived single-use
+tokens, redacted auth events, and a challenge after repeated failures.
+
+The endpoint must not reveal whether an address is registered. A forwarded link
+must not become a reusable credential or grant access beyond the invited user's
+memberships.
+
+##### 5A.4 Required scenario tests
+
+The session gate must cover at least these cases:
+
+- a user belongs to two organizations and cannot read the other organization's
+  runs after changing a URL or active-organization cookie;
+- an invited designer can read permitted reports without a GitHub account;
+- a GitHub developer and magic-link login for the same verified identity do not
+  create two users or two seats;
+- a signed-in user with no membership sees no organization data;
+- two browsers and two machines may be signed in simultaneously;
+- one session can be revoked without revoking the others, and “sign out all”
+  invalidates every session;
+- removing a membership blocks an existing session on its next request;
+- a browser cookie cannot authenticate an upload/API request in a terminal;
+- an API key from organization A cannot upload, commit, read, spend against,
+  or export organization B's data;
+- account deletion does not delete an organization the user does not own;
+- organization deletion requires recent authentication and removes all tenant
+  data and storage with a completion receipt;
+- concurrent magic-link requests cannot exceed the global email budget across
+  multiple Postgres-backed application processes.
+
+**5A gate:** these probes pass against real Postgres, including concurrent
+session revocation, membership removal, invitation consumption, and the
+outbound-email budget. A per-process in-memory throttle is not evidence of a
+global cap.
+
+##### 5A.5 First-owner and organization onboarding
+
+The paid onboarding sequence is deliberately explicit:
+
+```text
+Paddle checkout
+  → verified subscription webhook
+  → organization + plan + subscription state
+  → pending owner claim tied to the checkout identity
+  → owner authenticates with GitHub or magic link
+  → owner claim is consumed atomically
+  → owner/admin session opens the organization console
+  → owner invites additional people
+```
+
+Rules:
+
+- The webhook is the only automatic organization-provisioning path at launch.
+  It must be idempotent on the processor's customer/subscription identity and
+  must not create a second organization when the webhook is retried.
+- The checkout email is an invitation/claim target, not proof of a browser
+  session. Store the pending claim in a form that can be expired and consumed
+  once; do not put a raw email or claim authority in a URL.
+- A magic link may claim the pending owner only for the normalized checkout
+  address. GitHub may claim it only after the provider returns a verified email
+  matching that address. Do not match on GitHub username.
+- If the purchaser's GitHub email and checkout email differ, do not silently
+  attach the subscription to the GitHub account. Present a recovery/claim path
+  that requires control of the checkout email or an audited operator action.
+- The owner claim must be a conditional database update. Two tabs, two devices,
+  or a retried callback must not create two owner users or two memberships.
+- Provisioning failure after payment is an operational alert, not a second
+  checkout. The operator console must show an unclaimed organization and allow
+  safe retry of the claim email without duplicating the tenant.
+- Until the claim is completed, the organization has no human console access.
+  The payment webhook may grant the purchased plan and credits, but it must not
+  issue a reusable browser session.
+
+The database needs an explicit owner invariant. Add an owner reference on the
+organization (or an equivalent constrained ownership record), require that the
+owner also has an `admin` membership, and make owner transfer transactional:
+
+```text
+authenticate current owner
+  → verify new owner is an active member/admin
+  → require new owner acceptance
+  → update owner and memberships atomically
+  → audit old owner, new owner, actor and reason
+```
+
+There must always be one owner while an organization is active. Removing the
+last admin or owner is refused; transfer ownership first. Organization
+deletion is the exception and requires the owner-only, re-authenticated flow.
+
+##### 5A.6 Invitations and membership lifecycle
+
+An invitation is organization-scoped and has its own state machine:
+
+```text
+pending → accepted
+pending → revoked
+pending → expired
+```
+
+Implementation rules:
+
+- Store a hash of the invitation token, never the token itself.
+- Tokens are single-use, short-lived, and consumed with a conditional update.
+- An admin can resend an invite; resending revokes the prior token and creates
+  one replacement, so multiple live links cannot exist for one invitation.
+- Inviting the same normalized address twice updates or reuses the existing
+  pending invitation rather than creating duplicate membership rows.
+- Accepting an invitation is allowed only after authenticating as the invited
+  identity. A matching email domain is not sufficient.
+- If the person already has a user account, acceptance adds a membership to
+  that user. If not, the provider login creates the user and then the
+  membership, in one transaction.
+- An invitation cannot grant access to an organization other than the one in
+  its server-side row. It cannot grant owner status, billing access beyond the
+  assigned role, or access to another user's organizations.
+- Removing a member revokes their membership immediately and invalidates their
+  organization access on the next request. It does not delete their personal
+  account or memberships in other organizations.
+- A user may hold only one membership per organization. Role changes are
+  audited and take effect on the next authorization check.
+- The invitation UI must show organization name, inviter display name, role,
+  expiry, and the email/identity being invited without exposing other members.
+
+Email identity handling must be conservative: trim surrounding whitespace,
+lowercase the domain, apply one shared normalization function everywhere, and
+never apply provider-specific transformations such as Gmail dot removal or
+plus-tag stripping unless that policy is explicitly adopted. Keep the raw
+address only where delivery requires it; use keyed hashes for throttles and
+redacted audit events.
+
+##### 5A.7 Identity linking and recovery
+
+`login_identities` is the authority for provider credentials. One user may have
+both a GitHub subject and a verified email identity. Linking rules are:
+
+- OAuth callbacks use state, PKCE where supported, exact registered redirect
+  URIs, and a one-time callback exchange. Never accept an arbitrary return URL.
+- A GitHub subject maps to exactly one user. A renamed GitHub account continues
+  to work because the immutable provider subject is stored.
+- A verified email identity maps to exactly one user. A magic link may create a
+  user only in an allowed onboarding/invitation path; it must not create a
+  free customer organization.
+- Automatic account merging is forbidden. Matching email strings are evidence
+  for a link/claim flow, not permission to merge two existing users silently.
+- Adding a second identity requires an authenticated current session plus
+  proof of the second identity. Record the link in the auth audit log.
+- Removing the last identity is refused until another verified identity or a
+  deliberate recovery path exists.
+
+Recovery must not become hidden impersonation:
+
+- A user who still controls either verified identity can add the other identity
+  after recent authentication.
+- A user who controls neither identity enters a support recovery flow with
+  explicit evidence, expiry, operator identity, reason and audit record.
+- Support operators do not receive the user's session or impersonate them by
+  default. Break-glass content access is separate, scoped and audited.
+- Organization owners must be able to transfer ownership before deleting or
+  abandoning their personal account. The last owner cannot simply disappear.
+
+##### 5A.8 Session lifecycle and browser behavior
+
+The launch defaults below are implementation defaults, not provider behavior:
+
+| Item | Launch default |
+|---|---|
+| Magic-link validity | 15 minutes, single-use |
+| Idle browser timeout | 30 days since last activity |
+| Absolute browser lifetime | 90 days, then re-authentication |
+| Session renewal | Rotate the token during renewal; never extend past absolute expiry |
+| Concurrent sessions | Allowed; one row per browser/device |
+| Sign out | Revoke the current session |
+| Sign out everywhere | Revoke every active session for the user |
+| Membership removal | Deny access on the next request and revoke org sessions as practical |
+| Destructive action re-authentication | Fresh proof within 15 minutes |
+
+The account page must list sessions without storing or displaying raw IP
+addresses: device/browser label, approximate last-seen time, sign-in method,
+created time, current-session marker, and a revoke action. “Last active” is
+diagnostic metadata, not authorization. A stale session must fail closed if the
+row is expired or revoked.
+
+Use `Secure`, `HttpOnly`, `SameSite=Lax` cookies, a narrow `Path`, and a
+production-only `__Host-` prefix where deployment permits. State-changing
+browser requests must also validate the expected origin and use a CSRF defense;
+SameSite alone is not the complete policy. Do not put session tokens, magic
+tokens, email addresses, or organization IDs into analytics or ordinary logs.
+
+Multiple tabs share a session. Organization switching in one tab must not
+silently change another tab's data scope: every navigation and server request
+must re-check the active organization, and stale pages must fail with a clear
+organization-context response rather than showing the previous org's data.
+
+##### 5A.9 Role and control rules
+
+At launch, `owner` is an ownership invariant and `admin`, `member`, and
+`designer` are membership roles:
+
+| Action | Owner | Admin | Member | Designer |
+|---|---:|---:|---:|---:|
+| Read permitted reports, runs and trends | yes | yes | yes | yes |
+| Use permitted hosted explain | yes | yes | policy | policy |
+| Invite/remove members | yes | yes | no | no |
+| Change member roles | yes | yes | no | no |
+| Create/revoke upload or agent keys | yes | yes | no | no |
+| View usage and credit ledger | yes | yes | permitted read | permitted read |
+| Change billing/payment settings | yes | yes, recent auth | no | no |
+| Transfer ownership | yes, acceptance required | no | no | no |
+| Delete organization | yes, recent auth | no | no | no |
+| Delete personal account | yes | yes | yes | yes |
+
+“Permitted” explain access is an organization policy checked by the server;
+the role table is not a client-side hiding mechanism. Navigation may hide
+unavailable controls, but direct requests must receive the same authorization
+decision.
+
+##### 5A.10 API keys and machine access
+
+API keys are organization credentials, not user login sessions:
+
+- Keep `upload` and `agent` kinds separate. An upload key cannot silently gain
+  hosted-explain authority.
+- Show each key once, store only a hash, display its label and created time, and
+  record creator/last-used metadata where available.
+- Let admins revoke keys independently. Revocation must be checked on every
+  request, without a cache that extends the key's life.
+- Prefer one key per CI pipeline, repository integration or agent. Never put a
+  browser session token in a shell profile or CI secret.
+- Key usage is attributed to the organization and, when available, the key and
+  creator metadata. It is not attributed to a human merely because that human
+  created the key.
+- A key from organization A must fail closed for every organization B upload,
+  commit, report, trend, export, storage reservation and credit operation.
+- If a user leaves an organization, decide key behavior by ownership: shared
+  organization keys remain until an admin revokes them; personal/creator
+  metadata is retained only for audit and does not grant access.
+
+##### 5A.11 Privacy, audit and operational safeguards
+
+Authentication data is personal data and needs its own retention policy:
+
+- Keep only the email data required for identity, delivery, billing linkage or
+  legal/security obligations.
+- Store token hashes, keyed address/IP hashes and redacted auth events rather
+  than bearer tokens or raw abuse subjects.
+- Sweep expired magic tokens, invitations and sessions; preserve only the
+  minimum redacted audit evidence needed for abuse and security investigation.
+- Auth events must record time, event kind, allowed/refused/failed outcome,
+  reason, user when known, session when known, and redacted subject/IP hashes.
+- Never log magic-link URLs, OAuth codes, cookies, API keys, raw email addresses
+  in URLs, or customer content in ordinary auth logs.
+- Alert on unusual sign-in volume, repeated failed links, new-country/device
+  changes where the signal is available, invitation spikes, session-revoke
+  spikes, and global email-budget usage.
+- A provider outage must leave existing sessions usable where safe; it must not
+  silently fall back to an insecure login path.
+- If the global email budget is exhausted, login requests receive a truthful
+  paused message while existing sessions and GitHub OAuth continue if healthy.
+
+##### 5A.12 Development and release gate
+
+Before Step 6 is called complete, run the following against real Postgres and
+the deployed preview shape:
+
+- payment webhook retry creates one organization, one pending owner claim and
+  one credit grant;
+- owner claim is atomic across two devices and two provider methods;
+- a solo paying user can sign in and use a one-person organization;
+- an admin can invite a GitHub developer and a non-GitHub designer;
+- pending, accepted, revoked and expired invitations behave as specified;
+- one user can switch between two organizations without cross-tenant reads;
+- an uninvited authenticated user sees no organization data;
+- all role rows are tested at both UI and direct-route/API level;
+- concurrent sessions, renewal, expiry, individual revoke and global revoke
+  behave correctly;
+- membership removal and owner transfer take effect without stale access;
+- personal deletion and organization deletion have separate scopes and receipts;
+- API keys remain independent of browser sessions and cannot cross tenants;
+- OAuth state/PKCE, CSRF, redirect validation, token replay and account-linking
+  races are covered;
+- magic-link per-address, IP, subnet and global budgets hold across processes;
+- expired auth rows are swept without deleting required audit evidence;
+- operator break-glass and every destructive auth/org action are audited.
+
+No checklist item passes from a single green unit test: concurrency and tenant
+isolation require multi-process probes against the shared database, and a
+naive implementation must be run through the same harness to prove the test
+would catch the failure.
+
+##### 5A.13 Threat model and defense-in-depth invariants
+
+The session layer is only one boundary. The following rules apply to every
+customer page, server action, route handler, export, presigned object URL and
+background job.
+
+**Authorization must be deny-by-default.** A request needs all of the following:
+
+```text
+valid credential
+  → active user/session or live API key
+  → active membership/key organization
+  → current subscription/entitlement where required
+  → resource belongs to that organization
+  → role/policy permits this exact action
+  → audit event for sensitive actions
+```
+
+Never use any one of these as a substitute for the others:
+
+- a valid session is not access to every organization;
+- membership is not access to every resource or action;
+- an organization ID in a URL, form, cookie or JSON body is not authorization;
+- an API key's existence is not permission to upload if the organization is not
+  entitled;
+- a share token is not membership and must remain limited to its one authorized
+  run and explicitly permitted report surface;
+- a payment event is not a browser session;
+- a GitHub email string is not proof unless GitHub has verified that identity;
+- a successful page render is not evidence that a later API or object request is
+  authorized.
+
+Where practical, reinforce service checks with database constraints. At minimum,
+tenant-crossing tests must cover composite relationships such as a run whose
+`repo_id` belongs to another organization, a frame whose `run_id` is foreign,
+an artifact whose object key is outside the organization prefix, a share whose
+run is foreign, and usage/credit events attributed to the wrong org. If a
+legacy schema cannot express a composite foreign key, keep the invariant in one
+service and require a counter-test against an intentionally naive query.
+
+**OAuth callback threats.** The GitHub flow must:
+
+- generate a high-entropy state tied to a short-lived login attempt and the
+  initiating browser;
+- use exact registered redirect URIs and reject arbitrary `next` URLs;
+- exchange the code once, server-side, and never put the provider code in a
+  client-accessible response;
+- request the minimum scopes; handle denied scopes and provider outages without
+  falling back to an unsafe path;
+- use GitHub's immutable subject as identity and fetch a verified email through
+  the provider API, never trust a client-supplied login name or email;
+- prevent callback replay and session fixation by creating a fresh session only
+  after a successful one-time exchange;
+- record allowed, refused and failed callbacks without logging the code, token,
+  access token, raw email or full redirect URL.
+
+**Magic-link and token leakage.** In addition to throttling and single-use
+  redemption:
+
+- consume the token server-side, then redirect to a clean URL with no token;
+- set `Referrer-Policy: no-referrer` on the redemption and login surfaces;
+- do not load third-party images, fonts, analytics or scripts on a token URL;
+- prevent tokens from appearing in access logs, analytics, error reports,
+  browser history where the platform allows, or support screenshots;
+- bind the redeemed token to the intended login flow, but do not bind it to an
+  IP address so ordinary mobile-network changes do not break legitimate login;
+- return the same externally observable response shape for existing and
+  nonexistent addresses, including timing as far as practical;
+- enforce a per-invitation and per-organization invitation budget in addition
+  to the global magic-link budget.
+
+**Session fixation and browser boundaries.** On login, rotate to a new session
+  identifier; never adopt a session identifier supplied by the browser or an
+  OAuth `state` value. On privilege change, ownership transfer, email/identity
+  linking, key creation, billing changes and deletion, require recent proof and
+  rotate the session. Do not share the session cookie across unrelated hosts or
+  subdomains. A session must not be accepted by an API route that expects a
+  machine key, and an API key must not be placed in a browser cookie.
+
+**Resource authorization.** Define and test the scope of every identifier:
+
+| Resource | Minimum authorization |
+|---|---|
+| Organization console | active membership in that organization |
+| Repository/run/frame/artifact | resource's organization plus role/policy |
+| Presigned object GET | short-lived authorization for the exact object and org |
+| Share link | valid share capability for one run; no org navigation |
+| Export | same scope as the data being exported; bounded and audited |
+| Hosted explain | resource access plus current organization entitlement and credits |
+| API key management | owner/admin membership plus recent authentication |
+| Billing and cancellation | owner/admin policy plus recent authentication |
+| Organization deletion | owner only, recent authentication, typed confirmation |
+| Operator break-glass | operator role, exact scope, reason, expiry and audit |
+
+Do not let a report page authorize a later image request by implication. Every
+presigned URL, download, export and API call repeats the relevant check. A
+share viewer must not receive the organization name, breadcrumb or a link that
+widens the share into repository history.
+
+**Billing and provisioning races.** Treat payment webhooks as untrusted,
+replayed input until signature and event identity are verified:
+
+- verify the webhook signature before reading customer fields;
+- record processor event IDs with a uniqueness constraint;
+- make subscription, organization, owner-claim and credit-grant updates
+  idempotent and transactional;
+- do not grant credits twice if the webhook retries or events arrive out of
+  order;
+- do not revoke a tenant on a transient webhook failure;
+- make past-due, lapsed, refunded and cancelled states explicit and test their
+  effect on existing reports, uploads, explains and shares;
+- never let a checkout email, customer ID or subscription ID supplied by a
+  browser choose an organization without the verified webhook relationship.
+
+**Audit evidence.** Authentication, membership, ownership, key, billing,
+export, deletion, break-glass and abuse-control actions must produce structured
+events with actor, organization, target, outcome, reason, timestamp and a
+correlation/request ID. Logs must be redacted, access-controlled and append-only
+from the application perspective. Audit rows must survive personal deletion
+where legally/security-required, with the user reference nulled rather than
+reintroducing identifying data. An audit event is evidence of an action, not a
+permission to perform it.
+
+**Abuse and denial-of-service behavior.** Rate limits must be scoped separately
+for login requests, invitation sends, OAuth starts, callback failures, session
+creation, key creation, uploads, exports and hosted explains. Each expensive or
+externally visible action needs a global ceiling in shared storage, not an
+in-memory counter per serverless instance. When a ceiling is reached:
+
+- stop the expensive action before calling the provider or issuing a URL;
+- return a generic, actionable response;
+- preserve existing sessions and already-authorized read access where safe;
+- alert the operator with scope, current usage, and reset time;
+- make the pause reversible and audited;
+- do not turn a failed login or exhausted email budget into an account
+  enumeration signal.
+
+**Secrets and recovery.** OAuth client secrets, Resend keys, session-hash keys,
+token-hash keys and webhook secrets are deployment secrets, never database rows
+or client configuration. Rotation must support overlap long enough to deploy
+without invalidating every legitimate session unexpectedly, except during an
+active compromise. A compromised session secret, provider key or API key needs
+an operator runbook with scope, revocation, replacement, customer notice and
+post-incident audit.
+
+**Failure-mode rules.** Fail closed for unknown roles, missing memberships,
+missing entitlement rows, invalid subscription states, expired sessions,
+unverified identities, malformed webhook events and missing org scope. Do not
+fall back to a global/demo organization, founder credentials, a caller-provided
+email, or a client-side “logged in” flag. A provider outage may make login or
+new claims unavailable, but it must not silently widen existing access.
+
+**Security review scenarios.** Add an end-to-end probe for each of these before
+release:
+
+- attacker changes only `orgId`, `repoId`, `runId`, `frame`, export filters or
+  object keys and receives no other tenant data;
+- attacker replays an OAuth callback, magic link, invitation, share token,
+  presigned URL or webhook and gets no second capability;
+- attacker fixes a session before login, changes an active-org cookie, or opens
+  a stale tab after switching organizations and gets no widened access;
+- attacker uses a valid member session to call admin, billing, key, delete or
+  operator routes directly;
+- attacker submits a checkout/customer/subscription ID for another tenant;
+- concurrent webhook, invite, claim, session-revoke, key-revoke and deletion
+  requests leave one coherent final state;
+- expired objects and auth rows cannot be retrieved from backups, exports,
+  logs, caches or presigned URLs after their retention boundary;
+- an operator can answer what happened, who acted, what was exposed, and how
+  access was revoked without reading raw secrets.
 
 #### 5B. Make plans configuration-driven
 

@@ -110,18 +110,42 @@ export interface RunReport {
 /**
  * Who may see this run.
  *
- * `NORMA_DEV_OPEN` is the local-development door and the only "owner" path that
- * exists until session auth lands at Step 6. A share token is a capability: it
- * names one run, it can be revoked, and it may expire.
+ * Two ways in, and they are different kinds of thing:
  *
- * Returns null for absent, revoked, and expired alike. A probe holding a
- * withdrawn link must not be able to tell it apart from one that never existed.
+ * - **A session.** `orgIds` is the list of organizations the signed-in person
+ *   belongs to, resolved from the session by `web/lib/session.ts` and **never**
+ *   from anything the caller sent (PATHWAYS §10.7 5A: "a caller-provided org ID
+ *   is never authorization"). The run's own `org_id` is read from the database
+ *   and must appear in that list. Passing an org id a person does not belong to
+ *   therefore fails here rather than somewhere further down.
+ * - **A share token.** A capability: it names one run, it can be revoked, and
+ *   it may expire. It is not membership and it opens nothing else.
+ *
+ * `NORMA_DEV_OPEN` remains the local-development door. It is checked last and
+ * only opens anything when the environment variable is set, which no deployment
+ * sets.
+ *
+ * Returns null for absent, revoked, expired, and another tenant's run alike. A
+ * probe must not be able to tell a withdrawn link from one that never existed,
+ * or somebody else's run from a run id that does not exist.
  */
 export async function authorize(
   db: Db,
   runId: string,
-  share: string | undefined
+  share: string | undefined,
+  options: { orgIds?: string[] } = {}
 ): Promise<Access | null> {
+  const orgIds = options.orgIds ?? [];
+  if (orgIds.length > 0) {
+    const owned = (
+      await db.query<{ org_id: string }>("SELECT org_id FROM runs WHERE id = $1", [runId])
+    ).rows[0];
+    if (owned && orgIds.includes(owned.org_id)) {
+      return { viewer: "owner", expiresAt: null };
+    }
+    // Fall through rather than refuse: a member of organization A may also be
+    // holding a share link for organization B's run, and that link should work.
+  }
   if (process.env.NORMA_DEV_OPEN === "1") {
     return { viewer: "owner", expiresAt: null };
   }

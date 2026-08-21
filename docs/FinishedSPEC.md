@@ -2632,6 +2632,171 @@ documentation written while it ran, instead of five commits later. This repo's
 own most expensive recent bug was a correct build and a stale deployment; the
 same shape nearly repeated.
 
+### 3aa. The session layer: both sign-in methods, and the budget behind the email one ✅ (2026-08-21)
+
+**Step 6's identity spine is built, and the outbound-email ceilings are part of
+it rather than a hardening pass after it** — FUTURENORMA §4 Step 6, PATHWAYS
+Pathway 5 and §10.7 5A.1–5A.13. Harsha closed Open decision 4 the same day:
+**GitHub OAuth and magic links ship together.**
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1222 checks across 34 suites**, both typechecks, web build, audit clean |
+| Suite against real Postgres | ✅ **1254 checks** (`scripts/test-db.sh`) |
+| `npm audit`, production deps | ✅ **0** |
+| New suites | `auth` (101 checks) and `authAbuse` (63 on PGlite, **67** on real Postgres — the four extra are the 20-process budget test and its counter-test, which PGlite cannot run) |
+| Migration range | `001`–`021`; `021_auth_sessions.sql` adds sessions, identities, login tokens, invitations, owner claims, the throttle and the auth audit log, plus `orgs.owner_user_id` |
+| The whole loop in a browser | ✅ **on a deployment, 2026-08-21** — `preview.normascope.com`, a Neon staging branch, Resend, and a real inbox. Unclaimed organization → link requested → emailed → clicked → claim consumed → owner installed → `/repos` renders the tenant. `auth_events` carries the sequence: `magic-link-sent allowed`, `owner-claimed allowed`, `magic-link-consumed allowed` |
+| **The GitHub round trip, against github.com** | ✅ **2026-08-21 — no longer stubbed.** `github-started allowed` then `github-refused (no-linked-account)`: state verified, the code exchanged with GitHub, the profile and *verified* emails fetched, and the no-silent-merge rule applied to refuse an unlinked account. **The refusal is the pass** — §10.7 5A.7 makes a matching address evidence for a link flow and not permission to merge two users. Everything before the rule had only ever run against an injected `fetch` |
+
+**The claim that needed real processes.** A global daily email budget held in
+process memory is not a global anything — the platform decides how many
+instances exist, and each would get its own. `authAbuse` B9 spawns **20
+separate processes against one Postgres at a budget of 5, and exactly 5 are
+authorised**. B9b runs the naive module-scope counter through the same harness:
+**all 20 pass**, so a 50-a-day budget would really be 1,000. That pair is the
+gate item, and it is the reason the number in FUTURENORMA can be quoted.
+
+**The ladder, and the one design decision inside it worth knowing.** The
+ceilings are taken in **two phases**, not one. Per-IP and per-subnet are paid by
+every request whatever address it names; the global daily budget and the two
+per-recipient ceilings are paid only once an email is genuinely going out. With
+a single combined reservation, a script naming ten thousand strangers would
+consume the day's budget for mail that was never sent — the ceiling meant to
+stop abuse would itself be the outage. B5.3 holds it: five requests for unknown
+addresses consume **no** send budget.
+
+**What bounds the abuse surface most is not a ceiling at all.** The set of
+addresses anyone can make this service mail is not "the internet" — it is
+members, live invitations, and the purchaser of an unclaimed organization
+(`signInEligibility`). Everything else gets the identical response and no mail.
+That follows from having no trial and no self-serve signup, and it is the single
+largest reduction available to a magic-link system.
+
+**Responses say nothing about who has an account.** B8 compares what an attacker
+can observe — status, retry hint, challenge — across a registered address, an
+unknown one, a malformed one and one inside its cooldown, and finds them
+identical. The cooldown case is the subtle one: answering "too many requests"
+there would confirm the address recently received a link, and therefore has an
+account. The service still knows which was which; `internal` carries it to the
+audit log and never to the browser.
+
+**The challenge is first-party.** A hosted CAPTCHA needs `script-src` and
+`frame-src` for someone else's origin on the sign-in page, and `middleware.ts`
+refuses third-party origins — the Vercel Toolbar was given up rather than widen
+that policy. A 16-bit proof of work costs a person tens of milliseconds and an
+attacker CPU per attempt, is signed, expires, is bound to the caller, and is
+single-use. Its solver runs in the browser and cannot import the verifier, so
+**B6b solves a challenge with the browser algorithm and verifies it with the
+server's** — if those two ever disagree, nobody past the failure threshold can
+sign in and nothing else would catch it. Whether this is enough or Turnstile is
+worth the CSP widening stays open (FUTURENORMA §4 Open decisions 4).
+
+**No silent account merge.** A GitHub account we have never seen, whose verified
+address matches an existing member, is **refused** (A8.9) — §10.7 5A.7 makes a
+matching address evidence for a link flow, not permission. The sanctioned path
+is an invitation or an owner claim on that address; an *unverified* GitHub
+address claims nothing (A8.13), which is what stands between us and takeover by
+typing someone's address into GitHub's settings page. Identity is keyed on the
+immutable numeric subject, so a rename keeps working (A8.14).
+
+**Ownership is an invariant, not a fourth role.** `orgs.owner_user_id` is
+nullable — an organization exists unclaimed between the purchase webhook and the
+purchaser's first sign-in — and claiming it is one conditional update, so two
+devices produce one owner (A4.6). The owner cannot be removed and the last admin
+cannot be removed; ownership is transferred instead, transactionally, by the
+current owner to an existing member (A6.1–A6.7).
+
+**Sessions are rows, and every failure reads the same.** Not a JWT: revoking a
+session, removing a membership or deleting an account has to take effect on the
+next request rather than whenever a token would have expired. 90-day absolute
+lifetime, 30-day idle, rotation that replaces the token **without** moving the
+expiry (A2.4), and `reauthenticated_at` that ordinary browsing does not refresh
+(A2.7) — otherwise a tab left open would permanently satisfy the recent-auth
+requirement destructive actions are meant to have.
+
+**A signed-in person with no membership still gets a session** and sees nothing
+(A9.10, §10.7 5A.4). Authorization is the membership list; the session only says
+who is asking.
+
+**Tenant isolation now holds at the session layer, with its own counter-test.**
+`reportData.authorize` takes the org list from the session and never from the
+request. A7.2 shows a member of one organization refused another's run; **A7.3
+runs the naive version — trusting a caller-supplied org id — and watches it
+open** (§10.7 5A.13: "an organization ID in a URL, form, cookie or JSON body is
+not authorization"). `/repos/{repoId}` is gated the same way, and `/repos` — the
+repository list Pathway 6 carried as open item 2 because it needed a session to
+know whose organization was asking — exists.
+
+**Two things the audit log will not hold.** No address and no IP: both are keyed
+hashes, keyed *per purpose*, so a leaked throttle table and a leaked audit table
+cannot be joined into a picture of a person (A10.2–A10.4). The throttle table is
+the same — it needs to tell subjects apart, not name them.
+
+**Token leakage is closed at the surfaces, not only in the token.** Redemption
+is an API route that consumes server-side and redirects to a clean URL with no
+token; `/login` and both callbacks carry `Referrer-Policy: no-referrer` and
+`no-store`; verified against a production build — strict nonce CSP, 14 of 14
+scripts nonced, and the session cookie invisible to page JavaScript.
+
+**The tooling this needed, and why each piece exists.** None of it was planned;
+each came from a specific way that deploying went wrong.
+
+| Added | The failure it answers |
+|---|---|
+| `golive-check` **L9** (15 checks) | The session layer as *deployed*: `/login` under the strict nonce policy with `no-referrer` and `no-store`, `/repos` redirecting signed out, the sign-in endpoint refusing no-origin and cross-origin, a dead link setting no cookie, and the GitHub start route's `redirect_uri` — plus a fetch of the registered callback proving nothing in front of it drops the query string |
+| `golive-check` **L10** | A deployment gaining storage credentials without its CSP gaining the origin. `/r/` then renders every screenshot blocked, with no error and nothing red — this repo's most expensive shipped bug |
+| `golive-check` refusal guard | Pointed at a protected preview it followed the SSO redirect and graded **vercel.com**, reporting `L9.1 PASS /login responds 200`. It does; Vercel has a `/login` |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Checking a preview that should stay private |
+| `scripts/db-identity.mjs` | Two Neon branches are indistinguishable by schema. It identifies one by **traffic** — `auth_events` is written by a sign-in and nothing else — and only reads |
+| `scripts/grant-access.mjs` | Owner claims and invitations before there is a checkout to make them |
+
+**Four defects the first real deployment found, none findable from a test:**
+
+1. **The check script graded the wrong host** and said `PASS` about it. Its
+   replacement guard then refused to run *while holding a working secret*,
+   because the canonical probe was a plain `fetch` that never carried the bypass
+   header — the one request that decides where every later request goes.
+2. **`/login` swallowed the refusal.** A GitHub link refused for an
+   already-signed-in person redirected there with `?error=link`, was bounced
+   onward by the already-signed-in redirect, and landed back on `/repos` looking
+   exactly like success.
+3. **Sign-out had no control.** Both routes were built and tested and no page
+   reached either, so a ninety-day session had no exit.
+4. **`grant-access.mjs` named production** for a claim written to staging,
+   because it fell back to the production default whenever
+   `NEXT_PUBLIC_SITE_URL` was unset — which is always, on a laptop.
+
+**And one that had been shipping since the first waitlist confirmation:** both
+email templates referenced `.svg` marks, and **Gmail does not render SVG at
+all**. Every message either template has ever sent showed a broken image and
+blue underlined alt text where the wordmark should be. Both now draw in one
+shell (`src/emailLayout.ts`) with PNG marks served from a fixed public origin —
+never the sending deployment, whose own assets sit behind deployment protection
+and answer a mail client's image proxy with a login page. `E5` was narrowed to
+links and `E5b` added for images, so a revert of that decision fails.
+
+**Not done, and not claimed:**
+
+- ~~**The GitHub round trip has never touched github.com.**~~ **Closed
+  2026-08-21** — a separate preview OAuth app, `GITHUB_OAUTH_REDIRECT_URI`
+  pointing at the preview's own callback, and a real authorization completed
+  from a browser. Two defects surfaced on that first run and neither was
+  findable from a test: `/login` swallowed the refusal message for an
+  already-signed-in person, and the sign-out route had been built with no
+  control on any page reaching it.
+- **No invitation email is sent.** `scripts/grant-access.mjs` prints the link.
+  The send belongs with the organization console's invite form and will use the
+  `invite_org_day` / `invite_address_day` ceilings, which are built and tested.
+- **Neither console is built.** This is the identity spine; the organization and
+  operator consoles, the account pages, deletion UI and privacy controls are the
+  rest of Step 6.
+- **Timing is mitigated, not equalised.** The provider call runs after the
+  response via `after()`, which removes the measurable difference; the remaining
+  gap is a few indexed reads.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface
@@ -3248,6 +3413,7 @@ this section and are deliberately absent.
 
 | Risk | Status |
 |---|---|
+| **`sslmode=require` silently stops verifying certificates at `pg` v9** | **Open, found 2026-08-21** in a preview deployment's own logs. `pg-connection-string` warns that `prefer`, `require` and `verify-ca` are currently aliases for `verify-full` and will adopt libpq semantics in `pg` v9 — where `require` means *encrypt but do not verify the certificate*. Nothing breaks today: the dependency is pinned `^8.22.0`, so v9 cannot arrive on an install. What makes it a risk rather than a chore is the shape of the change — the day someone takes the major, connections keep working and stop being authenticated, with no error and nothing red. The fix costs nothing now: write `sslmode=verify-full` explicitly in every `DATABASE_URL` (production, preview, and `scripts/test-db.sh` is unaffected — it is local and unencrypted), which pins today's behaviour and makes the eventual major a no-op |
 | E1 hosted-path injection fixtures not run 1:1 | **Open.** CLI-side suite is green; the hosted path has never been proven. Widens when crops ship |
 | E6 provider retention posture unverified | **Open.** Disclosure page unwritten |
 | E7 live purchase loop | **Blocked** on Paddle |

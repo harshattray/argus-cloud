@@ -2,7 +2,34 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-21** — **Step 5 is done. Phase J is closed.** R2 exists
+Last updated: **2026-08-21** — **Step 6's session layer is built.** GitHub OAuth
+and email magic links ship together (Open decisions 4, closed by Harsha the same
+day), and the outbound-email abuse ladder ships **with** them rather than after:
+per-address cooldown and daily cap, per-IP and per-subnet hourly caps, a global
+daily budget of 50 that alerts on the way up and pauses at 100%, a first-party
+challenge after repeated failures, identical responses whether or not an address
+is registered, and 15-minute single-use tokens. Verify is green at **1222 checks
+across thirty-four suites**, **1254** against real Postgres, `npm audit` **0**,
+and the whole loop has been walked in a browser — unclaimed organization →
+emailed link → owner claimed → `/repos` renders the tenant. The gate's hardest
+claim is proven the only way it can be: **20 separate processes against one
+budget of 5 authorise exactly 5**, while the naive per-process counter run
+through the same harness authorises all 20. `FinishedSPEC.md` §3aa.
+
+**Both sign-in methods are proven on a deployment, not a laptop.** A magic link
+went through Resend to a real inbox, was clicked, consumed its owner claim and
+opened the organization; GitHub authorization completed against github.com and
+was **refused** for an unlinked account, which is the correct answer and the
+proof that every step before the rule ran for real. `preview.normascope.com`
+runs `staging` against its own Neon branch, and `scripts/golive-check.mjs`
+grades it over the wire.
+
+**What is not built, and is not claimed:** the two consoles, the account pages
+(including linking a GitHub identity to an existing session, without which the
+GitHub button is unreachable once signed in), deletion UI, privacy controls, and
+the invitation email — the rest of Step 6.
+
+Before that, **2026-08-21** — **Step 5 is done. Phase J is closed.** R2 exists
 (bucket `normascope-cloud`, private, Eastern North America beside the
 `us-east-1` database and `iad1` functions), and the suite has run against it:
 **1085 checks across thirty-two suites on real R2**, 1055 on the filesystem
@@ -40,7 +67,7 @@ CSP directives and this site grants none of them. **Vercel Toolbar is now off
 for Pre-Production and Production, both set explicitly rather than inherited**
 (2026-08-21). Do not widen the CSP to get it back; `middleware.ts` says why.
 
-**Next: Step 6 — auth, orgs and the two consoles.**
+**Next: the rest of Step 6 — the organization console, the operator console, the account pages, and deletion.**
 
 Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
 is a tenant of real runs to show in them.** Every figure on `/r/` and `/repos/`
@@ -188,6 +215,49 @@ R2 leg has never carried a real artifact**, and nothing is deployed. See
 >
 > The one rule that outlives the preview: new Cloud features belong in
 > `argus-cloud/web/`, never in the portfolio repo.
+
+### The two environments, and what is separate between them — 2026-08-21
+
+There are now two deployments, and **every piece of state one of them touches is
+its own.** That is the whole design; a preview sharing anything with production
+is a preview that can damage it.
+
+| | Production | Preview |
+|---|---|---|
+| Host | `normascope.com` (serves on `www`, apex 308s to it) | `preview.normascope.com` |
+| Branch | `main` | **`staging`** — pinned as the domain's git branch |
+| Database | Neon `main` | Neon **`staging`**, a schema-only branch with its own rows |
+| GitHub OAuth | its own app | **a separate app**, so a leaked preview secret reaches nothing |
+| `AUTH_SECRET` | its own | its own, different |
+| R2 | `normascope-cloud` | its own bucket and credentials |
+| Reachable by | anyone | **Vercel Authentication (Standard Protection)** |
+
+**`NEXT_PUBLIC_SITE_URL` must be the preview's own host on Preview.** Left as
+production, the preview's sign-in links point at production — where the token it
+minted does not exist — and the sign-in page cannot tell the two apart, so the
+failure is silent. `GITHUB_OAUTH_REDIRECT_URI` exists for the same reason and is
+deliberately *not* the same fact: the redirect URI is an address registered with
+a third party, the site URL is a canonical marketing address, and they coincide
+on production only by accident.
+
+**Nothing that is not production may be indexed.** Vercel stamps a noindex on
+its own `*.vercel.app` URLs and does *not* do it for a custom name, so
+`robots.ts` closes any non-production deployment to crawlers and `middleware.ts`
+stamps `X-Robots-Tag` on every response there. Without both, the preview would
+be a fully indexable copy of the site competing with the real one on unreleased
+copy.
+
+**Two scripts exist because three connection strings do.** Vercel marks the
+database URLs Sensitive, so neither can be read back to compare:
+`scripts/db-identity.mjs` asks a database which one it is **without writing to
+it** — including whether the deployment you were just clicking through wrote
+there — and `scripts/grant-access.mjs` names the database it acted on rather
+than guessing a site URL. The mistake both exist to prevent is provisioning an
+organization into production while believing it is staging.
+
+`scripts/golive-check.mjs` grades either deployment over the wire and **refuses
+to run** when something is standing in front of one, rather than reporting on
+whatever answered.
 
 ### What the preview did
 
@@ -369,7 +439,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Waitlist verified against the real production database** | ✅ | Signup row read back from a separate process; dedupe, honeypot, referrer stripping — §4f |
 | Waitlist client-side validation, sharing the server's rules and wording | ✅ | `web/lib/waitlistEmail.ts`; both forms + the API import it — §4f |
 | **The hosted run report renders images, findings and history** (BuildV5 Phase H) | ✅ built 2026-08-19 | The gate — a prospect comparing a local report with the hosted one — needs Step 5 — `FinishedSPEC.md` §3t |
-| **Trends: repository view, frame trend chart, trends API** (BuildV5 Phase I) | ✅ built 2026-08-20 | The first page above `/r/{runId}`. First drift is *placed* from `enrichment.ts`, never recomputed — the counter-test shows the naive version disagreeing on a truncated window. 71 checks — §3u. **Owner-gated by `NORMA_DEV_OPEN`, so these pages 404 in production until Step 6's session layer** |
+| **Trends: repository view, frame trend chart, trends API** (BuildV5 Phase I) | ✅ built 2026-08-20 | The first page above `/r/{runId}`. First drift is *placed* from `enrichment.ts`, never recomputed — the counter-test shows the naive version disagreeing on a truncated window. 71 checks — §3u. ~~Owner-gated by `NORMA_DEV_OPEN`~~ **— since 2026-08-21 these pages are gated by the session layer, and `/repos` lists the tenant's repositories (§3aa). The development door remains for a laptop with no session** |
 | **Cloud app chrome: wordmark, breadcrumbs, frame navigation, theme switch, Yutic endorsement** | ✅ 2026-08-20 | One shell across `/r/` and `/repos/`. The theme has three states (light / dark / follow the device) and is a cookie read server-side, so there is no flash and no client JavaScript on either page tree. 32 checks — §3v |
 | **A labelled demo tenant** (`npm run seed:demo`) | ✅ 2026-08-20 | Three repositories, twelve weeks, six frames, real credit grants and `usage_events`. The organization is named `DEMO — … (sample data)` and it is the top breadcrumb, so the label is on screen throughout a walkthrough. **Not evidence** — §3v records the one surface where the label does not appear |
 | **Every Cloud figure explains itself** | ✅ 2026-08-20 | The word itself is the control, under a dotted underline — 26 on a seven-frame report. The text comes from `web/lib/glossary.ts`, which the public `/report` page also prints, so the words a prospect reads before signing up are the words they read after. **A first cut used a circled "?" and came to 103 of them; Harsha rejected it** — §3w records what replaced it and why the count fell. Native HTML popover, so `/repos/` still ships **zero client JavaScript** and no new inline styles. 52 checks — `FinishedSPEC.md` §3w |
@@ -379,20 +449,24 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **A tenant of real runs** (`npm run seed:real`) | ✅ 2026-08-20 | Ten runs that actually happened, from `norma-bridge-usecase/` and `test-run/` cases 01–05: 59 frame rows, 151 images, 22.3 MB, 11 recorded Sonnet 5 findings. Every figure is read from the summary `norma-scope` wrote — nothing computed, no invented branch or SHA, and **no `usage_events`**, because that spend went through the CLI and a hosted usage row would claim otherwise. A separate organization from the demo one, named `REAL — …`, for the same reason the demo one is named `DEMO — …`. 21 checks — §3w |
 | **Cloud screenshots, both themes, one command** (`npm run capture:cloud`) | ✅ 2026-08-20 | 20 shots into `docs/screenshots/cloud/` with a generated manifest. Not `web/public/` — these are pictures of a surface that 404s in production. It refuses to write a screenshot of a page that did not load; §3w records the four ways the first version lied |
 
+| **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ built 2026-08-21, ❌ **GitHub round trip untried against github.com** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. 101 + 67 checks — `FinishedSPEC.md` §3aa |
+| **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
+| **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
+
 Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
 `normascope-site` that landed the public marketing site, the gated `/pitch` tree
 and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
 site is **live on `normascope.com`** (§4g) with its legal pages published
 (§4h). Full suite:
-**1,028 checks green** on PGlite across thirty-one suites — `apiKeyRevocation`,
-`artifactUploads`, `backup`,
-`budgetAlerts`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
+**1,222 checks green** on PGlite across thirty-four suites — `apiKeyRevocation`,
+`artifactUploads`, `auth`, `authAbuse`, `backup`, `budgetAlerts`,
+`bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
 `enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
-`planLimits`, `providerBudget`,
+`overview`, `planLimits`, `providerBudget`,
 `rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
 `seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks`, plus `overview` — and **1,056** against
-a real Postgres server, both run 2026-08-20. Migrations are still `001`–`020`.
+`waitlistConfirmationEmail`, `webhooks` — and **1,254** against a real Postgres
+server, both run 2026-08-21. Migrations are `001`–`021`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
@@ -840,6 +914,122 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
    not a way around one (§3). New work in either repo must pass the
    capture test (Doctrine 9) or be booked knowingly as marketing spend.
 
+### Paid launch positioning and domain transition — settled direction
+
+The current public site is a demand-test site: it explains the free/local
+Normascope CLI and points interested people to the Cloud waitlist. That is a
+temporary pre-launch state, not the final information architecture.
+
+At paid launch, `normascope.com` becomes Cloud-first:
+
+- the homepage and primary navigation showcase **Normascope Cloud** as the
+  product being sold;
+- the free/local Normascope CLI remains available and complete, but moves to a
+  secondary “Free CLI” or “Normascope” area rather than competing with Cloud
+  for the homepage's primary action;
+- the main calls to action become `Log in` and `Get Normascope Cloud` /
+  `Start Cloud`, not `Join the waitlist`;
+- the free CLI is positioned as the entry point and proof of value, while Cloud
+  is positioned as the paid organizational memory, history and collaboration
+  product;
+- no existing free CLI command, local report, Action or MCP capability is
+  clawed back to create the Cloud sale;
+- the exact public URL/name for the secondary free CLI area must be chosen
+  before launch, then kept stable with redirects and canonical metadata.
+
+The waitlist ends when Cloud opens:
+
+1. Freeze new waitlist signups at the launch cutover rather than silently
+   continuing to collect addresses.
+2. Replace waitlist CTAs with login/register and Cloud purchase/onboarding CTAs.
+3. Notify qualified waitlist addresses that Cloud is open; do not convert a
+   waitlist row into an account, organization membership or session without an
+   explicit authentication and purchase/claim flow.
+4. Preserve the waitlist as a restricted historical acquisition record for the
+   documented retention period, then delete or anonymize it according to the
+   privacy policy.
+5. Keep an auditable cutover record: timestamp, deployment, copy version,
+   redirect map, notification batch and number of failed notifications.
+
+The launch login/register flow is for Cloud identity and organization access.
+“Register” does not create an unrestricted free Cloud account: a new person
+must either claim a paid organization, accept an organization invitation, or
+complete the paid Cloud onboarding path. A person who only wants the free CLI
+is directed to install/use Normascope locally without creating a Cloud tenant.
+
+### Launch contact addresses — settled routing
+
+Use separate role addresses on the verified `normascope.com` sending domain:
+
+| Address | Purpose | Default handling |
+|---|---|---|
+| `help@normascope.com` | Product support, login/access issues, usage and troubleshooting | Support queue; never request secrets or raw API keys by email |
+| `queries@normascope.com` | General product, privacy and non-sales questions | General triage with documented response owner |
+| `business@normascope.com` | Sales, partnerships, procurement and commercial questions | Business inbox; no customer-content access by default |
+
+These are contact and reply addresses, not authentication credentials. Magic
+links must use a dedicated transactional sender such as `auth@normascope.com`,
+and operational alerts must use a separate sender such as
+`alerts@normascope.com`. Keep support, business and authentication mailboxes
+separate in permissions, forwarding rules, audit access and retention.
+
+Before launch, verify SPF, DKIM, DMARC, mailbox ownership, forwarding, bounce
+handling, abuse reporting, and a monitored owner for each address. Update the
+website footer, legal pages, Cloud terms, privacy policy, AI disclosure,
+subprocessors notice, refund policy, error pages and transactional templates in
+the same launch change. The old `waitlist@normascope.com` address may remain as
+a temporary forwarding alias during the cutover, but it must not remain the
+primary public contact after the waitlist is retired.
+
+### Preview, demo and customer environments — settled boundary
+
+There are three different environments and they must not be collapsed into one
+“test account” convention:
+
+| Environment | Purpose | Data and credentials |
+|---|---|---|
+| Preview/staging | QA and deployment verification | Separate database, storage, OAuth clients, email configuration and secrets; no customer data or real billing |
+| Production demo tenant | Showing Cloud to prospects | Synthetic data only, isolated organization, constrained accounts and spend |
+| Customer production | Paid customer workspaces | Real tenant data, real billing and customer-specific credentials; never a test fixture |
+
+Preview deployment URLs may change on every Vercel deployment. Give the preview
+environment a stable alias such as `preview.normascope.com`, mapped to the
+current preview deployment or a dedicated staging branch. The alias is only a
+stable address; it must continue to use preview environment variables and
+preview storage/database resources.
+
+For external demonstrations, create one explicitly named production demo
+organization, for example `DEMO — Normascope Cloud`. It may live in production
+only because it is a deliberately isolated tenant, not because production is a
+place for arbitrary testing:
+
+- all repositories, runs, frames, users and findings are synthetic or approved
+  public examples;
+- it has no relationship to a customer organization and cannot be used to
+  discover one;
+- external demo users are read-only by default;
+- a separate, tightly controlled demo-admin identity exists only when the
+  organization console must be demonstrated;
+- no shared owner password or reusable magic-link URL is handed to prospects;
+- hosted AI, uploads, billing actions, exports and destructive controls are
+  disabled or narrowly capped unless a demo explicitly needs them;
+- demo spending, storage and email have independent hard limits and alerts;
+- the tenant can be reseeded to a known snapshot without touching any customer;
+- every demo account and demo organization is visibly marked as demo data;
+- the demo tenant is included in deletion, backup, monitoring and access-review
+  procedures, but never in customer usage or revenue reporting.
+
+A sanitized share link is preferred for a simple marketing walkthrough. A demo
+account is appropriate only when the prospect needs to see the authenticated
+Cloud console. A QA account belongs in preview/staging, not in customer
+production. No customer organization may contain synthetic test data.
+
+The demo runbook must define account creation, expiry, revocation, reset/seed,
+AI and email budgets, operator ownership, incident response, and the exact
+production routes that are safe to show. A demo account must not become a
+backdoor into operator routes, another organization, raw storage, billing, or
+customer support data.
+
 ### The whole path on one screen
 
 | # | Step | Where | Blocked on | Done when |
@@ -854,7 +1044,7 @@ docs predate the decisions in `FinishedSPEC.md` §8 and Doctrine 9.
 | 6 | Auth + orgs + control planes | argus-cloud | 5 | GitHub OAuth, magic links, key management, complete organization console, complete operator console |
 | 7 | Paddle | argus-cloud | 5, 6 | Sandbox loop green; org provisioned by webhook |
 | 8 | Launch gates | both | 7 | E1, E6, legal pages, trademark, refund runbook |
-| 9 | Paid Cloud launch + first customers | — | 8 | Enable paid access for qualified waitlist users; first revenue |
+| 9 | Paid Cloud launch + first customers | — | 8 | Switch `normascope.com` to Cloud-first positioning, replace the waitlist with login/onboarding, migrate qualified demand, and collect first revenue |
 | 10+ | Horizons | as needed | 9 | Demand-gated, individually |
 
 **Steps 1–4 are roughly the whole of the remaining product work.** Steps 5–8
@@ -1232,7 +1422,11 @@ because there is no session layer.**
 
 - GitHub OAuth for developers; **email magic links for designers** (a designer
   seat must not require a GitHub account — this is a real differentiator, not a
-  detail).
+  detail). **Both ship together — Harsha's call, 2026-08-21** (Open decisions 4,
+  now closed).
+- **Sending an email is a metered, budgeted action, not a side effect of a
+  request.** The abuse ladder below is part of this step's gate, not a
+  hardening pass afterwards.
 - Org creation, invites, roles (`admin | member | designer`), key management UI
   with once-shown keys and working revocation.
 - The report page's API-key field disappears; sessions replace it.
@@ -1253,7 +1447,48 @@ because there is no session layer.**
   than rebuilding billing history), and a self-serve cancel.
 - Seat and repo list.
 
-**Gate:** cross-tenant probes denied at the session layer, not just in SQL.
+#### Magic links are an outbound-email budget — decided 2026-08-21
+
+A magic link means **anyone on the internet can make us send mail to an address
+they chose**. That is a spend surface and a deliverability surface, and it does
+not ship as "send an email on every request".
+
+Two levels, and the application level is the one that binds:
+
+| Level | Ceiling |
+|---|---|
+| One address | 1 email per **10 minutes**, and a small daily cap |
+| One IP | hourly cap |
+| One subnet (`/24` IPv4, `/64` IPv6) | hourly cap, above the per-IP one |
+| Everyone, per day | **50 emails**, env-overridable, alerting on the way up and **pausing at 100%** |
+| Resend free plan | 100/day and 3,000/month, **no overage billing** — excess is rejected, never charged |
+
+The launch ceiling is deliberately **half the provider's free-plan day**. The
+provider limit is the backstop; ours is the control, so the first thing that
+happens on an attack is our own alert, not a rejection from Resend.
+
+Also required, and each is a gate item:
+
+- **A challenge after repeated failures** from one address or subnet. First
+  party, not a third-party widget — a hosted CAPTCHA needs `script-src` and
+  `frame-src` for someone else's origin on the login page, and `middleware.ts`
+  refuses third-party origins for good reasons. **Open sub-decision:** whether a
+  first-party proof-of-work challenge is enough, or Turnstile is worth widening
+  the CSP for. Recommendation: first party.
+- **Generic responses.** Requesting a link, for a registered address or not,
+  returns the same body, the same status and the same shape. The endpoint must
+  not become a way to ask whether an address has an account.
+- **Short-lived, single-use tokens.** 15 minutes, consumed by a conditional
+  update so a replayed link cannot mint a second session.
+
+The money is small; the exposure is not. Free-plan overage is rejected rather
+than billed, so an attack costs no dollars — what it costs is **our sending
+reputation** and a real person's inbox. Both are harder to recover than a bill.
+
+**Gate:** cross-tenant probes denied at the session layer, not just in SQL —
+**and** every ceiling above proven, the global one across concurrent processes
+against a real Postgres, with the naive per-process counter run through the same
+harness to show the test has teeth (CLAUDE.md rule 4).
 
 **Our own operator console** (internal, no public route, restricted operator
 roles, and built as a real control plane rather than a small collection of
@@ -1473,6 +1708,7 @@ Figma plugins, auto-fix PRs, CI blocking by default.
 | Step 5 | ~~Vercel project~~ · ~~Postgres (Neon/Supabase)~~ **2026-08-13 — Neon, us-east-1, PG 17.10, pooled** · ~~R2 bucket + credentials~~ **2026-08-21 — `normascope-cloud`, private, ENAM, bucket-scoped Object Read & Write token** · ~~`NORMASCOPE_CLOUD_PASSWORD` + fresh `JWT_SECRET`~~ · ~~confirmation on the preview's `norma_*` tables and `normascope-cloud-*` objects~~ **settled 2026-08-21 — code retired and deployed, data stays** |
 | Step 5 (now) | `DATABASE_URL` set in the Vercel project itself — the local `web/.env.local` copy does not travel, and the guard in `src/db.ts:61` makes a deploy without it fail rather than lose signups |
 | ~~Step 5 (optional)~~ | ~~`normascope.com` early~~ **provided 2026-08-13** — registered at Spaceship; **DNS still on the registrar's parking nameservers**, so delegation to Vercel is the remaining step |
+| Step 6 (now) | **`AUTH_SECRET`** in Vercel — a fresh random value; the app refuses to boot on a deployment without it rather than fall back to the development key in the source tree. **A GitHub OAuth app** — Application name `Normascope`, homepage `https://normascope.com`, **Authorization callback URL** `https://normascope.com/api/auth/github/callback` (exact, and it is the only one the code will send), logo `docs/brand/normascope-oauth-logo.png` (512×512, built by `scripts/build-favicons.py` from `web/app/icon.svg`). Then its client id and secret as `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`; with either unset the GitHub button does not render and the routes 404. **Leave wildcard matching and Device Flow off** — a wildcard on `*.vercel.app` would let any Vercel app receive our authorization codes, and nothing uses the device flow. To test GitHub sign-in on a **preview** deployment, register that preview's own callback as a second redirect URI and set `GITHUB_OAUTH_REDIRECT_URI` to it in the Preview environment only; production needs neither. Optionally `AUTH_EMAIL_FROM` if sign-in mail should come from something other than `hello@normascope.com` |
 | Step 7 | Paddle sandbox account; then business verification for production (the domain is in hand) |
 | Step 8 | Trademark filing; ToS/Privacy content decisions; a phone number for alerts |
 
@@ -1540,8 +1776,13 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    deprecated in 16 — and with the three comments that say "this runs on the
    Edge runtime" (`middleware.ts`, `lib/gate.ts`, `lib/clientRate.ts`) corrected
    in the same change.
-4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
-   first. Designer seats are a differentiator; shipping OAuth alone delays it.
+4. ~~**Whether Step 6 ships GitHub OAuth and magic links together**~~ **Closed
+   2026-08-21 — together.** Designer seats are the differentiator and OAuth
+   alone delays them. The condition attached to it: magic links ship with the
+   outbound-email abuse ladder in Step 6's gate, not as a later hardening pass.
+   See "Magic links are an outbound-email budget" under Step 6. One sub-decision
+   is open inside it — first-party challenge versus Turnstile and the CSP
+   widening it needs.
 
 ---
 
@@ -1610,6 +1851,192 @@ attempting org A's run, share, and batch — all denied).
    carry `admin | member | designer`. **This is the main unbuilt piece.**
 6. **Isolation is automatic** from there: reports, trends, result cache, and
    credits are all org-scoped.
+
+### Identity, membership and session contract — settled for Step 6
+
+Authentication and authorization are different questions:
+
+- **Authentication** identifies a person. A person may sign in with GitHub,
+  email magic link, or both. The provider identities link to one `users` row;
+  a GitHub username is never the identity key — GitHub's immutable subject is.
+- **Authorization** comes from `memberships`. A user may belong to many
+  organizations at once, with a separate role in each one. The active
+  organization in the browser is a preference, never proof of access.
+- **Billing and data** belong to the organization. Credits, repositories,
+  runs, storage, retention, API keys, usage and subscription state never belong
+  to a person.
+
+There is no data outside an organization. An individual customer is represented
+as a one-person organization with that user as owner. A company buys one
+organization, invites employees, and gives them `admin`, `member`, or `designer`
+memberships. Signing in without a membership or valid invitation does not
+grant Cloud access or create an unrestricted free account.
+
+One user can therefore look like this:
+
+```
+Alex
+├── Alex's workspace — owner
+├── Acme — member
+└── StudioCo — designer
+```
+
+Every server page, action, API route, export and object URL must resolve the
+organization from the authenticated session or API key and verify membership
+and role on the server. A caller-supplied `orgId`, an active-org cookie, a URL
+segment, or client state is never authorization. Switching organizations only
+changes the UI context; it cannot widen access.
+
+Browser sessions are server-side, random, revocable and expiring. The cookie
+contains the random token; only its hash is stored. A laptop, phone and work
+browser may each have a session. Signing in on another machine does not revoke
+the first session, and the account page must list and revoke individual
+sessions or all sessions. Removing a membership, revoking a session, or
+deleting a user takes effect on the next request. Destructive actions require
+recent authentication.
+
+Browser sessions do not authenticate the CLI. Terminals, GitHub Actions and
+agents use separate organization-scoped API keys, shown once and revocable
+independently. Sharing one key across machines may work, but distinct keys per
+pipeline or agent are the supported operational pattern. An interactive CLI
+device-login flow is a later enhancement, not a reason to expose browser
+cookies or session tokens to terminals.
+
+Account deletion removes the user's profile, identities, sessions, invitations
+and preferences, but does not delete an organization unless the user performs
+the separate, re-authenticated organization-deletion flow. Organization
+deletion removes its members, keys, repositories, runs, artifacts, credits and
+storage and produces a completion receipt.
+
+#### Step 6 decisions that must not be left implicit
+
+- The first paid checkout creates the organization through the verified MoR
+  webhook. The checkout email becomes a pending owner claim; it does not by
+  itself authenticate a browser. The purchaser claims the organization through
+  a verified magic link or a GitHub identity whose verified email matches the
+  checkout identity. A mismatch goes through a narrow, audited support flow.
+- A user cannot create a free Cloud organization at launch. An individual who
+  wants Cloud gets a paid one-person organization and is its owner/admin.
+- An organization has exactly one owner at a time. The owner is also an
+  `admin` membership, but ownership is a separate invariant from the role so
+  billing responsibility and owner transfer are unambiguous. Owner transfer
+  requires recent authentication and acceptance by the new owner.
+- Admins may invite, remove and manage members and keys. The owner and admins
+  may manage organization settings and billing; only the owner may transfer
+  ownership or permanently delete the organization at launch.
+- A user may belong to multiple organizations. The organization selected in a
+  cookie or URL is never trusted for authorization; every request re-checks the
+  membership and role against the session.
+- Browser sessions are independent per device. Login on a new device does not
+  log out existing devices. Users can revoke one session or all sessions.
+- The browser session and the CLI credential are different systems. The CLI,
+  CI and agents use organization API keys; they never receive browser cookies.
+- Authorization is deny-by-default at both the organization and resource
+  level. A valid membership is not enough to open an arbitrary run, repository,
+  frame, artifact, export or share-management action.
+- Account deletion is personal deletion. It removes the user's identities,
+  sessions, invitations and preferences but leaves organizations intact unless
+  the separate owner-only organization deletion flow is used.
+
+### Customer account and subscription lifecycle — launch contract
+
+Cloud uses a **payment-first owner flow**. There is no unrestricted free Cloud
+account or unpaid Cloud organization at launch:
+
+```text
+visitor
+  → Cloud checkout
+  → verified payment webhook
+  → organization + plan + credits + pending owner claim
+  → owner authenticates with GitHub or magic link
+  → user account and owner membership created atomically
+  → Cloud access begins
+```
+
+The checkout email is a claim target, not a browser credential. An abandoned
+checkout creates no usable account or customer organization; an incomplete
+pending claim expires and is swept. A payment webhook retry is idempotent and
+must not create a second organization, owner claim or credit grant.
+
+Employees do not pay individually. An organization admin invites them, and the
+invitee creates or uses an individual account while accepting the invitation.
+The organization owns the subscription, credits, repositories, runs, storage
+and usage. A solo customer is simply the owner of a one-person organization.
+
+An existing user who signs in without a membership, invitation or pending
+owner claim may use the personal account/security surface, but cannot see
+Cloud data, create an unrestricted free tenant, upload, or spend credits.
+
+#### Cancellation, failed payment and renewal
+
+- A normal cancellation takes effect at the end of the paid period unless the
+  approved refund policy or payment processor event makes it immediate.
+- During the paid period, the organization remains active and retains its
+  normal entitlements.
+- A failed renewal enters `past_due` with a **14-day grace period**. The admin
+  sees a payment-update action; existing reports, history and shares remain
+  available; no new monthly allowance is granted.
+- After grace, the organization becomes `lapsed`: existing reports/history and
+  permitted shares remain read-only, while new uploads, hosted AI and new paid
+  work are rejected politely. Local CLI use remains unaffected.
+- Renewal before deletion restores the organization and grants the next
+  allowance exactly once. Missed allowances are not retroactively granted.
+- Refunds and chargebacks revoke entitlement at the processor-confirmed
+  effective time, while retaining data read-only under the retention policy.
+- Duplicate, late and out-of-order processor events are signature-verified,
+  deduplicated and applied idempotently.
+
+#### Lapsed-data retention and export
+
+The launch customer promise is:
+
+```text
+paid period
+  → 14-day payment grace
+  → lapsed read-only period
+  → 90-day deletion deadline from lapse
+```
+
+The deletion engine currently proves a 90-day sweep over data age. Before paid
+launch, the customer-facing lapse policy must be implemented explicitly with a
+stored organization deletion deadline (or an equivalent lifecycle invariant),
+so “90 days from lapse” cannot be confused with “90 days from each run.”
+Legal holds and accounting obligations override automatic deletion and must be
+visible to the operator console.
+
+During active, `past_due` and `lapsed` states, the owner/admin can request an
+export before deletion. The export is an asynchronous, audited job and contains
+repositories, runs, commits, frames, trends, report metadata, findings, usage
+and credit ledger records, retained artifacts, share metadata and a manifest of
+omitted/expired data. It never contains API keys, session tokens, magic-link
+tokens, OAuth secrets or provider credentials. The download is short-lived and
+the export receipt records its creation, expiry and requester.
+
+Before organization deletion the UI must show:
+
+```text
+recent authentication
+  → typed organization name
+  → export offered and its scope explained
+  → explicit irreversible confirmation
+  → upload/agent key revocation
+  → retry-safe deletion job
+  → completion receipt
+```
+
+Personal account deletion is separate. It removes the user's identities,
+sessions, invitations and preferences, but does not delete organizations they
+do not own. An owner must transfer ownership or explicitly delete the
+organization first. Organization deletion removes tenant rows, storage,
+memberships, keys and hosted data; it must preserve only the minimum
+anonymized/accounting evidence required by law and the documented retention
+policy.
+
+Step 6 also includes defense in depth: exact OAuth callback validation, token
+redemption that leaves no usable URL behind, resource-level authorization for
+every object and export, billing-claim idempotency, append-only auth evidence,
+and incident tests for session fixation, replay, enumeration, tenant crossing,
+and concurrent revocation. A session table by itself is not the security model.
 
 The upload default for an entitled repository is `flagged`: full artifacts for
 flagged frames, thumbnails or metadata for clean frames. Supported repository

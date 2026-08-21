@@ -56,9 +56,46 @@ function check(id, condition, detail) {
  * canonical host is resolved once and everything after is measured against a
  * real response.
  */
+/**
+ * Vercel's Deployment Protection bypass, when checking a protected preview.
+ *
+ * **Without it every check here is a lie in the optimistic direction.** A
+ * protected deployment answers every path with a 302 to `vercel.com/sso-api`,
+ * so nothing 404s, nothing errors, and a reader skimming the output sees a
+ * deployment that responds to everything. The header is Vercel's documented
+ * "Protection Bypass for Automation" secret, from the project's Deployment
+ * Protection settings.
+ *
+ * **Declared before the canonical probe, and that placement is the whole
+ * point.** It first lived next to `get()` below, which meant the probe — a
+ * plain `fetch` that runs earlier — never sent it. Protection redirected the
+ * probe to `vercel.com`, the guard fired, and the script refused to run *while
+ * holding a working secret*. The bypass was unreachable from the one request
+ * that decides where every later request goes.
+ */
+const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+
+/**
+ * The preview phrase, for a deployment behind this repo's own gate.
+ *
+ * **Without it every check would pass against the unlock screen.** `get()`
+ * follows redirects, so a gated `/login` lands on `/unlock` and answers 200 —
+ * and `L9.1 PASS /login responds 200` would be true of a page that is not
+ * `/login`. That is the same failure as grading `vercel.com`, except it never
+ * leaves the domain, so the registrable-domain guard cannot see it.
+ *
+ * Supplied, the script unlocks itself once and carries the cookie, exactly as a
+ * person's browser does. Absent, the guard below refuses to report.
+ */
+const previewPhrase = process.env.PREVIEW_PASSWORD?.trim();
+
+/** Headers every request here sends, canonical probe included. */
+const sharedHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+const bypassHeaders = sharedHeaders;
+
 let canonical = origin;
 try {
-  const probe = await fetch(`${origin}/`, { redirect: "follow" });
+  const probe = await fetch(`${origin}/`, { redirect: "follow", headers: bypassHeaders });
   canonical = new URL(probe.url).origin;
 } catch (err) {
   console.error(`could not reach ${origin}: ${String(err.message ?? err)}`);
@@ -71,7 +108,8 @@ if (canonical !== origin && !quiet) {
 /** Every response is kept, so L5 can scan all of them at the end. */
 const seen = [];
 async function get(pathname, init) {
-  const res = await fetch(`${canonical}${pathname}`, { redirect: "follow", ...init });
+  const headers = { ...(init?.headers ?? {}), ...bypassHeaders };
+  const res = await fetch(`${canonical}${pathname}`, { redirect: "follow", ...init, headers });
   const body = await res.text().catch(() => "");
   const landed = new URL(res.url).pathname;
   const record = { pathname, landed, status: res.status, headers: res.headers, body };
@@ -79,7 +117,104 @@ async function get(pathname, init) {
   return record;
 }
 
+/**
+ * Unlock the preview, the way a browser does, before anything is measured.
+ *
+ * One form post to the gate's own exchange, then the cookie rides on every
+ * later request. Done before the first `get()` so no check ever sees the
+ * unlock screen.
+ */
+if (previewPhrase) {
+  const unlocked = await fetch(`${canonical}/api/preview-unlock`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      ...sharedHeaders,
+      "content-type": "application/x-www-form-urlencoded",
+      // The gate refuses a cross-origin post, which is the CSRF half
+      // `SameSite` does not cover. A script has to say who it is.
+      origin: canonical,
+      "sec-fetch-site": "same-origin",
+    },
+    body: new URLSearchParams({ password: previewPhrase }).toString(),
+  }).catch(() => null);
+
+  const cookie = unlocked?.headers.get("set-cookie") ?? "";
+  const token = /np_preview=([^;]+)/.exec(cookie)?.[1];
+  if (!token) {
+    console.error(
+      `${canonical} refused the phrase in PREVIEW_PASSWORD.\n\n` +
+        "The gate answers a wrong phrase, an unset one and a throttled attempt identically, so this\n" +
+        "cannot say which — check the value against Vercel's Preview environment, and that the\n" +
+        "deployment carrying the gate has actually been deployed.\n"
+    );
+    process.exit(2);
+  }
+  sharedHeaders.cookie = `np_preview=${token}`;
+  if (!quiet) {
+    console.log("note: unlocked the preview gate — checks below run against the site, not the unlock screen\n");
+  }
+}
+
 const home = await get("/");
+
+/**
+ * Stop when the deployment is answering with its own unlock screen.
+ *
+ * The registrable-domain guard below cannot see this: `/unlock` is on the same
+ * host, so nothing looks redirected. What gives it away is where the probe
+ * *landed*.
+ */
+if (home.landed === "/unlock") {
+  console.error(
+    `${canonical} is behind this repo's preview gate — every path lands on /unlock, so the checks\n` +
+      "below would describe that screen rather than the deployment. Set PREVIEW_PASSWORD to the\n" +
+      "phrase in Vercel's Preview environment and run this again.\n"
+  );
+  process.exit(2);
+}
+
+/**
+ * Stop rather than report, when the canonical probe left the domain entirely.
+ *
+ * **This check exists because the first version of it did not work, and the
+ * failure was the worst kind.** Pointed at a Vercel-protected preview, the
+ * probe above followed the SSO redirect all the way to `vercel.com` and set
+ * `canonical` to it — so every check afterwards ran against Vercel's own login
+ * page and reported, among other things, `L9.1 PASS /login responds 200`. It
+ * did. Vercel has a `/login`.
+ *
+ * The first attempt looked for `sso-api` in the body, which is in the *redirect
+ * URL* and not in the page it lands on, so it never fired. The reliable signal
+ * is not what the page says — it is that we asked one registrable domain and a
+ * different one answered. A redirect within the domain is ordinary and expected
+ * (an apex to `www`); a redirect off it means something is standing in front of
+ * the deployment, and nothing below would be measuring the deployment.
+ *
+ * The two-label registrable-domain rule is wrong for `example.co.uk` and
+ * deliberately so: it errs towards refusing to report, which is the safe
+ * direction for a check whose whole job is to be trustworthy.
+ */
+const registrable = (host) => host.split(".").slice(-2).join(".");
+const asked = new URL(origin).host;
+const answered = new URL(canonical).host;
+if (registrable(asked) !== registrable(answered)) {
+  console.error(
+    `asked ${asked} and ${answered} answered — something is standing in front of this deployment.\n\n` +
+      (/vercel\.com$/.test(registrable(answered))
+        ? bypass
+          ? "That is Vercel Deployment Protection, and the bypass secret in\n" +
+            "VERCEL_AUTOMATION_BYPASS_SECRET did not satisfy it. Check it against Settings →\n" +
+            "Deployment Protection → Protection Bypass for Automation — a stale or partly copied\n" +
+            "value fails exactly like an absent one.\n"
+          : "That is Vercel Deployment Protection. Every path returns its SSO page, so nothing below\n" +
+            "would be checking your deployment. Either turn Vercel Authentication off for it, or set\n" +
+            "VERCEL_AUTOMATION_BYPASS_SECRET (Settings → Deployment Protection → Protection Bypass for\n" +
+            "Automation) and run this again.\n"
+        : "Refusing to report: the results would describe whatever answered, not what was asked for.\n")
+  );
+  process.exit(2);
+}
 
 // ═══ L1 — the deployment answers, and the apex reaches it ═══
 check("L1.1", home.status === 200, `${canonical}/ responds ${home.status}`);
@@ -193,9 +328,23 @@ check("L5", leaks.length === 0, `no credential-shaped value in ${seen.length} re
 
 // ═══ L6 — the private trees are out of the index ═══
 const robots = await get("/robots.txt");
-const disallowed = ["/r/", "/api/", "/admin/"].filter((p) => !robots.body.includes(`Disallow: ${p}`));
+/**
+ * A blanket `Disallow: /` is a superset of the three specific rules, and it is
+ * what every non-production deployment serves — `web/app/robots.ts` closes a
+ * preview to crawlers entirely, because a preview on a custom domain gets no
+ * noindex from the platform.
+ *
+ * Without this branch the check read a *stricter* policy as a failure, and
+ * reported the three trees as unprotected on the one deployment where nothing
+ * at all is crawlable. A check that fails on the safer answer teaches people to
+ * ignore it.
+ */
+const blanketDisallow = /^\s*Disallow:\s*\/\s*$/m.test(robots.body);
+const disallowed = blanketDisallow ? [] : ["/r/", "/api/", "/admin/"].filter((p) => !robots.body.includes(`Disallow: ${p}`));
 check("L6", robots.status === 200 && disallowed.length === 0,
-  `robots.txt keeps the private trees out${disallowed.length ? ` — missing: ${disallowed.join(", ")}` : ""}`);
+  blanketDisallow
+    ? "robots.txt closes the whole deployment to crawlers — this is not production"
+    : `robots.txt keeps the private trees out${disallowed.length ? ` — missing: ${disallowed.join(", ")}` : ""}`);
 
 // ═══ L7 — the bucket is private (J2.2) ═══
 //
@@ -221,6 +370,189 @@ if (bucket && endpoint) {
   check("L7.2", objectStatus !== 200, `reading an object without a signature is refused (${objectStatus})`);
 } else if (!quiet) {
   console.log("SKIP  L7  set NORMA_STORAGE_BUCKET and NORMA_STORAGE_ENDPOINT to check the bucket is private");
+}
+
+// ═══ L9 — the session layer, as deployed (Step 6) ═══
+//
+// **Every one of these is a property a deployment can lose without anything
+// going red locally.** An environment variable unset in Vercel turns the GitHub
+// button off; a header dropped from `middleware.ts` puts a sign-in page into a
+// shared cache; a redirect misconfigured at the domain level breaks an OAuth
+// callback that a passing suite still calls green. The suite proves the code.
+// This proves the deployment, and they are not the same claim.
+const login = await get("/login");
+check("L9.1", login.status === 200, `/login responds ${login.status}`);
+// Guarded on L9.1, and the guard is not defensive tidiness: run unguarded
+// against a deployment that has no sign-in page, L9.2 reads the *404 page's*
+// headers and passes. A check that goes green because the thing it checks does
+// not exist is worse than no check — it is a claim.
+if (login.status === 200) {
+  check(
+    "L9.2",
+    (login.headers.get("referrer-policy") ?? "") === "no-referrer",
+    `the sign-in page sends Referrer-Policy: no-referrer (${login.headers.get("referrer-policy") ?? "absent"})`
+  );
+  check(
+    "L9.3",
+    /no-store/.test(login.headers.get("cache-control") ?? ""),
+    `and no-store, so it is never served from a shared cache (${login.headers.get("cache-control") ?? "absent"})`
+  );
+  check("L9.4", /nonce-/.test(cspOf(login)), "and runs under the strict nonce policy, not the site one");
+} else if (!quiet) {
+  console.log("SKIP  L9.2-4  no sign-in page on this deployment — its headers would be the 404's");
+}
+
+// The repository list is the first page behind the session. Signed out it must
+// send you to sign in — never render, never 500.
+const repos = await get("/repos", { redirect: "manual" });
+const reposTarget = repos.headers.get("location") ?? "";
+check(
+  "L9.5",
+  [302, 303, 307, 308].includes(repos.status) && /\/login/.test(reposTarget),
+  `/repos signed out redirects to sign-in (${repos.status} → ${reposTarget || "nowhere"})`
+);
+
+// The link-request endpoint refuses a caller that presents no origin at all.
+// A browser always sends one of these two headers; a script does not.
+const noOrigin = await get("/api/auth/email/request", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ email: "probe@example.com" }),
+  redirect: "manual",
+});
+check("L9.6", noOrigin.status === 403, `the sign-in endpoint refuses a request with no origin (${noOrigin.status})`);
+
+// A cross-site origin must be refused too — this is the CSRF half that
+// SameSite alone does not cover.
+const crossOrigin = await get("/api/auth/email/request", {
+  method: "POST",
+  headers: { "content-type": "application/json", origin: "https://evil.example" },
+  body: JSON.stringify({ email: "probe@example.com" }),
+  redirect: "manual",
+});
+check("L9.7", crossOrigin.status === 403, `and one from another origin (${crossOrigin.status})`);
+
+// A spent or invented sign-in token must land on the sign-in page, not on a
+// session and not on an error page that says which of the two it was.
+const deadLink = await get("/api/auth/email/callback?token=definitely-not-a-real-token", { redirect: "manual" });
+const deadTarget = deadLink.headers.get("location") ?? "";
+check(
+  "L9.8",
+  [302, 303, 307, 308].includes(deadLink.status) && /\/login\?error=/.test(deadTarget),
+  `an invalid sign-in link is refused without a session (${deadLink.status} → ${deadTarget || "nowhere"})`
+);
+if (deadLink.status !== 404) {
+  check(
+    "L9.9",
+    !/set-cookie/i.test([...deadLink.headers.keys()].join(" ")),
+    "and sets no cookie on the way out"
+  );
+}
+
+// GitHub sign-in: configured or not, the answer must be one of exactly two
+// shapes. A 500 here means the credentials are half-present.
+const ghStart = await get("/api/auth/github/start", { redirect: "manual" });
+const ghConfigured = [302, 303, 307, 308].includes(ghStart.status);
+const ghTarget = ghStart.headers.get("location") ?? "";
+check(
+  "L9.10",
+  ghConfigured || (ghStart.status === 404 && login.status === 200),
+  `GitHub sign-in is either configured or deliberately absent, never broken (${ghStart.status})`
+);
+if (ghConfigured) {
+  const url = (() => {
+    try {
+      return new URL(ghTarget);
+    } catch {
+      return null;
+    }
+  })();
+  check("L9.11", url?.host === "github.com", `it redirects to github.com (${url?.host ?? "unparseable"})`);
+  check("L9.12", Boolean(url?.searchParams.get("state")), "carrying a state parameter");
+  check(
+    "L9.13",
+    /norma_oauth_state=/.test(ghStart.headers.get("set-cookie") ?? ""),
+    "and the matching cookie, without which the callback cannot verify it"
+  );
+  // The redirect_uri must be one this deployment can actually serve, and it
+  // must equal what the OAuth app has registered. Checked as a live request
+  // rather than a string comparison: the failure this catches is a domain-level
+  // redirect that drops the query string, which would strip the code and the
+  // state on the way back from GitHub and break sign-in with nothing in a log.
+  const redirectUri = url?.searchParams.get("redirect_uri") ?? "";
+  check("L9.14", redirectUri.startsWith("https://"), `redirect_uri is https (${redirectUri || "absent"})`);
+  if (redirectUri) {
+    // `bypassHeaders`, because this is a request to *our* deployment and a
+    // protected one answers it with an SSO redirect — which looks exactly like
+    // the query-dropping failure this check exists to find. It reported that
+    // false alarm once already. The bucket probes in L7 deliberately do not get
+    // the header: they go to storage, which is a different host and a different
+    // authority.
+    const probe = await fetch(`${redirectUri}?code=probe&state=probe`, {
+      redirect: "manual",
+      headers: bypassHeaders,
+    }).catch(() => null);
+    const hop = probe?.headers.get("location") ?? "";
+    const survives =
+      probe !== null &&
+      (probe.status < 300 ||
+        probe.status >= 400 ||
+        (/code=probe/.test(hop) && /state=probe/.test(hop)));
+    check(
+      "L9.15",
+      survives,
+      `the registered callback keeps its query string${hop ? ` (${probe.status} → ${hop})` : ` (${probe?.status ?? "unreachable"})`}`
+    );
+  }
+} else if (!quiet) {
+  console.log("SKIP  L9.11-15  GitHub sign-in is not configured on this deployment");
+}
+
+// ═══ L10 — the deployed CSP names the storage it actually loads from ═══
+//
+// **The failure this catches is the most expensive bug this repo has shipped.**
+// `/r/` rendered completely blank in production because a Content-Security-
+// Policy did not permit something the page needed, and nothing was red: no
+// error, no failing check, just an empty page. Uploaded artifacts are fetched
+// straight from storage rather than proxied, so `img-src` has to name that
+// origin — and the moment a deployment gains storage credentials, its CSP has
+// to gain the origin with them. A preview that gets its own R2 bucket is
+// exactly that moment.
+//
+// Skipped rather than guessed when the storage environment is absent: the
+// expected origin is derived from the same variables the driver is built from
+// (`src/storage/origin.ts`), and inventing one here would be a second source
+// for the fact that file exists to be the only source of.
+const storageEndpoint = process.env.NORMA_STORAGE_ENDPOINT?.trim();
+const storageBucket = process.env.NORMA_STORAGE_BUCKET?.trim();
+if (storageEndpoint && storageBucket) {
+  const { storageImageOrigin } = await import("../dist/storage/origin.js");
+  const expected = storageImageOrigin(process.env);
+  const reportCsp = cspOf(strictOne);
+  const imgSrc = /img-src ([^;]+)/.exec(reportCsp)?.[1] ?? "";
+  if (!expected) {
+    console.log("SKIP  L10  storage signs same-origin URLs on this configuration — nothing for img-src to name");
+  } else {
+    check(
+      "L10.1",
+      imgSrc.includes(expected),
+      imgSrc.includes(expected)
+        ? `the report page's img-src names the storage origin (${expected})`
+        : `img-src does not name ${expected}. Served: ${imgSrc.trim() || "(no img-src)"}. ` +
+          "Two things look identical here and need opposite fixes: the deployment's CSP is wrong and " +
+          "every uploaded screenshot is blocked, **or** the NORMA_STORAGE_* variables in this shell " +
+          "belong to a different environment than the one being checked. Compare the two origins above " +
+          "before treating it as an incident"
+    );
+    check(
+      "L10.2",
+      !/\*/.test(imgSrc),
+      `and names it exactly, with no wildcard (${imgSrc.trim()})`
+    );
+    check("L10.3", expected.startsWith("https://"), `over https (${expected})`);
+  }
+} else if (!quiet) {
+  console.log("SKIP  L10  set NORMA_STORAGE_ENDPOINT and NORMA_STORAGE_BUCKET to check the CSP names the storage origin");
 }
 
 // ═══ L8 — the scanner is not inert ═══

@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { clientIp, overBudget, UNLOCK_BUDGET } from "./clientRate";
+import {
+  PREVIEW_COOKIE,
+  PREVIEW_ENV_VAR,
+  PREVIEW_MAX_AGE_SECONDS,
+  PREVIEW_SCOPE,
+  PREVIEW_UNLOCK_ACTION,
+  PREVIEW_UNLOCK_PATH,
+} from "./previewGate";
 
 /**
  * Shared-password gates for the two private trees on this site.
@@ -34,7 +42,7 @@ export interface Gate {
   /** Scope string mixed into the token, so one gate's cookie cannot open another. */
   scope: string;
   cookie: string;
-  envVar: "PITCH_PASSWORD" | "ADMIN_PASSWORD";
+  envVar: "PITCH_PASSWORD" | "ADMIN_PASSWORD" | "PREVIEW_PASSWORD";
   unlockPath: string;
   unlockAction: string;
   /** Cookie lifetime. Shorter where the material behind the gate is personal data. */
@@ -61,6 +69,24 @@ export const ADMIN_GATE: Gate = {
   // Twelve hours, not thirty days. This one guards personal data, so a laptop
   // left open in a café stops being a standing key by the next morning.
   maxAgeSeconds: 60 * 60 * 12,
+};
+
+/**
+ * The whole of a non-production deployment.
+ *
+ * **Not a path prefix like the other two**, so `gateFor` cannot express it: the
+ * middleware asks `previewGateState` separately, and first. The decision itself
+ * lives in `previewGate.ts`, which imports nothing and is therefore testable
+ * without a request; this is only the shape `handleUnlock` needs.
+ */
+export const PREVIEW_GATE: Gate = {
+  prefix: "/",
+  scope: PREVIEW_SCOPE,
+  cookie: PREVIEW_COOKIE,
+  envVar: PREVIEW_ENV_VAR,
+  unlockPath: PREVIEW_UNLOCK_PATH,
+  unlockAction: PREVIEW_UNLOCK_ACTION,
+  maxAgeSeconds: PREVIEW_MAX_AGE_SECONDS,
 };
 
 const GATES = [PITCH_GATE, ADMIN_GATE];

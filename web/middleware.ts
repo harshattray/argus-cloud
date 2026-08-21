@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storageImageOrigin } from "argus-cloud/storage/origin.js";
-import { gateFor, gateToken } from "./lib/gate";
+import { gateFor, gateToken, PREVIEW_GATE } from "./lib/gate";
+import { previewGateState } from "./lib/previewGate";
 
 /**
  * Every Content-Security-Policy this site serves is issued here, and only here.
@@ -234,10 +235,27 @@ const SITE_CSP = [
 function needsNonce(pathname: string): boolean {
   return (
     pathname.startsWith("/r/") ||
+    pathname === "/repos" ||
     pathname.startsWith("/repos/") ||
+    pathname === "/login" ||
     pathname === "/admin" ||
     pathname.startsWith("/admin/")
   );
+}
+
+/**
+ * Pages that have handled, or are about to hand out, a credential.
+ *
+ * `no-referrer` because the `Referer` header is how a URL escapes to somewhere
+ * else — PATHWAYS §10.7 5A.13 asks for it on "the redemption and login
+ * surfaces". The redemption route sets its own copy (it is an API route, which
+ * this matcher deliberately excludes); this covers the pages.
+ *
+ * `no-store` because a sign-in page held in a shared cache is a sign-in page
+ * served to the next person on that proxy.
+ */
+function isAuthSurface(pathname: string): boolean {
+  return pathname === "/login";
 }
 
 /** `NextResponse.next()` carrying whichever policy this path should have. */
@@ -278,6 +296,48 @@ function withCsp(request: NextRequest, pathname: string): NextResponse {
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
+  /**
+   * The whole-deployment gate, checked before anything else.
+   *
+   * **What it does not cover, stated rather than discovered.** The matcher
+   * below excludes `api/`, so API routes are not behind this phrase. That is
+   * deliberate and it is load-bearing in both directions:
+   *
+   * - The OAuth callback and the emailed sign-in link have to land on a route
+   *   that answers. A gate in front of them would intercept a live
+   *   authorization code the way Vercel's own protection does.
+   * - Every API route already carries its own authorization — an API key, a
+   *   share token, a session, or in the sign-in endpoint's case the abuse
+   *   ceilings and the eligibility rule. The gate hides the *product surface*;
+   *   it was never the thing protecting the data.
+   *
+   * The cookie is per-browser, so unlocking once lets the whole sign-in round
+   * trip work normally. A link opened on a second device meets the unlock
+   * screen first — the same limitation Vercel's bypass cookie has, and worth
+   * knowing before it surprises somebody.
+   */
+  const previewState = previewGateState(pathname, process.env);
+  if (previewState === "misconfigured") {
+    return new NextResponse(
+      "This deployment is not configured. PREVIEW_PASSWORD is unset, and a non-production " +
+        "deployment will not serve without it.\n",
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8", "x-robots-tag": "noindex, nofollow" } }
+    );
+  }
+  if (previewState === "gated") {
+    const presented = request.cookies.get(PREVIEW_GATE.cookie)?.value;
+    const expected = await gateToken(PREVIEW_GATE.scope, process.env[PREVIEW_GATE.envVar] as string);
+    if (presented !== expected) {
+      const url = request.nextUrl.clone();
+      url.pathname = PREVIEW_GATE.unlockPath;
+      url.search = "";
+      if (pathname !== "/") {
+        url.searchParams.set("next", pathname + search);
+      }
+      return NextResponse.redirect(url);
+    }
+  }
+
   const gate = gateFor(pathname);
 
   if (gate) {
@@ -310,6 +370,21 @@ export async function middleware(request: NextRequest) {
     // Belt and braces: the pages also carry a noindex robots directive.
     res.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
+  if (isAuthSurface(pathname)) {
+    res.headers.set("Referrer-Policy", "no-referrer");
+    res.headers.set("Cache-Control", "no-store, max-age=0");
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  // Every non-production deployment, on every path.
+  //
+  // `robots.ts` refuses the crawl and this refuses the *listing*, which are
+  // different things — that file's own comment about `/pitch` makes the point:
+  // a crawler blocked by robots.txt never reads a noindex, so a URL someone
+  // links to can still be listed with no snippet. The header is the stronger
+  // tool, and a preview on a custom domain gets neither from the platform.
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
   return res;
 }
 
@@ -325,7 +400,9 @@ export const config = {
     "/admin",
     "/admin/:path*",
     "/r/:path*",
+    "/repos",
     "/repos/:path*",
+    "/login",
     // Everything else that is a document. Excluded:
     //
     //   - `api/` — a JSON body is not a document, so a policy on it governs
