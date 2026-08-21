@@ -170,11 +170,14 @@ jobs:
       - run: npm ci
 
       - name: Production dependency audit
-        # Not raw `npm audit --audit-level=high`: that is red today and would
-        # stay red until the next 15 → 16 decision is taken, and a permanently
-        # red check is one nobody reads. `scripts/audit-check.mjs` fails on
-        # anything NEW, on an accepted entry that has gone STALE, and on one
-        # past its review date — while printing the known three every run.
+        # Not raw `npm audit --audit-level=high`. The allowlist is empty as of
+        # 2026-08-21 — the next 16 upgrade took the three accepted advisories to
+        # zero — so the two commands agree today. They stop agreeing the moment
+        # an advisory has to be accepted again, and a permanently red check is
+        # one nobody reads. `scripts/audit-check.mjs` fails on anything NEW, on
+        # an accepted entry that has gone STALE, and on one past its review
+        # date. The STALE rule is what emptied the allowlist rather than leaving
+        # three sentences in it that had stopped being true.
         run: npm run audit
 
       - name: Secret scan

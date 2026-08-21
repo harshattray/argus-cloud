@@ -18,8 +18,15 @@ Three checks that were written as go-live-day actions now run on every push —
 `scripts/golive-check.mjs`, which reads what the deployment returns over the
 wire rather than what the build contains.
 
-**Next: the `next` 15 → 16 major (decided 2026-08-19, §4 "Open decisions" 3b),
-then Step 6 — auth, orgs and the two consoles.**
+**The `next` 15 → 16 major is done, same day.** `16.3.1`, `npm audit` **0**, the
+allowlist empty, verify green at **1058 checks** and **1086** against real
+Postgres, and 11 of 11 scripts nonced with zero CSP violations on a production
+build opened in a browser — the check that matters, because a blank `/r/` is
+what a broken CSP looks like. `FinishedSPEC.md` §3z. One thing the earlier trial
+had wrong: `middleware.ts` → `proxy.ts` is **not** cosmetic — `proxy.ts` always
+runs on Node — so that rename is held as its own decision.
+
+**Next: Step 6 — auth, orgs and the two consoles.**
 
 Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
 is a tenant of real runs to show in them.** Every figure on `/r/` and `/repos/`
@@ -1483,25 +1490,42 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    > quoted to anyone — including in a sales call — and make the ladder's
    > Starter no smaller than it. Needed for the pricing page at Step 8.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
-3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19: yes,
-   before launch, as its own dedicated change.** It clears all three accepted
-   high-severity advisories — `npm audit` goes to **0** — which is the reason,
-   not any wish to use `next/image`. The screenshot decision is independent and
-   unchanged: uploaded artifacts stay on plain `<img>` with presigned URLs
-   (`PATHWAYS.md` §10.5 3A). Also: 16 is the active-LTS line while 15 is
-   maintenance, 15.5.23 is already the newest 15.x and carries the `backport`
-   dist-tag, and Node 22 here clears 16's Node 20.9+ floor.
+3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19, and
+   shipped 2026-08-21 at `16.3.1`** — `FinishedSPEC.md` §3z. `npm audit` is
+   **0**, `security/audit-allowlist.json` is empty, verify is green at 1058
+   checks and 1086 against real Postgres, every route kept its rendering mode,
+   and a production build in a browser served 11 of 11 scripts nonced with zero
+   CSP violations. The screenshot decision is unchanged and now enforced:
+   uploaded artifacts stay on plain `<img>` with presigned URLs
+   (`PATHWAYS.md` §10.5 3A), held by `test/reportPage.test.mjs` R8 rather than by
+   the allowlist entry the upgrade deleted.
 
-   **Pre-launch because it gets more expensive later** — migrating while
-   customer reports and uploaded artifacts are live is a different job than
-   migrating now. The 2026-08-16 trial is the evidence it is cheap today:
-   `next@16.3.1` in a throwaway worktree, 635/635 suite green, typecheck and
-   build passing, every route keeping its rendering mode, the nonce CSP still
-   stamping every script with zero unnonced and zero violations
-   (`FinishedSPEC.md` §8). Expected work: async request APIs,
-   `middleware.ts` → `proxy.ts`, and a look at Turbopack defaults — the trial
-   saw the rename only as a cosmetic relabel in build output, so confirm which
-   of these actually bind before planning around them.
+   Of the three pieces of expected work, only one bound. Async request APIs were
+   already done — every `params` in the app is a `Promise` and awaited.
+   Turbopack is the default builder in 16 and changed nothing. The rename was
+   mis-scoped: see 3c.
+3c. **Whether to move `middleware.ts` → `proxy.ts` — open, raised 2026-08-21.**
+   Next 16 deprecates the `middleware` file convention and warns on every build.
+   The 2026-08-16 trial called the change cosmetic; it is not. **`proxy.ts`
+   always runs on the Node runtime** — Next's own source says so and refuses
+   route segment config in the file — and building it both ways confirms it:
+   `middleware.ts` compiles to edge chunks with a `middleware-manifest` entry,
+   `proxy.ts` compiles to `server/middleware.js` with `require()` and no entry.
+
+   **So this is a runtime move, not a rename.** That file issues every CSP the
+   site serves and gates `/pitch` and `/admin`, on a matcher covering every
+   document — including the statically prerendered marketing pages. Moving it
+   puts every page view through a Node function in `iad1` instead of an edge
+   function near the visitor. Nothing in the file needs Node; it uses Web Crypto
+   deliberately.
+
+   **Recommendation: stay on `middleware.ts` for now.** The deprecation is a
+   warning, not an error, and the cost side of the trade is unmeasured. Do it as
+   its own change before Next 17, with the same decision covering
+   `runtime = "edge"` on `/api/pitch-unlock` and `/api/admin-unlock` — also
+   deprecated in 16 — and with the three comments that say "this runs on the
+   Edge runtime" (`middleware.ts`, `lib/gate.ts`, `lib/clientRate.ts`) corrected
+   in the same change.
 4. **Whether Step 6 ships GitHub OAuth and magic links together** or OAuth
    first. Designer seats are a differentiator; shipping OAuth alone delays it.
 

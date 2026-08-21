@@ -2467,6 +2467,79 @@ Recorded as closed, not as a deferred task, so nothing re-opens it later.
 
 ---
 
+### 3z. `next` 15 → 16, and the guard the audit allowlist used to hold ✅ (2026-08-21)
+
+**`npm audit` is 0.** `web/package.json` moved from `next@^15.5.0` to
+`^16.3.1`, and the three accepted high-severity advisories — `next`, `postcss`,
+`sharp`, all reached through next's bundled copies — are gone with it. This is
+the change decided on 2026-08-19 (`FUTURENORMA.md` §4 open decision 3b) and
+gated in `PATHWAYS.md` §7, taken before launch and on its own.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1058 checks across 32 suites**, typecheck both packages, web build, audit clean |
+| Suite against real Postgres | ✅ **1086 checks** (`scripts/test-db.sh`) |
+| `npm audit`, production deps | ✅ **0** — 0 critical, 0 high, 0 moderate, 0 low |
+| Every route keeps its rendering mode | ✅ diffed against the 15.5.23 table — identical, one cosmetic reflow of the `/legal/[slug]` SSG group |
+| The nonce CSP still stamps every script | ✅ **11 of 11 scripts nonced, 0 unnonced, 0 violations** on `/r/` against a production `next start` |
+| `golive-check` against that build | ✅ L1–L8 pass except L1.2, which only says `http://localhost` is not `https` |
+| Hydration | ✅ a client component on `/` ran its handler after the click |
+
+**The nonce check is the one that mattered.** A blank `/r/` in production is
+this repo's most expensive shipped bug, and its cause was a CSP a build
+silently stopped satisfying. Route modes and header text can both look right
+while the page renders nothing, so the evidence here is a browser against a
+production build, not a passing suite.
+
+**`middleware.ts` is deprecated in 16, and the rename is not cosmetic.** The
+2026-08-16 trial recorded "Middleware" → "Proxy" as a relabel in build output.
+It is more than that: Next 16's own source says *"Proxy always runs on Node.js
+runtime"* and refuses route segment config in the file. Built both ways to check
+rather than trusting the sentence — `middleware.ts` still compiles to
+`server/edge/chunks/…` and a `middleware-manifest` entry, while `proxy.ts`
+compiles to `server/middleware.js` with `require()` and `setup-node-env`, and
+the manifest entry disappears. **So the rename moves the CSP and gate layer from
+Edge to Node**, on a matcher that covers every document including the statically
+prerendered marketing pages. Left on `middleware.ts` deliberately: the
+deprecation is a warning and not an error, nothing in the file needs Node (it
+uses Web Crypto on purpose), and moving every page view onto a Node function in
+one region is a latency and cost decision, not a rename. **Open, and named in
+§9.**
+
+**Two other Next 16 deprecations, both live.** `export const runtime = "edge"`
+on `/api/pitch-unlock` and `/api/admin-unlock` prints "The Edge Runtime is
+deprecated" on every build. Same shape of decision as the proxy one, and it
+belongs with it.
+
+**Deleting the allowlist entries had to move a rule first.** `audit-check.mjs`
+fails on a stale entry, so the three had to go — the check itself reported
+`STALE next`, `STALE postcss`, `STALE sharp` and refused to pass, which is the
+file's anti-rot rule working. But the `sharp` entry was not only bookkeeping: it
+carried the standing rule that **uploaded images never go through `next/image`**,
+and `audit-check.mjs` re-read that sentence on every run. Deleting it would have
+left the rule on a source comment alone — CLAUDE.md rule 1.
+
+The rule is now `test/reportPage.test.mjs` **R8**, scanning `web/app/r` and
+`web/app/repos` for the import. **R8.2b is the counter-test** — a scan whose
+passing state is "found nothing" is indistinguishable from a scan that cannot
+find anything, so the same pattern is run over source that does import
+`next/image` and has to report it. And the guard was watched failing: an import
+added to `frame-view.tsx` turned R8.2 red naming the file, then was removed
+(CLAUDE.md rule 3). `security/audit-allowlist.json` is now empty, with a note
+saying that is the goal state and that a claim inside an entry moves before the
+entry is deleted.
+
+**`jsx` moved from `preserve` to `react-jsx` and `next-env.d.ts` switched from a
+`/// <reference path>` to imports.** Both were written by Next, not by hand.
+Checked that `tsc --noEmit` still passes with **no `.next` present**, because
+`verify` and CI typecheck the web app before building it and a fresh clone has
+nothing there to import.
+
+**CI needed one edit.** The audit job carried a comment saying raw `npm audit`
+"would stay red until the next 15 → 16 decision is taken". It is green now.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six
@@ -3106,8 +3179,9 @@ this section and are deliberately absent.
 | Alerts only ever reached a log line | **Closed** (§3k). The explain routes alert through a real webhook/email channel, the ops check awaits its sends, and an alert claimed but never delivered is itself an alert. Note the honest limit: `delivered_at` means handed to the channel, not received by a person |
 | Nothing ran automatically — no CI | **Closed 2026-08-12.** `.github/workflows/ci.yml` runs types, both suites (PGlite **and** real Postgres), the web build, the dependency audit and a secret scan on every push. `npm run verify` is the identical local command. Before this, the suite was green because someone remembered to type it — Doctrine 3 applied to the suite itself |
 | `npm test` never typechecked `web/` | **Closed 2026-08-12.** A type error in the web app used to pass a green `npm test`; `verify` and CI typecheck both packages |
-| 3 high-severity dependency advisories | **Open, and now visible.** next 15.5.23 → postcss and sharp → libvips. The only fix npm offers is next 16, a breaking major. Recorded in `security/audit-allowlist.json` with reasoning and a 2026-09-30 review date; `scripts/audit-check.mjs` fails on anything new or stale. **The reasoning is still proposed, not signed off** — all three entries have `acceptedBy: null` and print UNCONFIRMED every run until a name goes on them. The sharp question is now answered: uploaded artifacts render as plain `<img>` from presigned URLs and never reach the optimiser (decided 2026-08-19, `PATHWAYS.md` §10.5 3A). **All three close when `next` 16 lands** — decided 2026-08-19 to take that upgrade before launch as its own change, which takes `npm audit` to 0 |
-| The next 16 upgrade is untried | **Closed as an unknown 2026-08-16. Closed as a decision 2026-08-19: take it, before launch, as its own change** (`FUTURENORMA.md` §4 open decision 3b; gated in `PATHWAYS.md` §7). Trialled in a throwaway worktree at `next@16.3.1` with the current work applied: `npm audit` goes to **0 vulnerabilities**, the suite is **635/635 green**, typecheck and build pass, every route keeps its rendering mode, and the nonce CSP still stamps every script with zero unnonced and zero violations. One cosmetic change: the build output renames "Middleware" to "Proxy". 15.5.23 is already the newest 15.x — it carries the `backport` dist-tag — so staying put means staying on a line that only receives backports. **The upgrade is still not done** — the trial worktree was thrown away, so this row records a decision and evidence, not a shipped change |
+| ~~3 high-severity dependency advisories~~ | **Closed 2026-08-21** (§3z). `next` 16.3.1 landed and `npm audit` reports **0** in production dependencies. `security/audit-allowlist.json` is empty. The `sharp` entry carried a rule as well as an acceptance — uploaded images never through `next/image` — and that rule moved to `test/reportPage.test.mjs` R8 with a counter-test before the entry was deleted |
+| ~~The next 16 upgrade is untried~~ | **Done 2026-08-21** (§3z). `web/package.json` is on `^16.3.1`: verify green at **1058 checks**, **1086** against real Postgres, audit 0, every route keeping its rendering mode, and 11 of 11 scripts nonced with zero violations on a production build in a browser. The trial's one claim that did not survive contact: "Middleware → Proxy" is not cosmetic — the rename moves that layer to the Node runtime, so it was left for its own decision (below) |
+| **`middleware.ts` is deprecated, and moving off it changes runtime** | **Open, named 2026-08-21** (§3z). Next 16 warns on every build; the replacement `proxy.ts` **always runs on Node**, verified by building both ways — `middleware.ts` produces edge chunks, `proxy.ts` produces `server/middleware.js` with `require()`. The matcher covers every document on the site, so the move puts every marketing page view through a Node function in one region. Nothing in the file needs Node. Same decision covers `runtime = "edge"` on `/api/pitch-unlock` and `/api/admin-unlock`, also deprecated. Not urgent — a warning, not an error — but it is a Next 17 deadline, and three comments claiming "this runs on the Edge runtime" change with it |
 | The economic path is implemented twice | **Closed** (§3g). One module, `economicPath.ts`; no other file may move money. The extraction found two live defects — see below |
 | Provider dollars held when credits run out | **Closed** (§3g, P9.9–P9.11). Was real and untested: an org refused for credits left its provider reservation held for the full TTL, quietly reducing the global ceiling for every other org |
 | Lab shares the portfolio's DB and R2 | Accepted for a test deployment; prefixes make removal clean |
