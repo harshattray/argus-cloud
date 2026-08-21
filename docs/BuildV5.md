@@ -520,8 +520,14 @@ entitlement check is exercised rather than bypassed.
 
 **J4 — Retire the portfolio preview.** Delete `/normascope-cloud` and `/normascope-cloud/run/:id` from the
 portfolio frontend and `api/norma/[action].ts` + `api/_norma/*` from its
-backend. Drop the `norma_*` tables and delete the `normascope-cloud-*` R2 objects.
-Confirm the portfolio's function count drops from 11 to 7.
+backend. Confirm the portfolio's function count drops.
+
+> **Done 2026-08-21 — merged and deployed.** 1131 lines, 11 → 10 functions.
+> **The data half of this item was withdrawn, not completed:** the `norma_*`
+> tables and `normascope-cloud-*` objects stay. They sit in a Turso database and
+> a bucket shared with the portfolio's articles, claps and admin data, and a
+> wrong `DROP` or prefix there costs more than the few megabytes. Harsha's call;
+> `FUTURENORMA.md` §4 Step 5 is the record.
 
 | # | Test | Pass condition |
 |---|---|---|
@@ -533,8 +539,8 @@ Confirm the portfolio's function count drops from 11 to 7.
 | J3.2 | `curl -I` on the deployment | HSTS, `X-Content-Type-Options`, `frame-ancestors` present (D5, re-run — not inherited) |
 | J3.3 | Client bundle grep for `DATABASE_URL`, R2 keys, `ANTHROPIC_API_KEY` | Absent from every bundle, header, and response |
 | J3.4 | Upload from the private-preview org | Succeeds as a real `team` org — the entitlement path ran, it was not switched off |
-| J4.1 | `/normascope-cloud` after retirement | 404; portfolio function count = 7 |
-| J4.2 | `normascope-cloud-*` objects and `norma_*` tables | Gone / dropped |
+| J4.1 | `/normascope-cloud` after retirement | 404; portfolio function count drops (**met: 11 → 10** — `api/_norma/*` never counted as functions, so 7 was wrong) |
+| J4.2 | `normascope-cloud-*` objects and `norma_*` tables | ⊘ **withdrawn 2026-08-21** — they stay; the stores are shared with the portfolio's own data |
 
 **Security protocol:** every secret server-side only, verified by grep against
 the built bundles (D5 method, re-run against this deployment). The access-code
@@ -560,7 +566,7 @@ F–I can start today.
 | 4 | DNS — a `harshat.space` subdomain (optional; `*.vercel.app` works) | J3 | Owned |
 | 5 | `NORMASCOPE_CLOUD_PASSWORD` + a fresh `JWT_SECRET` | J3 | — |
 | 6 | `ANTHROPIC_API_KEY` on the new project + prepaid balance | G4 calibration | ~$0.20/run |
-| 7 | Confirmation to delete the portfolio preview | J4 | — |
+| 7 | ~~Confirmation to delete the portfolio preview~~ **given 2026-08-21 — code retired, data stays** | J4 | — |
 
 Item 6 is the only one that bites earlier than J: G4's re-calibration needs a
 live key. It can run against the local build — no deployment required.

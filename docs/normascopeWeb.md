@@ -916,11 +916,11 @@ until this site is live on its own domain. Then:
 1. `/@norma` becomes a short case-study card linking out to normascope.com —
    the project still belongs in the portfolio, the 1,600-line product page does
    not.
-2. `/normascope-cloud` and its four API endpoints are deleted, per
-   `FinishedSPEC.md` §5. That frees Vercel functions on a Hobby project sitting
-   at 11 of 12, and ends the arrangement where Cloud shares the portfolio's
-   Turso DB and R2 bucket. All rows are prefixed `norma_` and all objects
-   `normascope-cloud-*`, so removal is clean.
+2. ~~`/normascope-cloud` and its four API endpoints are deleted~~ **done
+   2026-08-21**, per `FinishedSPEC.md` §5 — deployed, 11 → 10 functions on a
+   Hobby project capped at 12. The `norma_*` rows and `normascope-cloud-*`
+   objects were **left in the portfolio's shared Turso DB and bucket by
+   decision**, so no live code reads them but the storage is still shared.
 
 Not part of this build. Listed so the end state is unambiguous.
 

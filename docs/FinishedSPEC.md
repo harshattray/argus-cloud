@@ -2336,9 +2336,9 @@ is present.
 | J3.2 HSTS, nosniff, frame-ancestors | ✅ L2, L3 — nonce present on `/r/`, different per request — **same caveat** |
 | J3.3 no credential in any bundle, header or response | ✅ `bundleSecrets` 7 checks + L5 |
 | J3.4 upload from the private-preview org as a real `team` org | ✅ org provisioned, `canUpload=true` through the real entitlement path, 5 files uploaded |
-| J4 preview code retired | ✅ portfolio branch, 1131 lines deleted, 11 → 10 functions |
+| J4 preview code retired | ✅ branch merged and **deployed**, 1131 lines deleted, 11 → 10 functions |
 | J2.3 delete a run then an org, prefixes empty **in the bucket** | ✅ proven against production R2 — see below |
-| J4 `norma_*` tables and `normascope-cloud-*` objects | ❌ still there |
+| J4 `norma_*` tables and `normascope-cloud-*` objects | ⊘ **left in place by decision, 2026-08-21** — see below |
 
 **J2.3, in two halves, because deletion has two ways to be wrong.**
 
@@ -2458,9 +2458,12 @@ release also fixed docs which had described the pre-thumbnail behaviour since
 `773ac3d` — the wrong thing to be stale about, since it is a statement of what
 leaves a user's machine.
 
-**What this does not prove.** The preview's data outlives its code: the `norma_*` tables are still in the
-portfolio's shared Turso database and the `normascope-cloud-*` objects are still
-in its bucket.
+**The preview's data outlives its code, and that is the decision.** The `norma_*`
+tables stay in the portfolio's shared Turso database and the
+`normascope-cloud-*` objects in its shared bucket — **Harsha's call,
+2026-08-21**. Both stores also hold the articles, claps and admin data; a wrong
+`DROP` or a wrong prefix there costs more than the few megabytes it reclaims.
+Recorded as closed, not as a deferred task, so nothing re-opens it later.
 
 ---
 
@@ -2911,12 +2914,13 @@ one thing the page owes them, which is a way back.
 
 ---
 
-## 5. The preview — temporary, in the portfolio repo
+## 5. The preview — retired 2026-08-21
 
-Live at `harshaattray.com/normascope-cloud` — **confirmed still serving 200 on
-2026-08-10.** Access-gated, single-tenant on purpose.
-`api/_norma/{login,runs,run,explain}.ts` behind one dispatcher, plus two
-frontend routes. Committed @ `b4eeb86`, deployed.
+**Gone.** It lived at `harshaattray.com/normascope-cloud`: access-gated,
+single-tenant on purpose, `api/_norma/{login,runs,run,explain}.ts` behind one
+dispatcher plus two frontend routes, committed @ `b4eeb86`. The retirement
+branch is merged and deployed — 1131 lines removed, portfolio functions 11 → 10,
+the route 404s. What follows is what it proved while it ran.
 
 Verified in production 2026-07-29 with a real Bose-landing run: findings
 returned with `firstDriftCommit` and `recurrence`, result-cache hit was free,
@@ -2925,9 +2929,11 @@ returned with `firstDriftCommit` and `recurrence`, result-cache hit was free,
 > ⚠️ That run predates `b3db0c7` (§2a). Its *plumbing* evidence — enrichment,
 > cache, R2 delivery — still stands; any **score** it produced does not.
 
-Shares the portfolio's Turso DB and R2 bucket; all tables prefixed `norma_`,
-objects `normascope-cloud-*`. **Still scheduled for deletion at Phase J4.**
-Portfolio is at 11 of Vercel Hobby's 12 functions.
+It shared the portfolio's Turso DB and R2 bucket; all tables prefixed `norma_`,
+objects `normascope-cloud-*`. **Those rows and objects stay — decided
+2026-08-21** (§3y): the stores are shared with the articles, claps and admin
+data, and reaching into them for a few megabytes is the worse trade. Portfolio
+is at 10 of Vercel Hobby's 12 functions.
 
 ---
 
