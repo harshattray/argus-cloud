@@ -15,6 +15,13 @@ a Linux rasteriser happens to have anywhere else, so rendering the `<text>`
 directly would bake in a fallback face. `outline_svg_text.py` traces the real
 glyph to a path, and the raster is made from that.
 
+**Why the OAuth logo is here too.** GitHub's OAuth app settings take a raster
+square of at least 200×200 and will not take the SVG the site already serves.
+Drawing a separate one by hand would be a second copy of the mark that drifts
+the first time the tile changes — the exact failure this script exists to
+prevent for the favicons. It is written to `docs/brand/`, not `web/public/`,
+because nothing serves it: it is an artifact to upload.
+
 Run after any change to `web/app/icon.svg`:
 
     python3 scripts/build-favicons.py
@@ -33,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'web' / 'app' / 'icon.svg'
 ICO = ROOT / 'web' / 'app' / 'favicon.ico'
 APPLE = ROOT / 'web' / 'app' / 'apple-icon.png'
+OAUTH = ROOT / 'docs' / 'brand' / 'normascope-oauth-logo.png'
 
 # Google asks for a square that is a multiple of 48px, so 48 is the entry that
 # matters to search; 16 and 32 are what a browser tab actually draws. Rendering
@@ -43,6 +51,11 @@ ICO_SIZES = (16, 32, 48)
 # the transparent corners of the tile get filled below rather than left alone —
 # unfilled, they render black behind Apple's smaller corner radius.
 APPLE_SIZE = 180
+
+# GitHub asks for at least 200×200 and caps the upload at 1MB. 512 is comfortably
+# above the floor, well under the cap, and an even multiple of the sizes their
+# consent screen actually draws it at.
+OAUTH_SIZE = 512
 
 TILE = '#a8736e'
 
@@ -91,8 +104,22 @@ def main() -> None:
         flattened.paste(apple, mask=apple.split()[3])
         flattened.save(APPLE, format='PNG', optimize=True)
 
+        # Full-bleed clay, same reason as the Apple icon and one more besides.
+        # GitHub's authorize page has a light mode and a dark one, and it may
+        # mask the logo to a circle or a rounded square depending on where it
+        # appears. A transparent tile would put a white glyph on white in light
+        # mode; a solid square survives every one of those treatments, because
+        # whatever shape is cut out of it is still clay with an `n` in the
+        # middle.
+        OAUTH.parent.mkdir(parents=True, exist_ok=True)
+        logo = render(outlined, OAUTH_SIZE, tmp / 'oauth.png')
+        square = Image.new('RGB', logo.size, TILE)
+        square.paste(logo, mask=logo.split()[3])
+        square.save(OAUTH, format='PNG', optimize=True)
+
     print(f'{ICO.relative_to(ROOT)}  {ICO.stat().st_size} bytes  {ICO_SIZES}')
     print(f'{APPLE.relative_to(ROOT)}  {APPLE.stat().st_size} bytes  {APPLE_SIZE}px')
+    print(f'{OAUTH.relative_to(ROOT)}  {OAUTH.stat().st_size} bytes  {OAUTH_SIZE}px')
 
 
 if __name__ == '__main__':
