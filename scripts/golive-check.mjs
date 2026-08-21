@@ -70,8 +70,21 @@ if (canonical !== origin && !quiet) {
 
 /** Every response is kept, so L5 can scan all of them at the end. */
 const seen = [];
+/**
+ * Vercel's Deployment Protection bypass, when checking a protected preview.
+ *
+ * **Without it every check here is a lie in the optimistic direction.** A
+ * protected deployment answers every path with a 302 to `vercel.com/sso-api`,
+ * so nothing 404s, nothing errors, and a reader skimming the output sees a
+ * deployment that responds to everything. The header is Vercel's documented
+ * "Protection Bypass for Automation" secret, from the project's Deployment
+ * Protection settings.
+ */
+const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+
 async function get(pathname, init) {
-  const res = await fetch(`${canonical}${pathname}`, { redirect: "follow", ...init });
+  const headers = { ...(init?.headers ?? {}), ...(bypass ? { "x-vercel-protection-bypass": bypass } : {}) };
+  const res = await fetch(`${canonical}${pathname}`, { redirect: "follow", ...init, headers });
   const body = await res.text().catch(() => "");
   const landed = new URL(res.url).pathname;
   const record = { pathname, landed, status: res.status, headers: res.headers, body };
@@ -80,6 +93,24 @@ async function get(pathname, init) {
 }
 
 const home = await get("/");
+
+/**
+ * Stop rather than report, when protection is answering instead of the app.
+ *
+ * Every check below would pass or fail against Vercel's login page rather than
+ * against this deployment, which is worse than not running: the output would
+ * carry the same words a real result does. Exit 2 — "the check could not run" —
+ * is the honest code for it.
+ */
+if (/sso-api|Authentication Required/i.test(home.body) && !bypass) {
+  console.error(
+    `${canonical} is behind Vercel Deployment Protection — every path answers with an SSO page,\n` +
+      "so nothing below would be checking this deployment. Either turn protection off for it, or set\n" +
+      "VERCEL_AUTOMATION_BYPASS_SECRET (Vercel → Settings → Deployment Protection → Protection Bypass\n" +
+      "for Automation) and run this again."
+  );
+  process.exit(2);
+}
 
 // ═══ L1 — the deployment answers, and the apex reaches it ═══
 check("L1.1", home.status === 200, `${canonical}/ responds ${home.status}`);
