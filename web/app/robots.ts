@@ -1,7 +1,29 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "../lib/site";
 
+/**
+ * Anything that is not the production deployment is closed to crawlers
+ * entirely.
+ *
+ * **This became load-bearing the moment a preview got a real domain.** Vercel
+ * stamps `X-Robots-Tag: noindex` on its own `*.vercel.app` URLs; it does not do
+ * that for a custom name like `preview.normascope.com`. A preview that also
+ * sets `NEXT_PUBLIC_SITE_URL` to its own host — which it must, or its sign-in
+ * links would point at production — would otherwise serve allow-all robots and
+ * self-canonical every page, and compete with the real site in results using
+ * unreleased copy.
+ *
+ * `VERCEL_ENV` is `production` only on the production deployment; it is
+ * `preview` on every other one and absent on a laptop, where nothing is
+ * crawling anyway.
+ */
+const isProduction = process.env.VERCEL_ENV === "production" || !process.env.VERCEL_ENV;
+
 export default function robots(): MetadataRoute.Robots {
+  if (!isProduction) {
+    // No sitemap either: advertising one invites the crawl this is refusing.
+    return { rules: { userAgent: "*", disallow: "/" } };
+  }
   return {
     rules: {
       userAgent: "*",

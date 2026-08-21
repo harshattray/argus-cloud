@@ -223,6 +223,133 @@ if (bucket && endpoint) {
   console.log("SKIP  L7  set NORMA_STORAGE_BUCKET and NORMA_STORAGE_ENDPOINT to check the bucket is private");
 }
 
+// ═══ L9 — the session layer, as deployed (Step 6) ═══
+//
+// **Every one of these is a property a deployment can lose without anything
+// going red locally.** An environment variable unset in Vercel turns the GitHub
+// button off; a header dropped from `middleware.ts` puts a sign-in page into a
+// shared cache; a redirect misconfigured at the domain level breaks an OAuth
+// callback that a passing suite still calls green. The suite proves the code.
+// This proves the deployment, and they are not the same claim.
+const login = await get("/login");
+check("L9.1", login.status === 200, `/login responds ${login.status}`);
+// Guarded on L9.1, and the guard is not defensive tidiness: run unguarded
+// against a deployment that has no sign-in page, L9.2 reads the *404 page's*
+// headers and passes. A check that goes green because the thing it checks does
+// not exist is worse than no check — it is a claim.
+if (login.status === 200) {
+  check(
+    "L9.2",
+    (login.headers.get("referrer-policy") ?? "") === "no-referrer",
+    `the sign-in page sends Referrer-Policy: no-referrer (${login.headers.get("referrer-policy") ?? "absent"})`
+  );
+  check(
+    "L9.3",
+    /no-store/.test(login.headers.get("cache-control") ?? ""),
+    `and no-store, so it is never served from a shared cache (${login.headers.get("cache-control") ?? "absent"})`
+  );
+  check("L9.4", /nonce-/.test(cspOf(login)), "and runs under the strict nonce policy, not the site one");
+} else if (!quiet) {
+  console.log("SKIP  L9.2-4  no sign-in page on this deployment — its headers would be the 404's");
+}
+
+// The repository list is the first page behind the session. Signed out it must
+// send you to sign in — never render, never 500.
+const repos = await get("/repos", { redirect: "manual" });
+const reposTarget = repos.headers.get("location") ?? "";
+check(
+  "L9.5",
+  [302, 303, 307, 308].includes(repos.status) && /\/login/.test(reposTarget),
+  `/repos signed out redirects to sign-in (${repos.status} → ${reposTarget || "nowhere"})`
+);
+
+// The link-request endpoint refuses a caller that presents no origin at all.
+// A browser always sends one of these two headers; a script does not.
+const noOrigin = await get("/api/auth/email/request", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ email: "probe@example.com" }),
+  redirect: "manual",
+});
+check("L9.6", noOrigin.status === 403, `the sign-in endpoint refuses a request with no origin (${noOrigin.status})`);
+
+// A cross-site origin must be refused too — this is the CSRF half that
+// SameSite alone does not cover.
+const crossOrigin = await get("/api/auth/email/request", {
+  method: "POST",
+  headers: { "content-type": "application/json", origin: "https://evil.example" },
+  body: JSON.stringify({ email: "probe@example.com" }),
+  redirect: "manual",
+});
+check("L9.7", crossOrigin.status === 403, `and one from another origin (${crossOrigin.status})`);
+
+// A spent or invented sign-in token must land on the sign-in page, not on a
+// session and not on an error page that says which of the two it was.
+const deadLink = await get("/api/auth/email/callback?token=definitely-not-a-real-token", { redirect: "manual" });
+const deadTarget = deadLink.headers.get("location") ?? "";
+check(
+  "L9.8",
+  [302, 303, 307, 308].includes(deadLink.status) && /\/login\?error=/.test(deadTarget),
+  `an invalid sign-in link is refused without a session (${deadLink.status} → ${deadTarget || "nowhere"})`
+);
+if (deadLink.status !== 404) {
+  check(
+    "L9.9",
+    !/set-cookie/i.test([...deadLink.headers.keys()].join(" ")),
+    "and sets no cookie on the way out"
+  );
+}
+
+// GitHub sign-in: configured or not, the answer must be one of exactly two
+// shapes. A 500 here means the credentials are half-present.
+const ghStart = await get("/api/auth/github/start", { redirect: "manual" });
+const ghConfigured = [302, 303, 307, 308].includes(ghStart.status);
+const ghTarget = ghStart.headers.get("location") ?? "";
+check(
+  "L9.10",
+  ghConfigured || (ghStart.status === 404 && login.status === 200),
+  `GitHub sign-in is either configured or deliberately absent, never broken (${ghStart.status})`
+);
+if (ghConfigured) {
+  const url = (() => {
+    try {
+      return new URL(ghTarget);
+    } catch {
+      return null;
+    }
+  })();
+  check("L9.11", url?.host === "github.com", `it redirects to github.com (${url?.host ?? "unparseable"})`);
+  check("L9.12", Boolean(url?.searchParams.get("state")), "carrying a state parameter");
+  check(
+    "L9.13",
+    /norma_oauth_state=/.test(ghStart.headers.get("set-cookie") ?? ""),
+    "and the matching cookie, without which the callback cannot verify it"
+  );
+  // The redirect_uri must be one this deployment can actually serve, and it
+  // must equal what the OAuth app has registered. Checked as a live request
+  // rather than a string comparison: the failure this catches is a domain-level
+  // redirect that drops the query string, which would strip the code and the
+  // state on the way back from GitHub and break sign-in with nothing in a log.
+  const redirectUri = url?.searchParams.get("redirect_uri") ?? "";
+  check("L9.14", redirectUri.startsWith("https://"), `redirect_uri is https (${redirectUri || "absent"})`);
+  if (redirectUri) {
+    const probe = await fetch(`${redirectUri}?code=probe&state=probe`, { redirect: "manual" }).catch(() => null);
+    const hop = probe?.headers.get("location") ?? "";
+    const survives =
+      probe !== null &&
+      (probe.status < 300 ||
+        probe.status >= 400 ||
+        (/code=probe/.test(hop) && /state=probe/.test(hop)));
+    check(
+      "L9.15",
+      survives,
+      `the registered callback keeps its query string${hop ? ` (${probe.status} → ${hop})` : ` (${probe?.status ?? "unreachable"})`}`
+    );
+  }
+} else if (!quiet) {
+  console.log("SKIP  L9.11-15  GitHub sign-in is not configured on this deployment");
+}
+
 // ═══ L8 — the scanner is not inert ═══
 //
 // L5 prints the same word for a clean deployment and a dead regex.

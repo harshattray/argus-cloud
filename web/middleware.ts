@@ -234,10 +234,27 @@ const SITE_CSP = [
 function needsNonce(pathname: string): boolean {
   return (
     pathname.startsWith("/r/") ||
+    pathname === "/repos" ||
     pathname.startsWith("/repos/") ||
+    pathname === "/login" ||
     pathname === "/admin" ||
     pathname.startsWith("/admin/")
   );
+}
+
+/**
+ * Pages that have handled, or are about to hand out, a credential.
+ *
+ * `no-referrer` because the `Referer` header is how a URL escapes to somewhere
+ * else — PATHWAYS §10.7 5A.13 asks for it on "the redemption and login
+ * surfaces". The redemption route sets its own copy (it is an API route, which
+ * this matcher deliberately excludes); this covers the pages.
+ *
+ * `no-store` because a sign-in page held in a shared cache is a sign-in page
+ * served to the next person on that proxy.
+ */
+function isAuthSurface(pathname: string): boolean {
+  return pathname === "/login";
 }
 
 /** `NextResponse.next()` carrying whichever policy this path should have. */
@@ -310,6 +327,21 @@ export async function middleware(request: NextRequest) {
     // Belt and braces: the pages also carry a noindex robots directive.
     res.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
+  if (isAuthSurface(pathname)) {
+    res.headers.set("Referrer-Policy", "no-referrer");
+    res.headers.set("Cache-Control", "no-store, max-age=0");
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  // Every non-production deployment, on every path.
+  //
+  // `robots.ts` refuses the crawl and this refuses the *listing*, which are
+  // different things — that file's own comment about `/pitch` makes the point:
+  // a crawler blocked by robots.txt never reads a noindex, so a URL someone
+  // links to can still be listed with no snippet. The header is the stronger
+  // tool, and a preview on a custom domain gets neither from the platform.
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
   return res;
 }
 
@@ -325,7 +357,9 @@ export const config = {
     "/admin",
     "/admin/:path*",
     "/r/:path*",
+    "/repos",
     "/repos/:path*",
+    "/login",
     // Everything else that is a document. Excluded:
     //
     //   - `api/` — a JSON body is not a document, so a policy on it governs
