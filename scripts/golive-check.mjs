@@ -95,19 +95,38 @@ async function get(pathname, init) {
 const home = await get("/");
 
 /**
- * Stop rather than report, when protection is answering instead of the app.
+ * Stop rather than report, when the canonical probe left the domain entirely.
  *
- * Every check below would pass or fail against Vercel's login page rather than
- * against this deployment, which is worse than not running: the output would
- * carry the same words a real result does. Exit 2 — "the check could not run" —
- * is the honest code for it.
+ * **This check exists because the first version of it did not work, and the
+ * failure was the worst kind.** Pointed at a Vercel-protected preview, the
+ * probe above followed the SSO redirect all the way to `vercel.com` and set
+ * `canonical` to it — so every check afterwards ran against Vercel's own login
+ * page and reported, among other things, `L9.1 PASS /login responds 200`. It
+ * did. Vercel has a `/login`.
+ *
+ * The first attempt looked for `sso-api` in the body, which is in the *redirect
+ * URL* and not in the page it lands on, so it never fired. The reliable signal
+ * is not what the page says — it is that we asked one registrable domain and a
+ * different one answered. A redirect within the domain is ordinary and expected
+ * (an apex to `www`); a redirect off it means something is standing in front of
+ * the deployment, and nothing below would be measuring the deployment.
+ *
+ * The two-label registrable-domain rule is wrong for `example.co.uk` and
+ * deliberately so: it errs towards refusing to report, which is the safe
+ * direction for a check whose whole job is to be trustworthy.
  */
-if (/sso-api|Authentication Required/i.test(home.body) && !bypass) {
+const registrable = (host) => host.split(".").slice(-2).join(".");
+const asked = new URL(origin).host;
+const answered = new URL(canonical).host;
+if (registrable(asked) !== registrable(answered)) {
   console.error(
-    `${canonical} is behind Vercel Deployment Protection — every path answers with an SSO page,\n` +
-      "so nothing below would be checking this deployment. Either turn protection off for it, or set\n" +
-      "VERCEL_AUTOMATION_BYPASS_SECRET (Vercel → Settings → Deployment Protection → Protection Bypass\n" +
-      "for Automation) and run this again."
+    `asked ${asked} and ${answered} answered — something is standing in front of this deployment.\n\n` +
+      (/vercel\.com$/.test(registrable(answered))
+        ? "That is Vercel Deployment Protection. Every path returns its SSO page, so nothing below\n" +
+          "would be checking your deployment. Either turn Vercel Authentication off for it, or set\n" +
+          "VERCEL_AUTOMATION_BYPASS_SECRET (Settings → Deployment Protection → Protection Bypass for\n" +
+          "Automation) and run this again.\n"
+        : "Refusing to report: the results would describe whatever answered, not what was asked for.\n")
   );
   process.exit(2);
 }
