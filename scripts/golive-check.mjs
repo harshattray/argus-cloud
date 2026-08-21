@@ -258,9 +258,23 @@ check("L5", leaks.length === 0, `no credential-shaped value in ${seen.length} re
 
 // ═══ L6 — the private trees are out of the index ═══
 const robots = await get("/robots.txt");
-const disallowed = ["/r/", "/api/", "/admin/"].filter((p) => !robots.body.includes(`Disallow: ${p}`));
+/**
+ * A blanket `Disallow: /` is a superset of the three specific rules, and it is
+ * what every non-production deployment serves — `web/app/robots.ts` closes a
+ * preview to crawlers entirely, because a preview on a custom domain gets no
+ * noindex from the platform.
+ *
+ * Without this branch the check read a *stricter* policy as a failure, and
+ * reported the three trees as unprotected on the one deployment where nothing
+ * at all is crawlable. A check that fails on the safer answer teaches people to
+ * ignore it.
+ */
+const blanketDisallow = /^\s*Disallow:\s*\/\s*$/m.test(robots.body);
+const disallowed = blanketDisallow ? [] : ["/r/", "/api/", "/admin/"].filter((p) => !robots.body.includes(`Disallow: ${p}`));
 check("L6", robots.status === 200 && disallowed.length === 0,
-  `robots.txt keeps the private trees out${disallowed.length ? ` — missing: ${disallowed.join(", ")}` : ""}`);
+  blanketDisallow
+    ? "robots.txt closes the whole deployment to crawlers — this is not production"
+    : `robots.txt keeps the private trees out${disallowed.length ? ` — missing: ${disallowed.join(", ")}` : ""}`);
 
 // ═══ L7 — the bucket is private (J2.2) ═══
 //
@@ -398,7 +412,16 @@ if (ghConfigured) {
   const redirectUri = url?.searchParams.get("redirect_uri") ?? "";
   check("L9.14", redirectUri.startsWith("https://"), `redirect_uri is https (${redirectUri || "absent"})`);
   if (redirectUri) {
-    const probe = await fetch(`${redirectUri}?code=probe&state=probe`, { redirect: "manual" }).catch(() => null);
+    // `bypassHeaders`, because this is a request to *our* deployment and a
+    // protected one answers it with an SSO redirect — which looks exactly like
+    // the query-dropping failure this check exists to find. It reported that
+    // false alarm once already. The bucket probes in L7 deliberately do not get
+    // the header: they go to storage, which is a different host and a different
+    // authority.
+    const probe = await fetch(`${redirectUri}?code=probe&state=probe`, {
+      redirect: "manual",
+      headers: bypassHeaders,
+    }).catch(() => null);
     const hop = probe?.headers.get("location") ?? "";
     const survives =
       probe !== null &&
