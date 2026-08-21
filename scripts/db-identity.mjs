@@ -94,6 +94,44 @@ if (hasOrgs.n > 0) {
   }
 }
 
+/**
+ * Did the deployment I just used write here?
+ *
+ * **This is the question the rest of the script cannot answer.** Two Neon
+ * branches carry the same schema, the same database name, and often the same
+ * table counts, so nothing structural tells them apart. What does is traffic:
+ * `auth_events` and `auth_throttle` are written by a sign-in attempt and by
+ * nothing else, so a row from five minutes ago is proof that the deployment you
+ * were just clicking through is connected to *this* database.
+ *
+ * Neither table holds an address or an IP — both are keyed hashes — so this
+ * prints timing and outcomes, which is all the question needs.
+ */
+const hasEvents = await one(
+  "SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auth_events'"
+);
+if (hasEvents.n > 0) {
+  const recent = await all(
+    `SELECT kind, outcome, reason, at,
+            EXTRACT(EPOCH FROM (now() - at))::int AS age_seconds
+       FROM auth_events ORDER BY at DESC LIMIT 5`
+  );
+  const throttle = await one(
+    "SELECT COUNT(*)::int AS n, MAX(window_start) AS newest FROM auth_throttle"
+  );
+  console.log(`sign-ins  ${recent.length === 0 ? "no authentication traffic has ever reached this database" : ""}`);
+  for (const row of recent) {
+    const age =
+      row.age_seconds < 90
+        ? `${row.age_seconds}s ago`
+        : row.age_seconds < 5400
+          ? `${Math.round(row.age_seconds / 60)}m ago`
+          : `${Math.round(row.age_seconds / 3600)}h ago`;
+    console.log(`          · ${age.padStart(8)}  ${row.kind} ${row.outcome}${row.reason ? ` (${row.reason})` : ""}`);
+  }
+  console.log(`throttle  ${throttle.n} counter row(s)${throttle.newest ? `, newest window ${new Date(throttle.newest).toISOString()}` : ""}`);
+}
+
 const hasSessions = await one(
   "SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sessions'"
 );
