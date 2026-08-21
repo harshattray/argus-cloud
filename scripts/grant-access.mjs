@@ -4,6 +4,7 @@
 // FUTURENORMA §4 Step 6, PATHWAYS §10.7 5A.5.
 //
 //   node scripts/grant-access.mjs --org <orgId> --claim you@example.com
+//   node scripts/grant-access.mjs --org <orgId> --claim you@example.com --site https://preview.normascope.com
 //   node scripts/grant-access.mjs --org <orgId> --invite them@example.com --role designer
 //   node scripts/grant-access.mjs --list
 //
@@ -69,7 +70,28 @@ const db = await createDb();
 await migrate(db);
 console.log(`database: ${new URL(process.env.DATABASE_URL).host}\n`);
 
-const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://normascope.com").replace(/\/+$/, "");
+/**
+ * Where the person should go to sign in — and why this is not guessed.
+ *
+ * **The first version defaulted to production and was wrong the first time it
+ * ran.** A claim written into the staging database was announced with
+ * `https://normascope.com/login`, which talks to *production*, where the claim
+ * does not exist. Following that instruction produces the generic "no account"
+ * response and nothing to debug — the two databases are indistinguishable from
+ * the sign-in page, which is the whole point of that response.
+ *
+ * A script cannot map a connection string to the deployment that uses it, so it
+ * does not try. Either `--site` says, or the caution below says it does not
+ * know and names the database instead, which is the fact it does have.
+ */
+const siteFlag = flag("--site");
+const site = (siteFlag ?? process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+const dbHost = new URL(process.env.DATABASE_URL).host;
+const signInHint = (what) =>
+  site
+    ? `\nTell them to sign in at ${site}/login with that address. ${what}`
+    : `\nThis was written to ${dbHost}. Sign in at whichever deployment uses that database` +
+      `\n— pass --site https://… to have that spelled out here. ${what}`;
 
 if (listing) {
   const orgs = await db.query(
@@ -138,7 +160,7 @@ if (claimEmail) {
     checkoutReference: `manual:${org.id}`,
   });
   console.log(`claim: pending for ${claim.email}`);
-  console.log(`\nTell them to sign in at ${site}/login with that address. Signing in claims the organization.`);
+  console.log(signInHint("Signing in claims the organization."));
 }
 
 if (inviteEmail) {
@@ -149,7 +171,20 @@ if (inviteEmail) {
   // it will use the same `invite_org_day` and `invite_address_day` ceilings
   // this script deliberately does not consume. Until then this is the link, and
   // it is a credential: shown once, here.
-  console.log(`\nlink (shown once, treat as a credential):\n\n  ${inviteUrl(site, invitation.token)}\n`);
+  // Refused rather than guessed. A claim announced on the wrong host wastes
+  // someone's time; an invitation *link* on the wrong host is a credential that
+  // silently does not work — the token exists in this database and nowhere
+  // else, so the deployment it is pasted into answers "unknown invitation" and
+  // the person who received it has no way to tell that from being uninvited.
+  if (site) {
+    console.log(`\nlink (shown once, treat as a credential):\n\n  ${inviteUrl(site, invitation.token)}\n`);
+  } else {
+    console.log(
+      `\nlink path (shown once, treat as a credential):\n\n  /api/auth/invite/accept?token=${invitation.token}\n\n` +
+        `Prefix it with the deployment that uses ${dbHost}. Re-run with --site https://… to have\n` +
+        "the whole URL printed — the token is only valid against this database.\n"
+    );
+  }
   const live = await listInvitations(db, org.id);
   console.log(`${live.filter((i) => i.state === "pending").length} invitation(s) pending in this organization`);
 }
