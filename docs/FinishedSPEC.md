@@ -2632,6 +2632,130 @@ documentation written while it ran, instead of five commits later. This repo's
 own most expensive recent bug was a correct build and a stale deployment; the
 same shape nearly repeated.
 
+### 3aa. The session layer: both sign-in methods, and the budget behind the email one ✅ (2026-08-21)
+
+**Step 6's identity spine is built, and the outbound-email ceilings are part of
+it rather than a hardening pass after it** — FUTURENORMA §4 Step 6, PATHWAYS
+Pathway 5 and §10.7 5A.1–5A.13. Harsha closed Open decision 4 the same day:
+**GitHub OAuth and magic links ship together.**
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1222 checks across 34 suites**, both typechecks, web build, audit clean |
+| Suite against real Postgres | ✅ **1254 checks** (`scripts/test-db.sh`) |
+| `npm audit`, production deps | ✅ **0** |
+| New suites | `auth` (101 checks) and `authAbuse` (63 on PGlite, **67** on real Postgres — the four extra are the 20-process budget test and its counter-test, which PGlite cannot run) |
+| Migration range | `001`–`021`; `021_auth_sessions.sql` adds sessions, identities, login tokens, invitations, owner claims, the throttle and the auth audit log, plus `orgs.owner_user_id` |
+| The whole loop in a browser | ✅ unclaimed organization → link requested → link clicked → owner claimed → `/repos` renders the tenant, cookie invisible to page script, replayed link refused |
+
+**The claim that needed real processes.** A global daily email budget held in
+process memory is not a global anything — the platform decides how many
+instances exist, and each would get its own. `authAbuse` B9 spawns **20
+separate processes against one Postgres at a budget of 5, and exactly 5 are
+authorised**. B9b runs the naive module-scope counter through the same harness:
+**all 20 pass**, so a 50-a-day budget would really be 1,000. That pair is the
+gate item, and it is the reason the number in FUTURENORMA can be quoted.
+
+**The ladder, and the one design decision inside it worth knowing.** The
+ceilings are taken in **two phases**, not one. Per-IP and per-subnet are paid by
+every request whatever address it names; the global daily budget and the two
+per-recipient ceilings are paid only once an email is genuinely going out. With
+a single combined reservation, a script naming ten thousand strangers would
+consume the day's budget for mail that was never sent — the ceiling meant to
+stop abuse would itself be the outage. B5.3 holds it: five requests for unknown
+addresses consume **no** send budget.
+
+**What bounds the abuse surface most is not a ceiling at all.** The set of
+addresses anyone can make this service mail is not "the internet" — it is
+members, live invitations, and the purchaser of an unclaimed organization
+(`signInEligibility`). Everything else gets the identical response and no mail.
+That follows from having no trial and no self-serve signup, and it is the single
+largest reduction available to a magic-link system.
+
+**Responses say nothing about who has an account.** B8 compares what an attacker
+can observe — status, retry hint, challenge — across a registered address, an
+unknown one, a malformed one and one inside its cooldown, and finds them
+identical. The cooldown case is the subtle one: answering "too many requests"
+there would confirm the address recently received a link, and therefore has an
+account. The service still knows which was which; `internal` carries it to the
+audit log and never to the browser.
+
+**The challenge is first-party.** A hosted CAPTCHA needs `script-src` and
+`frame-src` for someone else's origin on the sign-in page, and `middleware.ts`
+refuses third-party origins — the Vercel Toolbar was given up rather than widen
+that policy. A 16-bit proof of work costs a person tens of milliseconds and an
+attacker CPU per attempt, is signed, expires, is bound to the caller, and is
+single-use. Its solver runs in the browser and cannot import the verifier, so
+**B6b solves a challenge with the browser algorithm and verifies it with the
+server's** — if those two ever disagree, nobody past the failure threshold can
+sign in and nothing else would catch it. Whether this is enough or Turnstile is
+worth the CSP widening stays open (FUTURENORMA §4 Open decisions 4).
+
+**No silent account merge.** A GitHub account we have never seen, whose verified
+address matches an existing member, is **refused** (A8.9) — §10.7 5A.7 makes a
+matching address evidence for a link flow, not permission. The sanctioned path
+is an invitation or an owner claim on that address; an *unverified* GitHub
+address claims nothing (A8.13), which is what stands between us and takeover by
+typing someone's address into GitHub's settings page. Identity is keyed on the
+immutable numeric subject, so a rename keeps working (A8.14).
+
+**Ownership is an invariant, not a fourth role.** `orgs.owner_user_id` is
+nullable — an organization exists unclaimed between the purchase webhook and the
+purchaser's first sign-in — and claiming it is one conditional update, so two
+devices produce one owner (A4.6). The owner cannot be removed and the last admin
+cannot be removed; ownership is transferred instead, transactionally, by the
+current owner to an existing member (A6.1–A6.7).
+
+**Sessions are rows, and every failure reads the same.** Not a JWT: revoking a
+session, removing a membership or deleting an account has to take effect on the
+next request rather than whenever a token would have expired. 90-day absolute
+lifetime, 30-day idle, rotation that replaces the token **without** moving the
+expiry (A2.4), and `reauthenticated_at` that ordinary browsing does not refresh
+(A2.7) — otherwise a tab left open would permanently satisfy the recent-auth
+requirement destructive actions are meant to have.
+
+**A signed-in person with no membership still gets a session** and sees nothing
+(A9.10, §10.7 5A.4). Authorization is the membership list; the session only says
+who is asking.
+
+**Tenant isolation now holds at the session layer, with its own counter-test.**
+`reportData.authorize` takes the org list from the session and never from the
+request. A7.2 shows a member of one organization refused another's run; **A7.3
+runs the naive version — trusting a caller-supplied org id — and watches it
+open** (§10.7 5A.13: "an organization ID in a URL, form, cookie or JSON body is
+not authorization"). `/repos/{repoId}` is gated the same way, and `/repos` — the
+repository list Pathway 6 carried as open item 2 because it needed a session to
+know whose organization was asking — exists.
+
+**Two things the audit log will not hold.** No address and no IP: both are keyed
+hashes, keyed *per purpose*, so a leaked throttle table and a leaked audit table
+cannot be joined into a picture of a person (A10.2–A10.4). The throttle table is
+the same — it needs to tell subjects apart, not name them.
+
+**Token leakage is closed at the surfaces, not only in the token.** Redemption
+is an API route that consumes server-side and redirects to a clean URL with no
+token; `/login` and both callbacks carry `Referrer-Policy: no-referrer` and
+`no-store`; verified against a production build — strict nonce CSP, 14 of 14
+scripts nonced, and the session cookie invisible to page JavaScript.
+
+**Not done, and not claimed:**
+
+- **The GitHub round trip has never touched github.com.** The exchange, the
+  state check and the account matching are proven against an injected `fetch`.
+  A registered OAuth app is Harsha's to provide — `Blocked` in the sense
+  CLAUDE.md means, an account rather than missing local software.
+- **No invitation email is sent.** `scripts/grant-access.mjs` prints the link.
+  The send belongs with the organization console's invite form and will use the
+  `invite_org_day` / `invite_address_day` ceilings, which are built and tested.
+- **Neither console is built.** This is the identity spine; the organization and
+  operator consoles, the account pages, deletion UI and privacy controls are the
+  rest of Step 6.
+- **Timing is mitigated, not equalised.** The provider call runs after the
+  response via `after()`, which removes the measurable difference; the remaining
+  gap is a few indexed reads.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface
