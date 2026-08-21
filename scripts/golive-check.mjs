@@ -438,6 +438,53 @@ if (ghConfigured) {
   console.log("SKIP  L9.11-15  GitHub sign-in is not configured on this deployment");
 }
 
+// ═══ L10 — the deployed CSP names the storage it actually loads from ═══
+//
+// **The failure this catches is the most expensive bug this repo has shipped.**
+// `/r/` rendered completely blank in production because a Content-Security-
+// Policy did not permit something the page needed, and nothing was red: no
+// error, no failing check, just an empty page. Uploaded artifacts are fetched
+// straight from storage rather than proxied, so `img-src` has to name that
+// origin — and the moment a deployment gains storage credentials, its CSP has
+// to gain the origin with them. A preview that gets its own R2 bucket is
+// exactly that moment.
+//
+// Skipped rather than guessed when the storage environment is absent: the
+// expected origin is derived from the same variables the driver is built from
+// (`src/storage/origin.ts`), and inventing one here would be a second source
+// for the fact that file exists to be the only source of.
+const storageEndpoint = process.env.NORMA_STORAGE_ENDPOINT?.trim();
+const storageBucket = process.env.NORMA_STORAGE_BUCKET?.trim();
+if (storageEndpoint && storageBucket) {
+  const { storageImageOrigin } = await import("../dist/storage/origin.js");
+  const expected = storageImageOrigin(process.env);
+  const reportCsp = cspOf(strictOne);
+  const imgSrc = /img-src ([^;]+)/.exec(reportCsp)?.[1] ?? "";
+  if (!expected) {
+    console.log("SKIP  L10  storage signs same-origin URLs on this configuration — nothing for img-src to name");
+  } else {
+    check(
+      "L10.1",
+      imgSrc.includes(expected),
+      imgSrc.includes(expected)
+        ? `the report page's img-src names the storage origin (${expected})`
+        : `img-src does not name ${expected}. Served: ${imgSrc.trim() || "(no img-src)"}. ` +
+          "Two things look identical here and need opposite fixes: the deployment's CSP is wrong and " +
+          "every uploaded screenshot is blocked, **or** the NORMA_STORAGE_* variables in this shell " +
+          "belong to a different environment than the one being checked. Compare the two origins above " +
+          "before treating it as an incident"
+    );
+    check(
+      "L10.2",
+      !/\*/.test(imgSrc),
+      `and names it exactly, with no wildcard (${imgSrc.trim()})`
+    );
+    check("L10.3", expected.startsWith("https://"), `over https (${expected})`);
+  }
+} else if (!quiet) {
+  console.log("SKIP  L10  set NORMA_STORAGE_ENDPOINT and NORMA_STORAGE_BUCKET to check the CSP names the storage origin");
+}
+
 // ═══ L8 — the scanner is not inert ═══
 //
 // L5 prints the same word for a clean deployment and a dead regex.
