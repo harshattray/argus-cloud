@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the raster favicons from `web/app/icon.svg`.
+"""Render every raster brand asset that a vector cannot serve.
 
 **Why rasters exist at all when an SVG icon is already served.** Google's
 search-result favicon is fetched by its own crawler, and that pipeline reaches
@@ -22,7 +22,14 @@ the first time the tile changes — the exact failure this script exists to
 prevent for the favicons. It is written to `docs/brand/`, not `web/public/`,
 because nothing serves it: it is an artifact to upload.
 
-Run after any change to `web/app/icon.svg`:
+**Why the email marks are here.** Gmail does not render SVG at all, and
+Outlook and Yahoo are no better — so both transactional emails showed a broken
+image icon and blue underlined alt text where the wordmark should be, for every
+message either of them has ever sent. Email is the one surface where a vector is
+not an option, so the two marks it uses are rendered to PNG at 2x and served
+from `web/public/`.
+
+Run after any change to `web/app/icon.svg` or the marks in `web/public/`:
 
     python3 scripts/build-favicons.py
 
@@ -41,6 +48,16 @@ SOURCE = ROOT / 'web' / 'app' / 'icon.svg'
 ICO = ROOT / 'web' / 'app' / 'favicon.ico'
 APPLE = ROOT / 'web' / 'app' / 'apple-icon.png'
 OAUTH = ROOT / 'docs' / 'brand' / 'normascope-oauth-logo.png'
+
+# Email marks. Rendered at twice their display size so they stay sharp on the
+# high-density screen most mail is read on, and constrained by width/height
+# attributes in the template rather than by CSS, which several clients ignore.
+PUBLIC = ROOT / 'web' / 'public'
+EMAIL_MARKS = (
+    # (source, output, displayed width)
+    (PUBLIC / 'normascope-cloud.svg', PUBLIC / 'email-normascope-cloud.png', 115),
+    (PUBLIC / 'yutic-teal-mark.svg', PUBLIC / 'email-yutic-mark.png', 34),
+)
 
 # Google asks for a square that is a multiple of 48px, so 48 is the entry that
 # matters to search; 16 and 32 are what a browser tab actually draws. Rendering
@@ -117,9 +134,19 @@ def main() -> None:
         square.paste(logo, mask=logo.split()[3])
         square.save(OAUTH, format='PNG', optimize=True)
 
+        # The email marks keep their transparency: both sit on the template's
+        # own near-white panel, and flattening them to a colour would leave a
+        # visible rectangle the moment a client applies its own dark treatment.
+        for source, out, width in EMAIL_MARKS:
+            subprocess.run(
+                ['rsvg-convert', '-w', str(width * 2), str(source), '-o', str(out)],
+                check=True)
+
     print(f'{ICO.relative_to(ROOT)}  {ICO.stat().st_size} bytes  {ICO_SIZES}')
     print(f'{APPLE.relative_to(ROOT)}  {APPLE.stat().st_size} bytes  {APPLE_SIZE}px')
     print(f'{OAUTH.relative_to(ROOT)}  {OAUTH.stat().st_size} bytes  {OAUTH_SIZE}px')
+    for _, out, width in EMAIL_MARKS:
+        print(f'{out.relative_to(ROOT)}  {out.stat().st_size} bytes  {width * 2}px wide (2x)')
 
 
 if __name__ == '__main__':

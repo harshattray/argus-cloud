@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { keyedHash, normaliseAddress, randomToken, tokenHash } from "./authCrypto.js";
+import { button, EMAIL_COLORS, emailShell, note, paragraph } from "./emailLayout.js";
 
 /**
  * Magic links: issue one, and spend it exactly once — FUTURENORMA §4 Step 6
@@ -142,7 +143,7 @@ export async function sweepLoginTokens(db: Db, now: Date = new Date()): Promise<
 // What the person receives
 // ---------------------------------------------------------------------------
 
-export const SIGN_IN_SUBJECT = "Your Normascope sign-in link";
+export const SIGN_IN_SUBJECT = "Your Normascope Cloud sign-in link";
 
 export function signInUrl(baseUrl: string, token: string): string {
   const url = new URL("/api/auth/email/callback", baseUrl);
@@ -154,69 +155,39 @@ export function signInUrl(baseUrl: string, token: string): string {
  * The message.
  *
  * Deliberately plain and short. Three things it must do: give the link, say how
- * long it lasts, and say what to do if the request was not theirs — which is
- * the sentence that turns an attempted attack into a report. It carries no
- * tracking pixel, no click wrapper and no marketing.
+ * long it lasts, and say what to do if the request was not theirs — the
+ * sentence that turns an attempted attack into a report. No tracking pixel, no
+ * click wrapper, no marketing.
  *
- * The visual language follows `waitlistConfirmationEmail.ts`: tables and inline
- * styles, because email clients are not browsers.
+ * The design is `emailLayout.ts` and not a second copy of it, which is why this
+ * function is now a list of paragraphs. It used to be its own table scaffold,
+ * assembled from the waitlist template by eye, and had drifted: a smaller
+ * heading, tighter padding, no signature, and a square button.
  */
-export function signInEmailHtml(link: string, siteUrl: string): string {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${SIGN_IN_SUBJECT}</title>
-  </head>
-  <body style="margin:0;background:#f3e1da;color:#3a2523;font-family:Arial,Helvetica,sans-serif">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3e1da">
-      <tr>
-        <td align="center" style="padding:40px 20px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fcfbf9">
-            <tr>
-              <td style="padding:36px 36px 28px;border-bottom:1px solid #e4dfd7">
-                <a href="${siteUrl}" style="text-decoration:none">
-                  <img src="${siteUrl}/normascope-cloud.svg" width="115" height="36" alt="Normascope" style="display:block;border:0;max-width:100%;height:auto">
-                </a>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:42px 36px 12px">
-                <h1 style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;line-height:1.25;font-weight:500;letter-spacing:-1px;color:#3a2523">Sign in to Normascope</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:12px 36px 8px;font-size:16px;line-height:1.7;color:#554e45">
-                <p style="margin:0 0 22px">This link works once and expires in ${MAGIC_LINK_TTL_MINUTES} minutes.</p>
-                <p style="margin:0 0 26px">
-                  <a href="${link}" style="display:inline-block;background:#3a2523;color:#fcfbf9;text-decoration:none;padding:14px 22px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px">Sign in</a>
-                </p>
-                <p style="margin:0 0 18px;font-size:13px;color:#8a8177">If the button does not work, paste this into your browser:<br>
-                  <span style="word-break:break-all;color:#a8736e">${link}</span>
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 36px 38px;font-size:13px;line-height:1.6;color:#8a8177">
-                If you did not ask to sign in, you can ignore this email — nobody can use the link but you. If it keeps arriving, reply and tell us.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 36px;background:#f1f6f4;font-size:11px;line-height:1.5;color:#8a8177">
-                Normascope is a product from Yutic.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+export function signInEmailHtml(link: string, siteUrl: string, env: NodeJS.ProcessEnv = process.env): string {
+  return emailShell({
+    title: SIGN_IN_SUBJECT,
+    preheader: `Works once, expires in ${MAGIC_LINK_TTL_MINUTES} minutes.`,
+    heading: "Sign in to Normascope Cloud",
+    siteUrl,
+    env,
+    body: [
+      paragraph(`This link works once and expires in ${MAGIC_LINK_TTL_MINUTES} minutes.`),
+      button(link, "Sign in"),
+      note(
+        `If the button does not work, paste this into your browser:<br>` +
+          `<span style="word-break:break-all;color:${EMAIL_COLORS.CLAY}">${link}</span>`
+      ),
+      note(
+        "If you did not ask to sign in, you can ignore this email — nobody can use the link but you. " +
+          "If it keeps arriving, reply and tell us."
+      ),
+    ].join("\n                "),
+  });
 }
 
 export function signInEmailText(link: string): string {
-  return `Sign in to Normascope
+  return `Sign in to Normascope Cloud
 
 This link works once and expires in ${MAGIC_LINK_TTL_MINUTES} minutes.
 
