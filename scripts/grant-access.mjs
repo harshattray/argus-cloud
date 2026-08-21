@@ -32,7 +32,11 @@ const DIST = path.join(ROOT, "dist");
 const args = process.argv.slice(2);
 const flag = (name) => {
   const at = args.indexOf(name);
-  return at === -1 ? null : args[at + 1] ?? null;
+  const value = at === -1 ? null : (args[at + 1] ?? null);
+  // `--org --claim x` reads the next flag as the value and then fails looking
+  // up an organization called "--claim". Treating a leading dash as a missing
+  // value turns that into the usage message it should have been.
+  return value === null || value.startsWith("--") ? null : value;
 };
 
 const orgId = flag("--org");
@@ -96,7 +100,23 @@ if (listing) {
 
 const org = (await db.query("SELECT id, name, plan FROM orgs WHERE id = $1", [orgId])).rows[0];
 if (!org) {
-  console.error(`no such organization: ${orgId}`);
+  // Showing what *is* there, because the two ways to get here both have an
+  // obvious next step and neither is visible from the id alone: the id was
+  // mistyped, or this is not the database the organization was created in.
+  console.error(`no such organization: ${JSON.stringify(orgId)}\n`);
+  const known = await db.query("SELECT id, name, plan FROM orgs ORDER BY created_at DESC LIMIT 10");
+  if (known.rows.length === 0) {
+    console.error(
+      `${new URL(process.env.DATABASE_URL).host} holds no organizations at all.\n` +
+        "Either provision one first (scripts/provision-preview-org.mjs) or this is not the\n" +
+        "database you meant — scripts/db-identity.mjs will say which one it is."
+    );
+  } else {
+    console.error(`${known.rows.length} organization(s) in ${new URL(process.env.DATABASE_URL).host}:`);
+    for (const row of known.rows) {
+      console.error(`  ${row.id}  ${row.name.slice(0, 48)} [${row.plan}]`);
+    }
+  }
   await db.close();
   process.exit(1);
 }
