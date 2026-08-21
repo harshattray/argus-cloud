@@ -3372,6 +3372,7 @@ this section and are deliberately absent.
 
 | Risk | Status |
 |---|---|
+| **`sslmode=require` silently stops verifying certificates at `pg` v9** | **Open, found 2026-08-21** in a preview deployment's own logs. `pg-connection-string` warns that `prefer`, `require` and `verify-ca` are currently aliases for `verify-full` and will adopt libpq semantics in `pg` v9 — where `require` means *encrypt but do not verify the certificate*. Nothing breaks today: the dependency is pinned `^8.22.0`, so v9 cannot arrive on an install. What makes it a risk rather than a chore is the shape of the change — the day someone takes the major, connections keep working and stop being authenticated, with no error and nothing red. The fix costs nothing now: write `sslmode=verify-full` explicitly in every `DATABASE_URL` (production, preview, and `scripts/test-db.sh` is unaffected — it is local and unencrypted), which pins today's behaviour and makes the eventual major a no-op |
 | E1 hosted-path injection fixtures not run 1:1 | **Open.** CLI-side suite is green; the hosted path has never been proven. Widens when crops ship |
 | E6 provider retention posture unverified | **Open.** Disclosure page unwritten |
 | E7 live purchase loop | **Blocked** on Paddle |
