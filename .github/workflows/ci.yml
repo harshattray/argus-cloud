@@ -34,11 +34,26 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Match the deployment target, not the newest release. Node 20 is
-          # still the common `setup-node` pin, and the ERESOLVE defect fixed in
-          # norma-scope 8e96b5e was invisible on a maintainer machine precisely
-          # because it only bit on the older runtime.
-          node-version: 20
+          # Match the deployment target, not the newest release — and the
+          # deployment target is **Node 24**, what Vercel runs these functions
+          # on and the highest it offers.
+          #
+          # **Not a number typed here.** `node-version-file` reads
+          # `engines.node` from `package.json`, which is the same field Vercel
+          # reads to choose the runtime. One source for one fact: raising it
+          # there raises CI and production together, and they cannot drift into
+          # disagreeing about what this code runs on.
+          #
+          # **This said 20 until 2026-08-21, and the rule above is why it was
+          # wrong.** That number came from the published CLI's world, where the
+          # common `setup-node` pin is still 20 and where the ERESOLVE defect
+          # fixed in norma-scope `8e96b5e` bit only on the older runtime. The
+          # concern is real and it belongs to **Argus**, which strangers
+          # install. Nobody installs argus-cloud — private, never published — so
+          # the only runtime that matters here is the one Vercel executes.
+          # Testing on 20 meant the next 16 upgrade was proven green on a
+          # runtime production does not run.
+          node-version-file: package.json
           cache: npm
 
       - run: npm ci
@@ -90,7 +105,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Same single source as the job above: engines.node in package.json.
+          node-version-file: package.json
           cache: npm
       - run: npm ci
       - name: Suite (real Postgres)
@@ -121,7 +137,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Same single source as the job above: engines.node in package.json.
+          node-version-file: package.json
           cache: npm
       - run: npm ci
 
@@ -165,7 +182,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Same single source as the job above: engines.node in package.json.
+          node-version-file: package.json
           cache: npm
       - run: npm ci
 

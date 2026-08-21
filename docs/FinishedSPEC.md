@@ -2538,6 +2538,50 @@ nothing there to import.
 **CI needed one edit.** The audit job carried a comment saying raw `npm audit`
 "would stay red until the next 15 → 16 decision is taken". It is green now.
 
+#### The upgrade had been proven on the wrong runtime
+
+Checking whether CI could run Next 16 turned up something worse than a version
+bump. The pipeline held **three different Node versions**, none of them the one
+that runs the product:
+
+| Where | Was | Is |
+|---|---|---|
+| Vercel — the functions that actually serve customers | **24.x** (and Vercel's maximum) | 24.x, unchanged |
+| CI | 20 | **reads `engines.node`** |
+| A laptop | 22 | 24, nudged by `EBADENGINE` |
+| `@types/node`, both packages | **26.1.1** | `^24.13.3` |
+
+**So every check that had ever passed, including this upgrade, was green on a
+runtime production does not execute** — and the type checker was describing a
+Node two majors newer still, which accepts APIs that are not there and stays
+silent until something calls one.
+
+**`ci.yml` did carry a rationale, and reading it is what found the bug.** It
+said *"Match the deployment target, not the newest release"* and then named 20,
+citing the ERESOLVE defect in `norma-scope 8e96b5e` that bit only on an older
+runtime. The rule is right; the number belonged to a different artifact. That
+concern is about **strangers installing the published CLI**, which is Argus.
+Nobody installs argus-cloud — it is private and never published — so the only
+runtime that matters here is Vercel's.
+
+**Fixed as one source rather than four numbers.** `engines.node` in the root
+`package.json` is now the only place the version is written. Vercel reads that
+field to choose the runtime, and all four CI jobs read the same field through
+`setup-node`'s `node-version-file: package.json` — verified against the action's
+source, which falls through `volta.node` and `devEngines.runtime` (neither
+present here) to `engines.node`. Raising it in one place raises the deployment
+and CI together.
+
+A `.nvmrc` was written and then deleted: a second file saying "24" is precisely
+the drift this change exists to remove. A laptop on the wrong Node now gets
+`npm warn EBADENGINE ... required: { node: '24.x' }` on install instead.
+
+| Run | Result |
+|---|---|
+| `npm run verify` on **Node 24.19.0**, with Node 24 types | ✅ 1058 checks, audit clean |
+| Suite against real Postgres on Node 24 | ✅ **1086 checks** |
+| `npm run verify` on Node 20.20.2 | ✅ green — recorded because it is what CI *was* running, not because it still matters |
+
 ---
 
 ## 4. argus-cloud — the web surface
