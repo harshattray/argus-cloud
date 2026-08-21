@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storageImageOrigin } from "argus-cloud/storage/origin.js";
-import { gateFor, gateToken } from "./lib/gate";
+import { gateFor, gateToken, PREVIEW_GATE } from "./lib/gate";
+import { previewGateState } from "./lib/previewGate";
 
 /**
  * Every Content-Security-Policy this site serves is issued here, and only here.
@@ -294,6 +295,48 @@ function withCsp(request: NextRequest, pathname: string): NextResponse {
  */
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  /**
+   * The whole-deployment gate, checked before anything else.
+   *
+   * **What it does not cover, stated rather than discovered.** The matcher
+   * below excludes `api/`, so API routes are not behind this phrase. That is
+   * deliberate and it is load-bearing in both directions:
+   *
+   * - The OAuth callback and the emailed sign-in link have to land on a route
+   *   that answers. A gate in front of them would intercept a live
+   *   authorization code the way Vercel's own protection does.
+   * - Every API route already carries its own authorization — an API key, a
+   *   share token, a session, or in the sign-in endpoint's case the abuse
+   *   ceilings and the eligibility rule. The gate hides the *product surface*;
+   *   it was never the thing protecting the data.
+   *
+   * The cookie is per-browser, so unlocking once lets the whole sign-in round
+   * trip work normally. A link opened on a second device meets the unlock
+   * screen first — the same limitation Vercel's bypass cookie has, and worth
+   * knowing before it surprises somebody.
+   */
+  const previewState = previewGateState(pathname, process.env);
+  if (previewState === "misconfigured") {
+    return new NextResponse(
+      "This deployment is not configured. PREVIEW_PASSWORD is unset, and a non-production " +
+        "deployment will not serve without it.\n",
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8", "x-robots-tag": "noindex, nofollow" } }
+    );
+  }
+  if (previewState === "gated") {
+    const presented = request.cookies.get(PREVIEW_GATE.cookie)?.value;
+    const expected = await gateToken(PREVIEW_GATE.scope, process.env[PREVIEW_GATE.envVar] as string);
+    if (presented !== expected) {
+      const url = request.nextUrl.clone();
+      url.pathname = PREVIEW_GATE.unlockPath;
+      url.search = "";
+      if (pathname !== "/") {
+        url.searchParams.set("next", pathname + search);
+      }
+      return NextResponse.redirect(url);
+    }
+  }
 
   const gate = gateFor(pathname);
 
