@@ -2641,8 +2641,9 @@ Pathway 5 and §10.7 5A.1–5A.13. Harsha closed Open decision 4 the same day:
 
 | Check | Result |
 |---|---|
-| `npm run verify` | ✅ **1222 checks across 34 suites**, both typechecks, web build, audit clean |
-| Suite against real Postgres | ✅ **1254 checks** (`scripts/test-db.sh`) |
+| `npm run verify` | ✅ **1242 checks across 35 suites**, both typechecks, web build, audit clean |
+| Suite against real Postgres | ✅ **1274 checks** (`scripts/test-db.sh`) |
+| **Live on `normascope.com`** | ✅ **2026-08-21**, `staging` merged as PR #18 (`dc178cf`). `scripts/golive-check.mjs` **passes every check** against production, including all fifteen L9 checks — the session layer as *deployed*, not as built |
 | `npm audit`, production deps | ✅ **0** |
 | New suites | `auth` (101 checks) and `authAbuse` (63 on PGlite, **67** on real Postgres — the four extra are the 20-process budget test and its counter-test, which PGlite cannot run) |
 | Migration range | `001`–`021`; `021_auth_sessions.sql` adds sessions, identities, login tokens, invitations, owner claims, the throttle and the auth audit log, plus `orgs.owner_user_id` |

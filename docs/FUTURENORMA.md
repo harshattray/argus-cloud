@@ -2,13 +2,24 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-21** — **Step 6's session layer is built.** GitHub OAuth
+Last updated: **2026-08-21** — **Step 6's session layer is live in
+production.** `staging` merged to `main` (PR #18, `dc178cf`) and
+`scripts/golive-check.mjs` **passes every check against `normascope.com`**,
+including the fifteen that only exist since this work: `/login` under the strict
+nonce policy with `no-referrer` and `no-store`, `/repos` redirecting when signed
+out, the sign-in endpoint refusing cross-origin, a dead link setting no cookie,
+GitHub sign-in redirecting to github.com with its state cookie, and the
+registered callback keeping its query string across the apex redirect. Verify is
+green at **1242 checks across thirty-five suites**, **1274** against real
+Postgres, `npm audit` **0**, migrations `001`–`021`.
+
+Before that, **2026-08-21** — **Step 6's session layer is built.** GitHub OAuth
 and email magic links ship together (Open decisions 4, closed by Harsha the same
 day), and the outbound-email abuse ladder ships **with** them rather than after:
 per-address cooldown and daily cap, per-IP and per-subnet hourly caps, a global
 daily budget of 50 that alerts on the way up and pauses at 100%, a first-party
 challenge after repeated failures, identical responses whether or not an address
-is registered, and 15-minute single-use tokens. Verify is green at **1222 checks
+is registered, and 15-minute single-use tokens. Verify was green at **1222 checks
 across thirty-four suites**, **1254** against real Postgres, `npm audit` **0**,
 and the whole loop has been walked in a browser — unclaimed organization →
 emailed link → owner claimed → `/repos` renders the tenant. The gate's hardest
@@ -67,7 +78,10 @@ CSP directives and this site grants none of them. **Vercel Toolbar is now off
 for Pre-Production and Production, both set explicitly rather than inherited**
 (2026-08-21). Do not widen the CSP to get it back; `middleware.ts` says why.
 
-**Next: the rest of Step 6 — the organization console, the operator console, the account pages, and deletion.**
+**Next: the rest of Step 6 — the organization console, the operator console, the
+account pages, and deletion.** The account page is the one that stopped being
+optional: without somewhere to link a GitHub identity to an existing session,
+the GitHub button cannot be reached at all once signed in.
 
 Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
 is a tenant of real runs to show in them.** Every figure on `/r/` and `/repos/`
@@ -230,7 +244,7 @@ is a preview that can damage it.
 | GitHub OAuth | its own app | **a separate app**, so a leaked preview secret reaches nothing |
 | `AUTH_SECRET` | its own | its own, different |
 | R2 | `normascope-cloud` | its own bucket and credentials |
-| Reachable by | anyone | **Vercel Authentication (Standard Protection)** |
+| Reachable by | anyone | **`PREVIEW_PASSWORD`**, this repo's own gate — replacing Vercel Authentication, which only ever admitted the Vercel team and could not be shared with a designer or an advisor |
 
 **`NEXT_PUBLIC_SITE_URL` must be the preview's own host on Preview.** Left as
 production, the preview's sign-in links point at production — where the token it
@@ -246,6 +260,16 @@ its own `*.vercel.app` URLs and does *not* do it for a custom name, so
 stamps `X-Robots-Tag` on every response there. Without both, the preview would
 be a fully indexable copy of the site competing with the real one on unreleased
 copy.
+
+**The preview gate fails closed, and that is not how the other two gates
+behave.** `/pitch` and `/admin` 404 their own tree when their password is unset,
+because a missing variable there means "this surface was never meant to be
+published". A missing `PREVIEW_PASSWORD` on a *deployment* means somebody
+forgot, and reading that as "no gate configured" would publish unreleased work
+to anyone holding the URL. So a non-production deployment without the variable
+**returns 503 on every path** and says which variable is missing.
+`test/previewGate.test.mjs` G4.5 runs the naive version and watches it serve the
+site instead.
 
 **Two scripts exist because three connection strings do.** Vercel marks the
 database URLs Sensitive, so neither can be read back to compare:
@@ -449,23 +473,23 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **A tenant of real runs** (`npm run seed:real`) | ✅ 2026-08-20 | Ten runs that actually happened, from `norma-bridge-usecase/` and `test-run/` cases 01–05: 59 frame rows, 151 images, 22.3 MB, 11 recorded Sonnet 5 findings. Every figure is read from the summary `norma-scope` wrote — nothing computed, no invented branch or SHA, and **no `usage_events`**, because that spend went through the CLI and a hosted usage row would claim otherwise. A separate organization from the demo one, named `REAL — …`, for the same reason the demo one is named `DEMO — …`. 21 checks — §3w |
 | **Cloud screenshots, both themes, one command** (`npm run capture:cloud`) | ✅ 2026-08-20 | 20 shots into `docs/screenshots/cloud/` with a generated manifest. Not `web/public/` — these are pictures of a surface that 404s in production. It refuses to write a screenshot of a page that did not load; §3w records the four ways the first version lied |
 
-| **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ built 2026-08-21, ❌ **GitHub round trip untried against github.com** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. 101 + 67 checks — `FinishedSPEC.md` §3aa |
+| **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ **live on `normascope.com` 2026-08-21** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. 101 + 67 checks, and `golive-check` passes all fifteen L9 checks against production — `FinishedSPEC.md` §3aa |
 | **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
 
-Branch `pathway-1-spend-safety` (cut from `main` @ `e42810d`, the merge of
-`normascope-site` that landed the public marketing site, the gated `/pitch` tree
-and the waitlist route). **Pathway 1 items 1–10 are implemented**, and the public
-site is **live on `normascope.com`** (§4g) with its legal pages published
-(§4h). Full suite:
-**1,222 checks green** on PGlite across thirty-four suites — `apiKeyRevocation`,
+`main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
+session layer. **The working branch is now `staging`, and `main` only ever
+receives it.** **Pathway 1 items 1–10 are implemented**, and the public site is
+**live on `normascope.com`** (§4g) with its legal pages published (§4h). Full
+suite:
+**1,242 checks green** on PGlite across thirty-five suites — `apiKeyRevocation`,
 `artifactUploads`, `auth`, `authAbuse`, `backup`, `budgetAlerts`,
 `bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
 `enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
-`overview`, `planLimits`, `providerBudget`,
+`overview`, `planLimits`, `previewGate`, `providerBudget`,
 `rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
 `seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks` — and **1,254** against a real Postgres
+`waitlistConfirmationEmail`, `webhooks` — and **1,274** against a real Postgres
 server, both run 2026-08-21. Migrations are `001`–`021`.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
