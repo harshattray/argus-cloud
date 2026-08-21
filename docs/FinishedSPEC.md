@@ -2582,6 +2582,56 @@ the drift this change exists to remove. A laptop on the wrong Node now gets
 | Suite against real Postgres on Node 24 | ✅ **1086 checks** |
 | `npm run verify` on Node 20.20.2 | ✅ green — recorded because it is what CI *was* running, not because it still matters |
 
+#### The Vercel Toolbar cannot work here, and Next 16 is what said so
+
+**The first preview deployment failed**, and nothing local could have predicted
+it:
+
+> `Cannot patch preview comments when immutable static file upload is enabled.
+> Upgrade to next@v16.3.0-canary.32 or newer to resolve this.`
+
+**The suggested upgrade was impossible.** `16.3.1` is newer than
+`16.3.0-canary.32` and is the newest release published. Taking the error's
+advice was not an available move, which is the first sign the error is about a
+setting rather than a dependency.
+
+**The real finding: the Vercel Toolbar has never worked on this site.** It wants
+`https://vercel.live` in `script-src`, `img-src`, `frame-src` and `font-src`,
+`wss://ws-us3.pusher.com` in `connect-src`, and `'unsafe-inline'` in
+`style-src`. `middleware.ts` grants none of it in either policy, and
+`vercel.live` appears nowhere in the repository. So it has been blocked on every
+deployment since the CSP landed — invisibly, because a blocked script logs to a
+console nobody reads.
+
+Next 16 changed the failure mode, not the fact. Static files now upload
+immutable, so Vercel can no longer patch the toolbar in after the build, and a
+silent block became a red build.
+
+**Fixed by turning it off, in both environments explicitly** (2026-08-21):
+Project → Settings → General → Vercel Toolbar → Pre-Production **Off**,
+Production **Off**. Production was on "Default (controlled at the team level)",
+which resolves somewhere nobody can see from the project and can change without
+anyone touching this repo — the same inherited-value drift this session removed
+from the Node version and the audit allowlist. The preview build went green and
+the uploaded images render on it.
+
+**Nothing was lost.** Turning off a feature the CSP already blocks costs
+nothing. Widening the policies to recover it would put a third-party script and
+inline styles on `/r/` and `/admin` — the two trees rendering model output,
+upload-supplied labels and other people's email addresses — in exchange for a
+comment widget on a private preview. `middleware.ts` carries that instruction so
+the next person to meet this error does not spend an afternoon on the version
+number.
+
+**The process lesson is the sequencing, not the checking.** Every local check
+was run and green: the suite on two runtimes, real Postgres, route modes, the
+nonce CSP in a browser against a production build. None of them can see a
+platform interaction — only a deployment can. The upgrade should have been
+pushed for a preview build as soon as `verify` went green, with the
+documentation written while it ran, instead of five commits later. This repo's
+own most expensive recent bug was a correct build and a stale deployment; the
+same shape nearly repeated.
+
 ---
 
 ## 4. argus-cloud — the web surface

@@ -33,6 +33,13 @@ production does not run. `engines.node` in the root `package.json` is now the
 only place the version is written: Vercel reads that field, and all four CI jobs
 read it too. Verify is green on Node 24 at 1058 checks, 1086 on real Postgres.
 
+**One deployment setting changed with it.** The first preview build failed —
+Vercel could not patch its Comments toolbar into Next 16's immutable static
+output. The toolbar had never worked here anyway: it needs `vercel.live` in five
+CSP directives and this site grants none of them. **Vercel Toolbar is now off
+for Pre-Production and Production, both set explicitly rather than inherited**
+(2026-08-21). Do not widen the CSP to get it back; `middleware.ts` says why.
+
 **Next: Step 6 — auth, orgs and the two consoles.**
 
 Before that, **2026-08-20** — **the Cloud pages explain themselves, and there
