@@ -56,9 +56,31 @@ function check(id, condition, detail) {
  * canonical host is resolved once and everything after is measured against a
  * real response.
  */
+/**
+ * Vercel's Deployment Protection bypass, when checking a protected preview.
+ *
+ * **Without it every check here is a lie in the optimistic direction.** A
+ * protected deployment answers every path with a 302 to `vercel.com/sso-api`,
+ * so nothing 404s, nothing errors, and a reader skimming the output sees a
+ * deployment that responds to everything. The header is Vercel's documented
+ * "Protection Bypass for Automation" secret, from the project's Deployment
+ * Protection settings.
+ *
+ * **Declared before the canonical probe, and that placement is the whole
+ * point.** It first lived next to `get()` below, which meant the probe — a
+ * plain `fetch` that runs earlier — never sent it. Protection redirected the
+ * probe to `vercel.com`, the guard fired, and the script refused to run *while
+ * holding a working secret*. The bypass was unreachable from the one request
+ * that decides where every later request goes.
+ */
+const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+
+/** The header every request here sends, probe included. */
+const bypassHeaders = bypass ? { "x-vercel-protection-bypass": bypass } : {};
+
 let canonical = origin;
 try {
-  const probe = await fetch(`${origin}/`, { redirect: "follow" });
+  const probe = await fetch(`${origin}/`, { redirect: "follow", headers: bypassHeaders });
   canonical = new URL(probe.url).origin;
 } catch (err) {
   console.error(`could not reach ${origin}: ${String(err.message ?? err)}`);
@@ -70,20 +92,8 @@ if (canonical !== origin && !quiet) {
 
 /** Every response is kept, so L5 can scan all of them at the end. */
 const seen = [];
-/**
- * Vercel's Deployment Protection bypass, when checking a protected preview.
- *
- * **Without it every check here is a lie in the optimistic direction.** A
- * protected deployment answers every path with a 302 to `vercel.com/sso-api`,
- * so nothing 404s, nothing errors, and a reader skimming the output sees a
- * deployment that responds to everything. The header is Vercel's documented
- * "Protection Bypass for Automation" secret, from the project's Deployment
- * Protection settings.
- */
-const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
-
 async function get(pathname, init) {
-  const headers = { ...(init?.headers ?? {}), ...(bypass ? { "x-vercel-protection-bypass": bypass } : {}) };
+  const headers = { ...(init?.headers ?? {}), ...bypassHeaders };
   const res = await fetch(`${canonical}${pathname}`, { redirect: "follow", ...init, headers });
   const body = await res.text().catch(() => "");
   const landed = new URL(res.url).pathname;
@@ -122,10 +132,15 @@ if (registrable(asked) !== registrable(answered)) {
   console.error(
     `asked ${asked} and ${answered} answered — something is standing in front of this deployment.\n\n` +
       (/vercel\.com$/.test(registrable(answered))
-        ? "That is Vercel Deployment Protection. Every path returns its SSO page, so nothing below\n" +
-          "would be checking your deployment. Either turn Vercel Authentication off for it, or set\n" +
-          "VERCEL_AUTOMATION_BYPASS_SECRET (Settings → Deployment Protection → Protection Bypass for\n" +
-          "Automation) and run this again.\n"
+        ? bypass
+          ? "That is Vercel Deployment Protection, and the bypass secret in\n" +
+            "VERCEL_AUTOMATION_BYPASS_SECRET did not satisfy it. Check it against Settings →\n" +
+            "Deployment Protection → Protection Bypass for Automation — a stale or partly copied\n" +
+            "value fails exactly like an absent one.\n"
+          : "That is Vercel Deployment Protection. Every path returns its SSO page, so nothing below\n" +
+            "would be checking your deployment. Either turn Vercel Authentication off for it, or set\n" +
+            "VERCEL_AUTOMATION_BYPASS_SECRET (Settings → Deployment Protection → Protection Bypass for\n" +
+            "Automation) and run this again.\n"
         : "Refusing to report: the results would describe whatever answered, not what was asked for.\n")
   );
   process.exit(2);
