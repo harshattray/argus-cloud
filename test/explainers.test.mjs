@@ -389,8 +389,33 @@ const shotTerms = [
   // Anchored positioning is progressive. The base rules must stand on their own,
   // because a browser without `position-area` applies only those and gets the
   // UA's centred popover — a deliberate fallback, not a broken tooltip.
-  const supportsAt = css.indexOf("@supports (position-area: block-end)");
-  check("X3.4", supportsAt !== -1, "the anchored rules sit behind @supports");
+  //
+  // **Find the explainer's own block, not the first one in the file.** This read
+  // `indexOf("@supports (position-area: block-end)")` until 2026-08-22, when the
+  // account menu became a second anchored popover in this stylesheet and was
+  // declared above the explainers. X3.5 then compared the bubble's position
+  // against *that* block and reported the explainer's fallback as broken when
+  // nothing about the explainer had changed. The assertion is unchanged; only
+  // the way it locates the block is.
+  //
+  // The body is read by balancing braces rather than by slicing to the next
+  // `@supports`. Slicing was the first fix and it was still wrong: the whole
+  // explainer section sits *between* the two blocks, so the account menu's block
+  // "contained" `.explainerBubble` and was picked anyway.
+  const bodyOf = (start) => {
+    const open = css.indexOf("{", start);
+    let depth = 0;
+    for (let i = open; i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      else if (css[i] === "}" && --depth === 0) return css.slice(open, i + 1);
+    }
+    return "";
+  };
+  const supportsAt =
+    [...css.matchAll(/@supports \(position-area: block-end\)/g)]
+      .map((m) => m.index)
+      .find((start) => bodyOf(start).includes("explainerBubble")) ?? -1;
+  check("X3.4", supportsAt !== -1, "the explainer's anchored rules sit behind @supports");
   check(
     "X3.5",
     css.indexOf(".explainerBubble") < supportsAt,

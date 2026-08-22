@@ -662,6 +662,69 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
   check("A11.7", swept >= 0, `the session sweep runs and removed ${swept} long-expired rows`);
 }
 
+// ═══ A13 — the local sign-in door, and the three locks on it ═══
+//
+// A bypass that skips proving an address is the one piece of auth that must be
+// impossible to reach on a deployment, and the failure mode is silent: it works
+// exactly as intended right up until it is deployed with an env var set.
+//
+// So the guard is a pure function and this evaluates it against every
+// combination that matters, rather than against the one the developer's laptop
+// happens to be in.
+{
+  // The module is TypeScript in the web workspace and this suite runs plain
+  // Node against `dist/`, so the guard is restated here and evaluated against
+  // every environment that matters. A restated rule is a second copy of a fact,
+  // which CLAUDE.md rule 1 forbids — so A13.6 asserts the *source* still tests
+  // the same three things, and the pair goes red if the real one drifts.
+  const src = await readFile(path.join(ROOT, "web", "lib", "devSignIn.ts"), "utf-8");
+  const guard = (env) => {
+    const email = env.NORMA_DEV_SIGNIN_EMAIL?.trim();
+    if (!email) return null;
+    if (env.NODE_ENV === "production" || env.VERCEL) return null;
+    return email;
+  };
+
+  check("A13.1", guard({ NORMA_DEV_SIGNIN_EMAIL: "dev@localhost" }) === "dev@localhost",
+    "set, and not a deployment: the door opens");
+  check("A13.2", guard({}) === null,
+    "unset: closed — there is no default, so a bypass cannot arrive by omission");
+  check("A13.3", guard({ NORMA_DEV_SIGNIN_EMAIL: "dev@localhost", NODE_ENV: "production" }) === null,
+    "set in production: closed");
+  check("A13.4", guard({ NORMA_DEV_SIGNIN_EMAIL: "dev@localhost", VERCEL: "1" }) === null,
+    "set on Vercel: closed, even with NODE_ENV lying");
+  check("A13.5", guard({ NORMA_DEV_SIGNIN_EMAIL: "   " }) === null,
+    "whitespace is not an address");
+
+  // The three conditions above are the ones the module states. If it grows a
+  // fourth, or loses one, the table above is stale and says nothing.
+  check("A13.6",
+    /NORMA_DEV_SIGNIN_EMAIL/.test(src) && /NODE_ENV === "production"/.test(src) && /env\.VERCEL/.test(src),
+    "and the module still tests exactly those three things");
+
+  // A13.7b — the counter-test. A guard written the obvious way, checking only
+  // NODE_ENV, is open on every Vercel preview that carries the variable.
+  const naive = (env) => (env.NORMA_DEV_SIGNIN_EMAIL && env.NODE_ENV !== "production" ? env.NORMA_DEV_SIGNIN_EMAIL : null);
+  const preview = { NORMA_DEV_SIGNIN_EMAIL: "dev@localhost", VERCEL: "1", NODE_ENV: "development" };
+  check("A13.7b", guard(preview) === null && naive(preview) !== null,
+    "counter-test: without the VERCEL lock the same environment opens the door on a preview deployment");
+
+  // The route is a 404 when closed, not a 403 — a 403 confirms there is a
+  // bypass to go looking for.
+  const route = await readFile(path.join(ROOT, "web", "app", "api", "auth", "dev-signin", "route.ts"), "utf-8");
+  check("A13.8", /status: 404/.test(route) && /export async function POST/.test(route) && !/export async function GET/.test(route),
+    "the route is POST-only and 404s when the door is closed");
+  check("A13.9", /sameOrigin\(request\)/.test(route),
+    "and it is same-origin, because it hands out a credential rather than taking one away");
+
+  // The session it mints is an ordinary one. A door that also created a session
+  // nothing could revoke would be a much worse thing than a shortcut.
+  check("A13.10", /createSession/.test(route) && !/expiresAt:/.test(route),
+    "the session comes from createSession with the standard limits — no bespoke expiry");
+  check("A13.11", /kind: "dev-signin"/.test(route),
+    "and the audit log records which door was used, so it cannot be read as an emailed link");
+}
+
 await db.close();
 console.log(`\n${failures === 0 ? "all checks passed" : `${failures} check(s) failed`}`);
 process.exit(failures === 0 ? 0 : 1);

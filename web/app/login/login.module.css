@@ -8,11 +8,89 @@
  * `surface.module.css` exists at all.
  */
 
+/*
+ * Header, body, footer — the three rows every other Cloud page has, here laid
+ * on the page itself rather than inside a sheet. `page.tsx` carries why the
+ * masthead and footer are not the shared components.
+ *
+ * `surface` already sets `min-height: 100vh`, so the `1fr` middle row is what
+ * pins the footer to the bottom of a short window and lets it fall below the
+ * fold on a tall card.
+ */
 .page {
   composes: surface from "../_styles/surface.module.css";
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 30px;
+}
+
+.topbar,
+.middle,
+.footer {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+/* 1080px is `card` in `surface.module.css` — the width the signed-in sheets
+   use. The rows line up with the pages this one leads to. */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/*
+ * The wordmark, in whichever of the two files suits the theme, and the link
+ * home.
+ *
+ * `.onLight` / `.onDark` come from `_styles/surface.module.css` and are already
+ * driven by the same three-state rules the rest of the surface uses. Rendering
+ * one file and hoping is what the first cut of this page did: the light mark
+ * has dark lettering, so half of "normascope cloud" disappeared on a dark
+ * background.
+ *
+ * The `<img>` elements carry `width`/`height` attributes for layout, and the
+ * height here is what actually sizes them — 22px, near the 19px the signed-in
+ * masthead uses. At the attribute's own 44px it was the largest thing on the
+ * page and read as a banner rather than as a header.
+ *
+ * **`.home img` must not set `display`.** It did, and both marks rendered — one
+ * on top of the other, reading "norma cloudnorma cloud". A type-and-class
+ * selector outranks the bare `.onLight` / `.onDark` classes that do the hiding,
+ * so a `display` here silently defeats the whole three-state cascade. Size
+ * only; the cascade owns visibility.
+ */
+.home {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.home img {
+  height: 22px;
+  width: auto;
+}
+
+.home:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 4px;
+}
+
+/*
+ * The card, and the figure standing next to it.
+ *
+ * A 420px card centred in a 1400px window is a lot of nothing on either side of
+ * it, and this is the first page a customer sees. One twin at the inner edge of
+ * that space gives the card something to sit beside.
+ */
+.middle {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: clamp(24px, 6vw, 76px);
 }
 
 .card {
@@ -25,18 +103,22 @@
   padding: 34px 30px 30px;
 }
 
-/*
- * The wordmark, in whichever of the two files suits the theme.
- *
- * `.onLight` / `.onDark` come from `_styles/surface.module.css` and are already
- * driven by the same three-state rules the rest of the surface uses. Rendering
- * one file and hoping is what the first cut of this page did: the light mark
- * has dark lettering, so half of "normascope cloud" disappeared on a dark
- * background.
- */
-.mark {
+.beside {
+  --cloud-twin-width: 168px;
   display: block;
-  margin-bottom: 26px;
+}
+
+/* Below this the figure is competing with the form for the width, and the form
+   wins — a phone gets the card, the header and the footer, which is already a
+   page rather than a card floating on a colour. */
+@media (max-width: 720px) {
+  .beside {
+    display: none;
+  }
+
+  .page {
+    gap: 24px;
+  }
 }
 
 .onLight {
@@ -168,4 +250,64 @@
 
 .footnote a {
   color: var(--clay);
+}
+
+/*
+ * The local sign-in door. Set apart from the real methods by a rule and a
+ * caption rather than by being styled to look broken — it is a working control,
+ * it just is not one anybody outside this machine can see.
+ */
+.devDoor {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+}
+
+.devDoorNote {
+  margin: 0 0 10px;
+  color: var(--ink-faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ---------- the footer ----------
+ *
+ * The rule above it is the only chrome. A sign-in page's footer is an exit and
+ * a signature, not a directory — `page.tsx` carries the reasoning for the four
+ * links.
+ */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 26px;
+  flex-wrap: wrap;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.footerNav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.footerNav a {
+  color: var(--ink-soft);
+}
+
+.footerNav a:hover {
+  color: var(--clay-deep);
+}
+
+.footerNav a:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.endorsement {
+  flex: none;
 }

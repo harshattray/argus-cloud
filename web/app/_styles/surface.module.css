@@ -177,10 +177,38 @@
   margin-bottom: 14px;
 }
 
+/* The controls end of the top row: theme, then the account menu. Its own flex
+   container so the two stay together when the row wraps on a phone — as two
+   direct children of `.mastheadTop` they were pushed apart by
+   `justify-content: space-between` the moment the wordmark took its own line. */
+.mastheadTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/*
+ * Size only — **never `display`**.
+ *
+ * This said `display: block` and it defeated the whole cascade above it: a
+ * type-and-class selector outranks the bare `.onLight` / `.onDark` classes that
+ * do the hiding, so both files rendered, one under the other, on every signed-in
+ * page. It read as a wordmark with a second faint wordmark stuck to its
+ * underside, which is subtle enough that it shipped.
+ *
+ * `.onLight` / `.onDark` set `inline-flex` / `none`, and those are the only
+ * `display` values either image may have. Anything that needs block layout goes
+ * on `.wordmark`, which is the wrapper and is not theme-switched.
+ */
 .wordmark img {
-  display: block;
   height: 19px;
   width: auto;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
 }
 
 .title {
@@ -244,33 +272,56 @@
 
 /* ---------- theme switch ---------- */
 
+/*
+ * A track holding three chips, only one of which is filled and captioned.
+ * `theme-switch.tsx` carries why it is icons now.
+ *
+ * The track has 3px of padding and the chips have their own radius, so the
+ * filled one reads as sitting *in* the control rather than as a segment of it.
+ * The dividing rules the old version drew between segments are gone with it —
+ * with one chip filled there is nothing left to separate.
+ */
 .themeSwitch {
   display: inline-flex;
-  align-items: stretch;
-  gap: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  overflow: hidden;
   background: var(--frame-bg);
 }
 
-.themeSwitch form + form .themeOption {
-  border-left: 1px solid var(--line);
+/* The forms are plumbing, not layout — each wraps one chip. */
+.themeSwitch form {
+  display: flex;
 }
 
 .themeOption {
-  display: block;
-  height: 100%;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 9px;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  color: var(--ink-faint);
+  /* `--ink-soft`, not `--ink-faint`. Faint is the right weight for a caption
+     you may ignore; these are the two alternatives to the current theme, and at
+     14px an unlabelled glyph has no other way to be found. */
+  color: var(--ink-soft);
   font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.themeIcon {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 .themeOption:hover {
@@ -289,6 +340,180 @@
 .themeOption:focus-visible {
   outline: 2px solid var(--clay-deep);
   outline-offset: -2px;
+}
+
+/* Only the selected chip renders one. The other two carry the same word in
+   `.visuallyHidden`, so the control reads the same to a screen reader as it
+   looks to an eye that knows the glyphs. */
+.themeLabel {
+  line-height: 1;
+}
+
+/* ---------- account ---------- */
+
+.accountButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 31px;
+  /* Tighter on the left: the avatar is a filled disc and needs to sit against
+     the pill's own edge, or the button reads as a chip with a badge dropped
+     into it. */
+  padding: 0 10px 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--frame-bg);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.accountButton:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+.accountButton:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 2px;
+}
+
+/* Clay, and filled. This is the object the eye is supposed to find without
+   reading anything, so it is the only saturated thing in the masthead besides
+   the selected theme chip. */
+.accountAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--clay);
+  color: var(--card);
+}
+
+.accountAvatarIcon {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* A display name is often an email address. Truncated here, in full in the
+   menu — see `account-menu.tsx`. */
+.accountName {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountChevron {
+  display: block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  opacity: 0.65;
+}
+
+/*
+ * The menu.
+ *
+ * Same shape as `.explainerBubble` and for the same reasons — these
+ * declarations are the *fallback* as much as the base, because a browser with
+ * no anchor positioning centres a popover with the UA's `inset: 0; margin:
+ * auto` and gets a legible card rather than a menu pinned to the corner.
+ */
+.accountMenu {
+  display: none;
+  min-width: 244px;
+  max-width: min(22rem, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  /* The same four resets the explainer bubble needs, for the same reason: this
+     hangs off a button inside a masthead, and the button itself is uppercase
+     and tracked. Without them the menu inherits that voice. */
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  text-align: left;
+}
+
+.accountMenu:popover-open {
+  display: block;
+}
+
+.accountMenuWho {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.accountMenuWho strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  /* An address with no spaces in it is one long word. */
+  overflow-wrap: anywhere;
+}
+
+.accountMenuItem {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.accountMenuItem:hover {
+  background: var(--frame-bg);
+}
+
+.accountMenuItem:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: -2px;
+}
+
+.accountMenuHint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+/* Below the button and hanging back towards the inline start, because the
+   trigger is at the far right of the masthead — the explainer's primary area
+   is the mirror of this one, for triggers that sit in running text. */
+@supports (position-area: block-end) {
+  .accountMenu {
+    position-area: block-end span-inline-start;
+    position-try-fallbacks:
+      block-end span-inline-end,
+      block-start span-inline-start,
+      block-start span-inline-end;
+    margin: 6px 0 0;
+    width: max-content;
+  }
 }
 
 /* ---------- footer ---------- */

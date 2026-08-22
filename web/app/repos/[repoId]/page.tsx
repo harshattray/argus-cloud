@@ -14,6 +14,7 @@ import { getDb } from "../../../lib/db";
 import { readTheme } from "../../../lib/theme";
 import { currentSession, membershipFor } from "../../../lib/session";
 import { CloudFooter, CloudMasthead } from "../../_components/cloud/cloud-shell";
+import { AccountMenu } from "../../_components/cloud/account-menu";
 import { Explainer } from "../../_components/cloud/explainer";
 import { Sparkline } from "../sparkline";
 import styles from "../trends.module.css";
@@ -112,6 +113,11 @@ export default async function RepoPage({
           ]}
           theme={theme}
           path={`/repos/${owner.id}${page > 1 ? `?page=${page}` : ""}`}
+          account={
+            /* Nothing for the development door: it has no session, so there is
+               nobody to name and nobody to sign out. */
+            session ? <AccountMenu signedInAs={session.user.display_name} /> : undefined
+          }
           meta={
             <>
               {overview.totalRuns} committed run{overview.totalRuns === 1 ? "" : "s"} ·{" "}

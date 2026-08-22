@@ -204,7 +204,7 @@
  * Reduced motion is handled by the blanket rule in the base layer above: these
  * are all `animation`, so they collapse to a single 0.01ms cycle and every
  * figure sits still in its rest pose. That is the correct still frame for all
- * twelve — each keyframe list starts and ends at no transform, and `tw-sand`
+ * fifteen — each keyframe list starts and ends at no transform, and `tw-sand`
  * starts and ends at `opacity: 0`, so a stilled hourglass has no grain caught
  * halfway down it.
  */
@@ -453,6 +453,67 @@
   }
 }
 
+/* The carton is shaken twice and nothing rattles. Faster and smaller than
+   anything else in the set — a shake is a quick thing, and at more than about
+   five degrees the hands come off the sides of the box. */
+@keyframes tw-parcel {
+  0%,
+  64%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72% {
+    transform: rotate(-4.5deg);
+  }
+  80% {
+    transform: rotate(4.5deg);
+  }
+  88% {
+    transform: rotate(-3deg);
+  }
+  95% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The key is raised, held up a beat, and lowered. The hold is the whole
+   gesture — a key that goes up and straight back down is a twitch, and this
+   one is being *shown* to you. Negative, so the arm swings away from the head
+   rather than across it. */
+@keyframes tw-key {
+  0%,
+  58%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70%,
+  85% {
+    transform: rotate(-8deg);
+  }
+  94% {
+    transform: rotate(0deg);
+  }
+}
+
+/* The envelope is offered forward and drawn back. A scale rather than a
+   rotation, and it is the only one in the set: everything else that acts on
+   the reader turns, so a prop coming *nearer* is the one gesture still free.
+   Kept under 8% — past that the hands visibly let go of the edges. */
+@keyframes tw-envelope {
+  0%,
+  62%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  72%,
+  84% {
+    transform: translateY(-5px) scale(1.07);
+  }
+  93% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* Shoulders up, shoulders down. The shadow stays put — see `twins.tsx`. */
 @keyframes tw-shrug {
   0%,
@@ -512,6 +573,15 @@
 }
 .tw-sand {
   animation: tw-sand 6.2s ease-in-out infinite;
+}
+.tw-parcel {
+  animation: tw-parcel 5.2s ease-in-out infinite;
+}
+.tw-key {
+  animation: tw-key 5.8s ease-in-out infinite;
+}
+.tw-envelope {
+  animation: tw-envelope 5.4s ease-in-out infinite;
 }
 
 /*

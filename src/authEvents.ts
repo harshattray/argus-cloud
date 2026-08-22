@@ -31,6 +31,14 @@ export type AuthEventKind =
   | "github-refused"
   | "signed-out"
   | "session-rejected"
+  /**
+   * A session minted by the local development door, which skips proving the
+   * address. Its own kind rather than `magic-link-consumed`, because a log that
+   * cannot tell "clicked a link we emailed" from "pressed a button on a laptop"
+   * is a log that cannot answer the one question it exists for. The door itself
+   * cannot open on a deployment — `web/lib/devSignIn.ts`.
+   */
+  | "dev-signin"
   // Organization-shaped events. Here rather than in a second log because they
   // answer the same question — "who got access to what, and how" — and
   // splitting them would mean reading two tables to reconstruct one incident.

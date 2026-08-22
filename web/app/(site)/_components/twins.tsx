@@ -14,7 +14,7 @@
  *
  * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *
- * One character, twelve poses, `flip` to mirror it.
+ * One character, fifteen poses, `flip` to mirror it.
  *
  * **Two rules, both learned by breaking them.**
  *
@@ -29,12 +29,21 @@
  * placement needs a new pose or it takes an existing placement's slot. The
  * inventory is in `docs/normascopeWeb.md` §5.
  *
- * **The last two live on the Cloud surface, not the site.** `lantern` and
+ * **Five of them live on the Cloud surface, not the site.** `lantern` and
  * `hourglass` (2026-08-20) stand in the two places where a signed-in page used
  * to have nothing to show: a frame that is not there, and a range of time that
- * holds no runs. Same rule applied to a second surface — a new placement takes
- * a new pose — and the same reason: `empty` already belongs to the 404, and
- * reusing it would make one drawing mean two different things.
+ * holds no runs. `parcel`, `key` and `envelope` (2026-08-22) took the next
+ * three: an organization nothing has uploaded to, the sign-in page, and an
+ * account that belongs to no organization. Same rule applied to a second
+ * surface — a new placement takes a new pose — and the same reason: `empty`
+ * already belongs to the 404, and reusing it would make one drawing mean two
+ * different things.
+ *
+ * `parcel` and `empty` are the pair to keep apart in your head, because both
+ * are about nothing being there. `empty` is a picture frame with no picture in
+ * it and it means *this page does not exist*; `parcel` is an open carton with
+ * nothing in it yet and it means *nothing has arrived*. One is a dead end, the
+ * other is a beginning, and the drawings differ the way the sentences do.
  *
  * **`offer` is the one exception, and it is the point of the set.** It holds
  * the cloud up, it lives only in `CloudBand` (`ui.tsx`), and it appears on
@@ -63,6 +72,9 @@ export type TwinPose =
   | "empty"
   | "lantern"
   | "hourglass"
+  | "parcel"
+  | "key"
+  | "envelope"
   | "offer";
 export type TwinTone = "ink" | "cream";
 
@@ -212,6 +224,52 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
       [120, 232],
     ],
   },
+  /* Both hands on the sides of an open carton, held low in front.
+     Five poses now hold something in both hands, so the separating has to be
+     done by the prop, and this is the only one of them that is not flat: the
+     carton's mouth is drawn as an open diamond seen from slightly above, so
+     the silhouette has depth where `camera`, `empty`, `stack` and `reading`
+     are all a face-on rectangle. The hands sit *outside* the box rather than
+     under it — a carton carried from beneath reads as a tray. */
+  parcel: {
+    left: "M46 180 C 34 192 40 206 54 210",
+    right: "M154 180 C 166 192 160 206 146 210",
+    /* On the rim, not under the box. Held further out — at 48 and 152 — the
+       hands floated a few units clear of the sides and the carton read as
+       resting on two fists. */
+    hands: [
+      [54, 214],
+      [146, 214],
+    ],
+  },
+  /* Right arm up and out, a key held clear of the head.
+     The arm stops short of `wave`'s and `magnify`'s height on purpose: those
+     two put the hand level with the crown, this one puts it level with the
+     jaw, and the prop then rises past the head on its own. That is what keeps
+     the three apart at a glance — the *thing* is up beside the head, the hand
+     is not. Nothing here rises above y=63. */
+  key: {
+    left: "M46 178 C 28 190 24 206 34 214",
+    right: "M154 174 C 178 176 190 156 182 130",
+    hands: [
+      [34, 218],
+      [181, 126],
+    ],
+  },
+  /* Both hands on the edges of an envelope, held face-on at chest height.
+     The sixth pose to hold something in both hands, and by now the prop is the
+     only thing doing the separating — so this one carries the single mark none
+     of the others has, a flap V across its face. It sits higher and narrower
+     than `parcel` (96 across against a carton whose flaps span 108) and lower
+     than `empty`, whose frame is up at y=152. */
+  envelope: {
+    left: "M46 180 C 34 192 38 208 52 216",
+    right: "M154 180 C 166 192 162 208 148 216",
+    hands: [
+      [52, 220],
+      [148, 220],
+    ],
+  },
   /* Both arms out to the edges of a frame held up at chest height. Wider than
      `camera`, which is the point — the two are the only poses gripping a
      rectangle in both hands, and a silhouette is recognised before a limb is.
@@ -338,6 +396,94 @@ const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
             strokeWidth="3"
             opacity="0.38"
           />
+        </>
+      );
+
+    /* An open carton held low in front, flaps folded back, nothing in it.
+       This is the drawing for "no repository has uploaded anything yet", and
+       the shape has to say *not arrived* rather than *does not exist* — the
+       404's empty frame already owns the second meaning. A carton says it: the
+       thing is a container for something that comes from elsewhere.
+
+       Four parts, and every one of them is load-bearing. The body is a hexagon
+       rather than a rectangle, so the box has a near corner and two receding
+       sides. The mouth is the diamond above it, filled with the line colour at
+       low strength — the cavity, and the only part that says the box is open.
+       The two flaps folded back are what stop the whole thing reading as a
+       bowl. The seam down the front is what stops it reading as flat: without
+       it the near corner had nothing meeting it and the hexagon went back to
+       looking like a paper bag.
+
+       The flaps splay outward from the rim corners, clear of x=84–116 where
+       the mouth of the *figure* is stroked after every prop. Same trap the
+       hourglass hit. */
+    case "parcel":
+      return (
+        <>
+          <path
+            d="M56 194 L100 208 L144 194 L140 242 L100 254 L60 242 Z"
+            fill={c.paper}
+            stroke={c.line}
+            strokeWidth="6"
+          />
+          <path d="M56 194 L46 176 L60 171 L69 187 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <path d="M144 194 L154 176 L140 171 L131 187 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <path d="M56 194 L100 180 L144 194 L100 208 Z" fill={c.line} opacity="0.26" />
+          <path d="M56 194 L100 180 L144 194 L100 208 Z" fill="none" stroke={c.line} strokeWidth="5" />
+          <path d="M100 208 L100 254" stroke={c.line} strokeWidth="3.5" opacity="0.35" />
+        </>
+      );
+
+    /* A key held up beside the head, bow at the bottom, two bits at the top.
+       The sign-in page's drawing, and the one prop in the set that names an
+       action rather than an instrument: the other thirteen photograph, measure,
+       magnify, stack and carry, and this one opens a door.
+
+       **Two teeth, not one, and they are why it reads.** A bare shaft with a
+       ring under it was drawn first and read as a balloon on a string at any
+       size under about 150px — a key is recognised by its notches, the way the
+       tape is recognised by its graduations. The upper bit is the longer of the
+       two, which is what stops the pair looking like a ladder.
+
+       The hand grips the *shaft*, not the bow. Gripping the bow was the second
+       cut and the ring vanished: the hand is a filled circle at r=9.5 and the
+       bow's paper annulus is three units wide, so the whole thing read as a
+       lollipop. With the grip up the shaft the ring hangs below the fist in
+       clear air, which is also how a key is actually held.
+
+       Everything sits at x≥175, clear of the head — the dome reaches x=160 and
+       the glasses' temple x=172 — and stops at x=196, inside the 200-unit box.
+       A tooth drawn to 200 had its stroke clipped by the viewBox edge. */
+    case "key":
+      return (
+        <>
+          <path d="M175 134 L187 134 L187 66 L175 66 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <path d="M187 74 L196 74 L196 84 L187 84 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <path d="M187 92 L194 92 L194 102 L187 102 Z" fill={c.paper} stroke={c.line} strokeWidth="5" />
+          <circle cx="181" cy="146" r="13" fill="none" stroke={c.line} strokeWidth="6" />
+        </>
+      );
+
+    /* An envelope, held face-on. Two paths and no more.
+       This is the drawing for "you are signed in, and your account is in no
+       organization", where the way out is an invitation that was emailed. The
+       empty state's job is to name the next action, so the prop is the thing
+       the reader has to go and find rather than a picture of their situation.
+
+       **The flap V is the whole drawing, and a letter coming out of it was the
+       first attempt.** A card rising from behind a pocket read as a sheet of
+       paper being held — which is `reading`, and next to it `stack`; the set
+       has two paper props already and a third made three. The closed flap is
+       the mark that says envelope and nothing else, and it survives to 118px
+       where the letter version did not.
+
+       No `rx` on the body: a rounded envelope reads as a card, and the corners
+       are already softened by the group's `strokeLinejoin="round"`. */
+    case "envelope":
+      return (
+        <>
+          <path d="M52 188 L148 188 L148 250 L52 250 Z" fill={c.paper} stroke={c.line} strokeWidth="6" />
+          <path d="M52 188 L100 224 L148 188" fill="none" stroke={c.line} strokeWidth="6" />
         </>
       );
 
@@ -480,6 +626,21 @@ const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string
      a turn: an hourglass rotating on a data page reads as a loading spinner,
      which is the one thing this state must not say. */
   hourglass: { scope: "prop", origin: "100px 249px" },
+  /* The box is shaken, twice, and nothing rattles. Pivoting on the hands
+     rather than the base, because that is where a shake comes from. */
+  parcel: { scope: "prop", origin: "100px 214px" },
+  /* The key is raised a little and held up a beat before it comes back down.
+     Deliberately not a turn: a key rotating on its own axis needs a lock to
+     turn in, and without one it reads as a spinner. Held up is the gesture
+     that means "this is the way in", which is the sentence the page under it
+     is already making. */
+  key: { scope: "arm", origin: "154px 174px" },
+  /* Held out towards you and drawn back — the envelope comes nearer rather
+     than turning. Every other prop in the set that acts on the reader rotates:
+     the frame is shown, the hourglass tips, the carton is shaken. A push
+     forward is the one gesture left that is not a rotation, and it is the right
+     one here — "this is the thing you are looking for, go and open it". */
+  envelope: { scope: "prop", origin: "100px 220px" },
   /* The cloud drifts. See the note above about why this one never rests. */
   offer: { scope: "arm" },
 };

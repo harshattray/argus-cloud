@@ -759,6 +759,85 @@
   border-top: 1px solid var(--line);
 }
 
+/* ---------- the blank slate ----------
+ *
+ * `/repos` for an organization that has uploaded nothing — what every new
+ * customer sees first, and the one state on this surface with a height of its
+ * own. `page.tsx` carries why: the sheet is sized by its contents, so two
+ * lines of grey text ended the card a third of the way down the window and
+ * pulled the footer up with it.
+ *
+ * **A `min-height`, not a stretch to the viewport.** Filling the window would
+ * park the Yutic line exactly on the fold at every screen size and make a
+ * three-sentence page look like a page with something missing from it. The
+ * clamp keeps the block roughly a third of a laptop window and stops it
+ * swallowing a short one.
+ */
+.blankSlate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 34px;
+  min-height: clamp(260px, 44vh, 400px);
+  padding: 34px 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.blankWords {
+  min-width: 0;
+  max-width: 56ch;
+}
+
+.blankTitle {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.blankBody {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.blankAside {
+  margin: 14px 0 0;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+
+.blankAside a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.blankTwin {
+  --cloud-twin-width: 172px;
+}
+
+/*
+ * The figure stays on a phone, unlike the one inside an empty panel — this
+ * page has nothing else on it, and the drawing is most of what stops it
+ * reading as a load that failed. It goes above the words rather than beside
+ * them, against the right margin, which is where `TwinAside` puts one on the
+ * public site at the same width.
+ */
+@media (max-width: 620px) {
+  .blankSlate {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 20px;
+    min-height: 0;
+  }
+
+  .blankTwin {
+    --cloud-twin-width: 108px;
+    align-self: flex-end;
+  }
+}
+
 .notFound {
   max-width: 520px;
   margin: 60px auto;
