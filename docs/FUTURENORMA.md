@@ -2617,6 +2617,8 @@ the trigger.
 | Command reference | `Argus/COMMANDS.md` |
 | **What to build next, in order** | This document, §4 |
 | **What is actually built, with evidence** | `argus-cloud/docs/FinishedSPEC.md` |
+| **How a customer uses the dashboard** | `argus-cloud/docs/UserHandbook.md` — plain language, no internals. Update it when a feature ships |
+| **How we operate it** | `argus-cloud/docs/MasterHandbook.md` — the operator surfaces, and the command for every job that has no screen yet |
 | Steps 1–5 executable spec | `argus-cloud/docs/BuildV5.md` — phases F–J |
 | Phase detail | `argus-cloud/docs/CHECKPOINT.md` |
 | The spec | `argus-cloud/docs/BuildV4.md` |
