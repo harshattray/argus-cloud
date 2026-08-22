@@ -26,6 +26,12 @@ import styles from "../../_styles/surface.module.css";
  * a trail leading up to the repository would name it and offer a link the
  * holder cannot open. Callers pass an empty `crumbs` for share views, and get
  * a wordmark and nothing else.
+ *
+ * **`account` is a slot, and it is empty by default.** The masthead is on the
+ * share-token report too, where there is no session to name and no session to
+ * end — so the account menu is something a page passes in when it has resolved
+ * one, not something this component reaches for. Same rule as the breadcrumb,
+ * one level up: the chrome does not decide who the reader is.
  */
 
 export interface Crumb {
@@ -40,6 +46,7 @@ export function CloudMasthead({
   meta,
   theme,
   path,
+  account,
 }: {
   title: string;
   crumbs?: Crumb[];
@@ -48,6 +55,11 @@ export function CloudMasthead({
   theme: Theme | null;
   /** Where the theme switch should send the viewer back to. */
   path: string;
+  /**
+   * The account menu, for pages that resolved a session. Omitted on the
+   * share-token report, which has a reader but not a user.
+   */
+  account?: ReactNode;
 }) {
   return (
     <header className={styles.masthead}>
@@ -58,7 +70,10 @@ export function CloudMasthead({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className={styles.onDark} src="/normascope-cloud-light.svg" alt="Normascope Cloud" />
         </span>
-        <ThemeSwitch current={theme} next={path} />
+        <div className={styles.mastheadTools}>
+          <ThemeSwitch current={theme} next={path} />
+          {account}
+        </div>
       </div>
 
       {crumbs.length > 0 && (
