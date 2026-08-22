@@ -3312,7 +3312,12 @@ the browser cookie; it is not part of this step's minimum surface.
 
 GitHub OAuth and magic links ship in the same Step 6 release, behind the same
 session and membership interface. GitHub is the developer path; magic links
-allow designers and PMs without GitHub accounts. Magic-link requests must use
+allow designers and PMs without GitHub accounts. **Passkeys (WebAuthn) are a
+future additional method to pursue after the account surface is complete.**
+Passkey registration must require an authenticated/recent session, credentials
+must be listable and revocable from the account page, and magic links remain the
+recovery path. Use a maintained WebAuthn library rather than implementing the
+credential protocol and cryptography in-house. Magic-link requests must use
 the Step 6 outbound-email budget: per-address cooldown, IP/subnet limits,
 global concurrent-safe daily cap, generic responses, short-lived single-use
 tokens, redacted auth events, and a challenge after repeated failures.
