@@ -5,6 +5,7 @@ import {
   alertOnEmailBudget,
   challengeRequired,
   recordAuthFailure,
+  reserveInvite,
   reserveRequest,
   reserveSend,
   type EmailReservation,
@@ -29,11 +30,17 @@ import {
   linkIdentity,
   membershipsFor,
   recordLogin,
+  type Role,
   type UserRecord,
 } from "./users.js";
 import {
   acceptInvitation,
+  createInvitation,
   findInvitationByToken,
+  inviteEmailHtml,
+  inviteEmailText,
+  inviteSubject,
+  inviteUrl,
   pendingInvitationsFor,
   type Invitation,
 } from "./invitations.js";
@@ -460,6 +467,115 @@ export async function completeMagicLink(
     env
   );
   return { ok: true, session, user, claimedOrgId };
+}
+
+// ---------------------------------------------------------------------------
+// Sending an invitation
+// ---------------------------------------------------------------------------
+
+export type InviteOutcome =
+  | { ok: true; invitation: Invitation }
+  | { ok: false; reason: "budget"; retryAfterSeconds: number }
+  | { ok: false; reason: "send-failed"; invitation: Invitation };
+
+/**
+ * Invites somebody, and actually tells them.
+ *
+ * **The row and the message are one act.** Until this existed the console could
+ * create an invitation and said *"Invitation sent"*, and nothing was sent — the
+ * link lived in the database and the person it named never heard about it. An
+ * invitation nobody receives is not an invitation, and a page that claims
+ * otherwise is worse than one that does nothing.
+ *
+ * **An admin's invite form is an outbound-email surface**, and it pays the same
+ * kind of budget the sign-in form does. The difference is who is holding it: a
+ * paying admin rather than the whole internet, so the ceilings are
+ * per-organization and per-address rather than per-IP, and they are
+ * `authThrottle.ts`'s `INVITE_SCOPES` — which have existed, tested and
+ * uncalled, since the abuse ladder shipped. It pays the **global** daily budget
+ * too, so the day's number keeps meaning *mail we sent* rather than *mail of one
+ * kind we sent*.
+ *
+ * **Order matters, and it is: reserve, then create, then send.** Creating first
+ * would leave live links behind every refused send — credentials issued to
+ * somebody who was never told they exist. Reserving first means a refusal
+ * changes nothing at all.
+ *
+ * A send that fails *after* the row exists is reported honestly rather than
+ * rolled back: the provider may have accepted the message and failed on the
+ * response, so deleting the invitation could revoke a link that is already in
+ * an inbox. The admin is told to resend, which supersedes the old token anyway.
+ */
+export async function sendInvitation(
+  deps: LoginDeps,
+  input: { orgId: string; orgName: string; email: string; role: Role; invitedBy: UserRecord; ip: string }
+): Promise<InviteOutcome> {
+  const env = deps.env ?? process.env;
+  const now = deps.now ?? new Date();
+  const db = deps.db;
+  const email = normaliseAddress(input.email);
+
+  const slot = await reserveInvite(db, { email, ip: input.ip, orgId: input.orgId }, { now, env });
+  if (!slot.allowed) {
+    await recordAuthEvent(
+      db,
+      { kind: "invitation-created", outcome: "refused", reason: slot.refusedBy, email, ip: input.ip, orgId: input.orgId, actorUserId: input.invitedBy.id },
+      env
+    );
+    await announceBudget(deps, slot, now);
+    return { ok: false, reason: "budget", retryAfterSeconds: slot.retryAfterSeconds };
+  }
+
+  const created = await createInvitation(
+    db,
+    { orgId: input.orgId, email, role: input.role, invitedBy: input.invitedBy.id },
+    { now }
+  );
+
+  const mailer = deps.mailer ?? createMailer();
+  const link = inviteUrl(deps.baseUrl, created.token);
+  const message = {
+    to: email,
+    subject: inviteSubject(input.orgName),
+    html: inviteEmailHtml(
+      {
+        link,
+        orgName: input.orgName,
+        inviterName: input.invitedBy.display_name,
+        role: input.role,
+        siteUrl: deps.baseUrl,
+      },
+      env
+    ),
+    text: inviteEmailText({ link, orgName: input.orgName, inviterName: input.invitedBy.display_name, role: input.role }),
+  };
+
+  try {
+    await mailer.send(message);
+  } catch (err) {
+    if (deps.alert) {
+      deps.alert(
+        `Normascope invitation email failed to send (${String((err as Error)?.message ?? err).slice(0, 200)}). ` +
+          `The invitation row exists and its budget slot is spent — ${slot.globalUsed} of ${slot.globalLimit} today. ` +
+          "The admin was told to resend."
+      );
+    }
+    await recordAuthEvent(
+      db,
+      { kind: "invitation-created", outcome: "failed", reason: "transport", email, ip: input.ip, orgId: input.orgId, actorUserId: input.invitedBy.id },
+      env
+    );
+    await announceBudget(deps, slot, now);
+    return { ok: false, reason: "send-failed", invitation: created.invitation };
+  }
+
+  await recordAuthEvent(
+    db,
+    { kind: "invitation-created", outcome: "allowed", email, ip: input.ip, orgId: input.orgId, actorUserId: input.invitedBy.id },
+    env
+  );
+  await announceBudget(deps, slot, now);
+  return { ok: true, invitation: created.invitation };
 }
 
 // ---------------------------------------------------------------------------

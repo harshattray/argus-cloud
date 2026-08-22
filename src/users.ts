@@ -153,6 +153,132 @@ export async function addMembership(
   );
 }
 
+/** One row of the Organization area's member list. */
+export interface OrgMember {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  /** True for the one person `orgs.owner_user_id` names. */
+  isOwner: boolean;
+  /** When they joined this organization. */
+  joinedAt: string;
+  lastLoginAt: string | null;
+}
+
+/**
+ * Everyone in one organization, for the admin who has to decide about them.
+ *
+ * **The address is here on purpose, and it is the only place it appears.** An
+ * admin inviting `sam@` needs to see that `sam@` is already in the list, or they
+ * will invite them again; and "remove the wrong Sam" is the mistake a list of
+ * display names invites. It is admin-only by the same route that guards
+ * everything else in this area, and it never reaches a share link or a report
+ * byline — `createUser` defaults the display name to the local part precisely so
+ * addresses do not travel through those (see above).
+ *
+ * Ordered by role, then by name, so the people who can change things are at the
+ * top of the list of people you are deciding about.
+ */
+export async function membersOf(db: Db, orgId: string): Promise<OrgMember[]> {
+  const rows = await db.query<{
+    user_id: string;
+    email: string;
+    display_name: string;
+    role: Role;
+    is_owner: boolean;
+    created_at: string;
+    last_login_at: string | null;
+  }>(
+    `SELECT m.user_id, u.email, u.display_name, m.role, m.created_at, u.last_login_at,
+            (o.owner_user_id = m.user_id) AS is_owner
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       JOIN orgs o ON o.id = m.org_id
+      WHERE m.org_id = $1
+      ORDER BY CASE m.role WHEN 'admin' THEN 0 WHEN 'member' THEN 1 ELSE 2 END, u.display_name`,
+    [orgId]
+  );
+  return rows.rows.map((r) => ({
+    userId: r.user_id,
+    email: r.email,
+    displayName: r.display_name,
+    role: r.role,
+    isOwner: r.is_owner === true,
+    joinedAt: new Date(r.created_at).toISOString(),
+    lastLoginAt: r.last_login_at ? new Date(r.last_login_at).toISOString() : null,
+  }));
+}
+
+/**
+ * Changes what somebody may do, with the two refusals that keep an organization
+ * operable.
+ *
+ * **`addMembership` is not this function and must not be used for it.** That one
+ * upserts, so it will happily demote the last admin, or the owner, and leave an
+ * organization nobody can administer — it exists for provisioning and invitation
+ * acceptance, where the role is decided elsewhere and there is nothing to
+ * protect yet.
+ *
+ * The refusals are §10.7 5A.5's, and they are the same two `removeMembership`
+ * makes, for the same reason: *removing* the last admin and *demoting* the last
+ * admin leave an identical organization behind. Both checks run inside the
+ * transaction that writes, so two admins demoting each other at the same moment
+ * cannot both succeed.
+ *
+ * Returns `false` when the person is not a member, which is what a stale page
+ * looks like — somebody was removed while the list was open. Not an error.
+ */
+export async function changeMembershipRole(
+  db: Db,
+  input: { orgId: string; userId: string; role: Role }
+): Promise<boolean> {
+  if (!ROLES.includes(input.role)) {
+    throw new OwnershipError("bad-role", `'${input.role}' is not a role`);
+  }
+  return db.transaction(async (tx) => {
+    const org = await tx.query<{ owner_user_id: string | null }>(
+      "SELECT owner_user_id FROM orgs WHERE id = $1 FOR UPDATE",
+      [input.orgId]
+    );
+    if (org.rows.length === 0) {
+      throw new OwnershipError("no-org", "no such organization");
+    }
+    const current = await tx.query<{ role: Role }>(
+      "SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2",
+      [input.orgId, input.userId]
+    );
+    if (current.rows.length === 0) {
+      return false;
+    }
+    if (current.rows[0].role === input.role) {
+      return true; // nothing to do; a double-submit is not an error
+    }
+    if (input.role !== "admin") {
+      // The owner is always also an admin (§10.7 5A.5), so demoting them would
+      // break the invariant rather than merely inconvenience somebody.
+      if (org.rows[0].owner_user_id === input.userId) {
+        throw new OwnershipError("is-owner", "the owner is always an admin — transfer ownership first");
+      }
+      if (current.rows[0].role === "admin") {
+        const admins = await tx.query<{ total: string | number }>(
+          "SELECT COUNT(*) AS total FROM memberships WHERE org_id = $1 AND role = 'admin'",
+          [input.orgId]
+        );
+        if (Number(admins.rows[0]?.total ?? 0) <= 1) {
+          throw new OwnershipError("last-admin", "an organization must keep at least one admin");
+        }
+      }
+    }
+    await tx.query("UPDATE memberships SET role = $3 WHERE org_id = $1 AND user_id = $2", [
+      input.orgId,
+      input.userId,
+      input.role,
+    ]);
+    return true;
+  });
+}
+
 export async function roleIn(db: Db, orgId: string, userId: string): Promise<Role | null> {
   const rows = await db.query<{ role: Role }>(
     "SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2",

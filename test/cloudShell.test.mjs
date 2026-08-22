@@ -1075,5 +1075,174 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   }
 }
 
+// ═══ S12 — the Organization area: its forms and the routes behind them ═══
+//
+// The first area of the console that writes anything, and the first place a
+// browser can reach `invitations.ts`, `users.ts` and `apiKeys.ts`. The domain
+// rules themselves are `test/organization.test.mjs` and the behaviour over HTTP
+// is `scripts/tenant-gate-check.mjs`. What is checkable *here* is the wiring
+// between the two, which is where this kind of surface goes wrong:
+//
+//   - a form posts to an action that does not exist, so the control silently
+//     does nothing;
+//   - a form carries an `orgId`, and the organization stops coming from the
+//     session — the exact failure §10.7 5A opens with;
+//   - a page grows a second copy of the role matrix instead of asking the one
+//     in `consoleIA.ts`;
+//   - a message from the query string is rendered as text, so a link can be
+//     made to say anything.
+{
+  const orgAdmin = decomment(await readFile(path.join(WEB, "lib/orgAdmin.ts"), "utf-8"));
+  const route = decomment(await readFile(path.join(WEB, "app/api/organization/[action]/route.ts"), "utf-8"));
+  const page = decomment(await readFile(path.join(WEB, "app/organization/page.tsx"), "utf-8"));
+
+  // The list itself, imported and evaluated. It lives in the server package for
+  // exactly this reason — so the suite reads the same array the route is typed
+  // by and the gate script iterates, rather than a regex's opinion of it.
+  const { ORG_ACTIONS, orgActionPath } = await import(path.join(DIST, "consoleIA.js"));
+  const actions = [...ORG_ACTIONS];
+  check("S12.1", actions.length >= 6, `the action list names ${actions.length} writes (${actions.join(", ")})`);
+  check("S12.1b", orgActionPath(actions[0]) === `/api/organization/${actions[0]}`,
+    `and every action's path is built from it (${orgActionPath(actions[0])})`);
+
+  // ── Every named action has a handler ──────────────────────────────────────
+  {
+    const missing = actions.filter((a) => !new RegExp(`(^|\\s)(async )?"?${a}"?\\(`, "m").test(route));
+    check("S12.2", missing.length === 0,
+      `every action in the list has a handler in the route (missing: ${missing.join(", ") || "none"})`);
+    check("S12.2b", /Record<OrgActionName, Action>/.test(route),
+      "and the dispatch table is typed by that list, so a missing handler is a build failure rather than a 404 found by a customer");
+  }
+
+  // ── Every form posts to one of them ───────────────────────────────────────
+  //
+  // Through `orgActionPath`, never as a literal path: a typed string is how a
+  // form ends up posting into a 404, and the compiler cannot see a typo inside
+  // quotes.
+  {
+    const used = [...page.matchAll(/orgActionPath\("([a-z-]+)"\)/g)].map((m) => m[1]);
+    const unknown = used.filter((a) => !actions.includes(a));
+    const literal = /action="\/api\//.test(page);
+    check("S12.3", used.length > 0 && unknown.length === 0 && !literal,
+      `every form on the page posts through orgActionPath to a declared action (${used.length} forms, unknown: ${unknown.join(", ") || "none"}, literal paths: ${literal})`);
+  }
+
+  // ── The organization is never a form field ────────────────────────────────
+  //
+  // §10.7 5A: *a caller-provided org ID is never authorization.* There is
+  // deliberately no `orgId` input anywhere on this page, and the route reads it
+  // from the membership the session resolved.
+  {
+    const formField = /name="orgId"/.test(page);
+    const fromForm = /form\.get\("orgId"\)/.test(route);
+    check("S12.4", !formField && !fromForm,
+      `no form carries an organization and no handler reads one (field: ${formField}, read: ${fromForm})`);
+    check("S12.4b", /admin\.membership\.orgId/.test(route),
+      "every write is scoped to the organization the session resolved");
+  }
+
+  // ── One gate, from the one matrix ─────────────────────────────────────────
+  {
+    check("S12.5", /requireOrgAdmin\(request\)/.test(route) && (route.match(/requireOrgAdmin\(/g) ?? []).length === 1,
+      "the gate is called once, before the dispatch, so no handler can be reached without it");
+    check("S12.5b", /canReach\("organization"/.test(orgAdmin) && !/=== "admin"/.test(orgAdmin),
+      "and it asks CONSOLE_AREAS which roles may reach the area rather than hard-coding admin — one matrix, seven readers");
+    // **A structure check, and it says so.** Whether the origin check actually
+    // refuses a cross-site POST is `tenant-gate-check.mjs` G6.4, over HTTP, with
+    // a real `sec-fetch-site` header — a source check cannot answer that, and
+    // one that claimed to would pass a call sitting behind `if (false &&`.
+    // What is checkable here is the *order*: it comes before the session is
+    // read, so a cross-origin request is refused before anything is looked up.
+    const originAt = orgAdmin.indexOf("sameOrigin(request)");
+    const sessionAt = orgAdmin.indexOf("await currentSession()");
+    check("S12.5c", originAt !== -1 && sessionAt > originAt,
+      "the same-origin check comes first, before any lookup (SameSite alone is not the whole CSRF policy — §10.7 5A.8; G6.4 proves it refuses)");
+  }
+
+  // ── The reader is told what happened, in our words ────────────────────────
+  //
+  // The query string picks a sentence from a fixed map; it never supplies one.
+  // A page that renders `?notice=` as text is a page a link can put words into,
+  // and this surface has already been green for the wrong reason once because
+  // it echoed a query parameter back.
+  {
+    const mapped = /NOTICES\[code as OrgNotice\]/.test(page) && /hasOwnProperty\.call\(NOTICES, code\)/.test(page);
+    // Attribute positions stripped first, so `code={notice}` — passing the value
+    // *to* the lookup — is not mistaken for rendering it. What is left is JSX
+    // text, and `{code}` or `{notice}` there would be the caller's own string on
+    // the page. `{notice.text}` is the map's sentence and does not match.
+    // A JSX *text* position only — the value written between tags. Attributes
+    // are stripped first so `code={notice}`, which passes the value into the
+    // lookup, is not mistaken for rendering it, and the leading `>` keeps the
+    // component's own `({ code })` parameter out of it. `{notice.text}` is the
+    // map's sentence and does not match either.
+    const jsxText = page.replace(/\w+=\{[^}]*\}/g, "");
+    const echoed = />\s*\{\s*(notice|code)\s*\}/.test(jsxText);
+    check("S12.6", mapped && !echoed,
+      `the notice is looked up in a fixed map and never rendered as the caller wrote it (mapped: ${mapped}, echoed: ${echoed})`);
+  }
+
+  // ── The key is shown once, and never stored ───────────────────────────────
+  {
+    const reveal = decomment(await readFile(path.join(WEB, "lib/keyReveal.ts"), "utf-8"));
+    check("S12.7", /HttpOnly/.test(reveal) && /Path=\/organization/.test(reveal) && /Max-Age=\$\{maxAge\}/.test(reveal),
+      "the one-time key cookie is HttpOnly, scoped to this area's path, and expires on its own");
+    check("S12.7b", !/INSERT|UPDATE|db\./i.test(reveal),
+      "and nothing about the reveal touches the database — the plaintext is never stored, which is the property the whole design exists for");
+    check("S12.7c", /createdBy: admin\.session\.user\.id/.test(route),
+      "the key records who minted it, from the session rather than from a field somebody types");
+  }
+
+  // ── The revoke is attributed to the session ───────────────────────────────
+  //
+  // Migration 018 shipped with a typed-in actor because there was no session to
+  // read, and said in its own comment that Step 6 should fix it. This is that
+  // call site.
+  {
+    check("S12.8", /actor: admin\.session\.user\.display_name/.test(route),
+      "a revocation from the console is attributed to the signed-in admin, not to a name they type");
+    check("S12.8b", /orgId: admin\.membership\.orgId/.test(route) && !/orgId: null/.test(route),
+      "and both revokes are scoped to the session's organization — a row id from a form is a request, not a permission");
+  }
+
+  // ── An invitation is a row *and* a message ────────────────────────────────
+  //
+  // The first version of this route called `createInvitation` directly, and the
+  // page said "Invitation sent" while nothing was sent — the link existed only
+  // in the database. `sendInvitation` is the one entry point that pays the
+  // outbound-email budget, creates the row and hands it to the mailer, in that
+  // order, so a route that reaches past it is a route that can invite somebody
+  // silently.
+  {
+    check("S12.10", /sendInvitation\(/.test(route) && !/createInvitation\(/.test(route),
+      "the invite handler goes through sendInvitation and never creates an invitation row on its own");
+    check("S12.10b", /invite-budget/.test(route) && /invite-unsent/.test(route),
+      "and it tells the two failures apart: a spent ceiling, and a row that exists with no mail behind it");
+  }
+
+  // ── Every membership change is audited ────────────────────────────────────
+  //
+  // §10.7 5A.11: destructive auth and organization actions are audited. The
+  // event kinds have existed since the session layer and had no caller.
+  {
+    const audited = ["invitation-revoked", "role-changed", "member-removed"].filter((kind) =>
+      new RegExp(`kind: "${kind}"`).test(route)
+    );
+    check("S12.11", audited.length === 3,
+      `every membership change records its own audit event (${audited.join(", ") || "none"})`);
+    check("S12.11b", /actorUserId: admin\.session\.user\.id/.test(route),
+      "with the admin who did it named as the actor, separately from the person it was done to");
+  }
+
+  // ── The page cannot promise what it already holds ─────────────────────────
+  {
+    const shell = decomment(await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8"));
+    check("S12.9", /outstanding\(area\)/.test(shell) && !/area\.holds\.map/.test(shell),
+      "the area outline renders holds-minus-built rather than the whole list, so a half-built area stops promising its own working controls");
+    check("S12.9b", /todo\.length === 0/.test(shell),
+      "and an area with nothing outstanding renders no outline at all");
+  }
+}
+
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

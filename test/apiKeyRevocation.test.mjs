@@ -57,7 +57,7 @@ check("K1", (await findApiKey(db, key.plaintext)) !== null, "a freshly issued ke
 // The whole value of the control. `findApiKey` re-reads the row every call with
 // no cache in front of it, so there is no window in which a withdrawn key still
 // works — and if a cache is ever added in front of it, this check is what fails.
-const outcome = await revokeApiKey(db, key.id, { actor: "harsha", reason: "leaked in a build log" });
+const outcome = await revokeApiKey(db, key.id, { actor: "harsha", reason: "leaked in a build log", orgId: null });
 check(
   "K2",
   outcome.revoked === true && (await findApiKey(db, key.plaintext)) === null,
@@ -80,7 +80,7 @@ check(
 // K4 — an unattributed revocation is refused, in code and in the database
 // ---------------------------------------------------------------------------
 const second = await createApiKey(db, orgId, { kind: "upload", label: "K4" });
-const k4 = await threw(() => revokeApiKey(db, second.id, { actor: "   " }));
+const k4 = await threw(() => revokeApiKey(db, second.id, { actor: "   ", orgId: null }));
 check("K4", k4 !== null && /actor/.test(k4), `a blank actor is refused with a sentence — "${k4}"`);
 
 // K4b — and the database refuses it too, so no other code path can write an
@@ -99,7 +99,7 @@ check("K4c", (await findApiKey(db, second.plaintext)) !== null, "the key that fa
 //
 // A second click during an incident must not overwrite who pulled it and when.
 // The first answer is the true one.
-const again = await revokeApiKey(db, key.id, { actor: "someone else", reason: "clicked twice" });
+const again = await revokeApiKey(db, key.id, { actor: "someone else", reason: "clicked twice", orgId: null });
 const afterSecond = (
   await db.query("SELECT revoked_by, revoked_reason FROM api_keys WHERE id = $1", [key.id])
 ).rows[0];
@@ -112,7 +112,7 @@ check(
 // ---------------------------------------------------------------------------
 // K6 — revoking a key that does not exist is an error, not a silent success
 // ---------------------------------------------------------------------------
-const k6 = await threw(() => revokeApiKey(db, randomUUID(), { actor: "harsha" }));
+const k6 = await threw(() => revokeApiKey(db, randomUUID(), { actor: "harsha", orgId: null }));
 check("K6", k6 !== null && /no such API key/.test(k6), "revoking an unknown id says so rather than reporting success");
 
 // ---------------------------------------------------------------------------

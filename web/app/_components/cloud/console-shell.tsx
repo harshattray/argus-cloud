@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   deploymentEnvironment,
   navFor,
+  outstanding,
   type ConsoleArea,
   type DeploymentEnvironment,
 } from "argus-cloud/consoleIA.js";
@@ -325,27 +326,41 @@ export function ConsoleGate({ context }: { context: ConsoleNoOrg | ConsoleDenied
 }
 
 /**
- * An area that exists in the map and has no workflows in it yet.
+ * What an area does not hold yet.
  *
- * **It renders `area.holds` rather than restating it.** The page-ownership map
- * is `CONSOLE_AREAS`; a placeholder that listed its own contents in prose would
- * be a second copy of the map, and the copy that goes stale is always the one
+ * **It renders the map rather than restating it.** The page-ownership map is
+ * `CONSOLE_AREAS`; a placeholder that listed its own contents in prose would be
+ * a second copy of the map, and the copy that goes stale is always the one
  * nobody is testing. So the list below is the map, read at render time — and
  * when a workflow moves between areas, this page changes with it.
  *
- * The honesty matters more than the drawing: this says what will be here and
+ * **It stopped being all-or-nothing when Organization got its workflows.** It
+ * used to say *"does not hold anything yet"* about any area it appeared on,
+ * which was true of all seven. On a half-built area that sentence is worse than
+ * vague — it promises, in a paragraph above the working controls, the things
+ * those controls already do. So the list is `outstanding(area)`: `holds` minus
+ * `built`, computed, and the wording follows which case it is. An area with
+ * nothing outstanding renders nothing at all.
+ *
+ * The honesty matters more than the drawing: this says what is not here yet and
  * does not imply it is coming on a date nobody has picked.
  */
 export function AreaOutline({ area }: { area: ConsoleArea }) {
+  const todo = outstanding(area);
+  if (todo.length === 0) {
+    return null;
+  }
+  const empty = area.built.length === 0;
   return (
     <section className={styles.outline}>
-      <p className={styles.outlinePurpose}>{area.purpose}</p>
+      {empty ? <p className={styles.outlinePurpose}>{area.purpose}</p> : null}
       <p className={styles.outlineNote}>
-        This area is part of the console&apos;s structure and does not hold anything yet. When it
-        does, this is what will be here:
+        {empty
+          ? "This area is part of the console's structure and does not hold anything yet. When it does, this is what will be here:"
+          : "Also part of this area, and not built yet:"}
       </p>
       <ul className={styles.outlineList}>
-        {area.holds.map((item) => (
+        {todo.map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ul>

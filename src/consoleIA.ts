@@ -59,6 +59,21 @@ export interface ConsoleArea {
    * the placeholder and the map cannot say different things.
    */
   holds: string[];
+  /**
+   * Which of {@link holds} actually exist, verbatim.
+   *
+   * **Added when the first area stopped being empty.** Until Organization got
+   * its workflows, every area was all-or-nothing and `AreaOutline` could say
+   * *"does not hold anything yet"* about any of them. A half-built area breaks
+   * that sentence in the worst direction: the page would keep promising things
+   * that are already on it, a paragraph above where they are.
+   *
+   * Entries must be exact strings from `holds` — the suite fails otherwise —
+   * so this cannot quietly become a second list of workflows. It is a set of
+   * pointers into the first one, and *"what is still to come"* is the
+   * difference between them, computed rather than written down anywhere.
+   */
+  built: string[];
 }
 
 /**
@@ -85,6 +100,7 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "credits remaining and storage used",
       "failed, paused and skipped work",
     ],
+    built: [],
   },
   {
     id: "runs",
@@ -94,6 +110,12 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
     roles: ALL,
     purpose: "Every repository, run, frame and finding this organization has uploaded.",
     holds: [
+      "the repository list and each repository's runs",
+      "run reports, frames and findings",
+      "run history and comparisons",
+      "share links and their expiry",
+    ],
+    built: [
       "the repository list and each repository's runs",
       "run reports, frames and findings",
       "run history and comparisons",
@@ -116,6 +138,11 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "quality debt",
       "the selected time window and the retention boundary",
     ],
+    built: [
+      "organization and per-repository quality trends",
+      "recurrence and first drift",
+      "the selected time window and the retention boundary",
+    ],
   },
   {
     id: "explain",
@@ -130,6 +157,7 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "skipped work and why it was skipped",
       "credits-exhausted state and provider pauses",
     ],
+    built: [],
   },
   {
     id: "organization",
@@ -143,6 +171,11 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "invitations and their state",
       "upload and agent keys, shown once and revocable",
       "notification routing and upload policy",
+    ],
+    built: [
+      "members, roles and removal",
+      "invitations and their state",
+      "upload and agent keys, shown once and revocable",
     ],
   },
   {
@@ -158,6 +191,7 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "the usage ledger, with cache hits shown as free",
       "storage used against the plan's limit",
     ],
+    built: [],
   },
   {
     id: "data",
@@ -172,6 +206,7 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
       "exports and deletion, with completion receipts",
       "object access and how long a signed URL lives",
     ],
+    built: [],
   },
 ];
 
@@ -187,6 +222,74 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
  * always answered on, it is what the trend and report pages link back to, and
  * an area label is not a reason to break a working path.
  */
+
+/**
+ * What an area still owes, as the difference between its two lists.
+ *
+ * Nowhere writes this down. An entry stops appearing here the moment it is added
+ * to `built`, which is the same edit that makes the claim — so a page cannot
+ * promise a workflow that is already on it, and cannot quietly stop mentioning
+ * one that is not.
+ */
+export function outstanding(area: ConsoleArea): string[] {
+  return area.holds.filter((item) => !area.built.includes(item));
+}
+
+/**
+ * Every `built` entry has to be a `holds` entry, exactly.
+ *
+ * Exported for the suite rather than run at import time: a typo here should be a
+ * red check with a name on it, not a module that throws while a page is
+ * rendering. Returns the offending strings, so the failure says which one.
+ */
+export function unknownBuiltEntries(): { area: ConsoleAreaId; entry: string }[] {
+  const bad: { area: ConsoleAreaId; entry: string }[] = [];
+  for (const area of CONSOLE_AREAS) {
+    for (const entry of area.built) {
+      if (!area.holds.includes(entry)) {
+        bad.push({ area: area.id, entry });
+      }
+    }
+  }
+  return bad;
+}
+
+// ---------------------------------------------------------------------------
+// The writes an area offers
+// ---------------------------------------------------------------------------
+
+/**
+ * Every state-changing thing the Organization area can do, named once.
+ *
+ * **Here for the same reason `CONSOLE_AREAS` is here**, and with the same four
+ * readers. The route handler types its dispatch table as
+ * `Record<OrgActionName, …>`, so a missing or misspelt handler is a build
+ * failure rather than a 404 found by a customer. The page builds every form's
+ * `action` through {@link orgActionPath}, so a form cannot post at a route that
+ * does not exist. `test/cloudShell.test.mjs` checks those two agree.
+ * `scripts/tenant-gate-check.mjs` iterates it over HTTP, which is what makes
+ * *"every write refuses a member"* one check rather than six somebody
+ * remembered to write — and the list it iterates has to be **this** list, or
+ * an action added tomorrow is an action nobody probes.
+ *
+ * It lives in the server package rather than in `web/` precisely so the suite
+ * and the gate script can import it instead of regex-matching TypeScript.
+ */
+export const ORG_ACTIONS = [
+  "invite",
+  "invite-revoke",
+  "member-role",
+  "member-remove",
+  "key-create",
+  "key-revoke",
+  "key-hide",
+] as const;
+
+export type OrgActionName = (typeof ORG_ACTIONS)[number];
+
+export function orgActionPath(action: OrgActionName): string {
+  return `/api/organization/${action}`;
+}
 
 /** The areas a role may reach, in navigation order. */
 export function navFor(role: Role): ConsoleArea[] {

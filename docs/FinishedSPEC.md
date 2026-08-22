@@ -3252,6 +3252,153 @@ directory was replaced.
 
 ---
 
+### 3af. The Organization area: members, invitations and keys — and the invitation that was never sent ✅ (2026-08-22)
+
+**The first area of the console that writes anything.** Before this, an admin
+could not invite a colleague or mint an upload key without a database client.
+
+**What was already there, and unreachable.** This is the shape of the whole
+change: `src/invitations.ts` had create, accept, revoke, list and expire with a
+hashed single-use token and a conditional consume; `src/apiKeys.ts` had create,
+list, revoke and per-key budgets; `src/users.ts` had `removeMembership` with the
+owner and last-admin refusals; `src/authThrottle.ts` had `reserveInvite` and the
+`INVITE_SCOPES` ceilings; `src/authEvents.ts` had `invitation-created`,
+`invitation-revoked`, `member-removed` and `role-changed`. **None of them had a
+caller.** `web/app/api/` held ten route groups and not one of them touched any of
+it.
+
+So the work divides into three: the small amount of domain logic that genuinely
+did not exist, the browser surface, and the one thing that turned out to be
+missing entirely.
+
+#### What did not exist and now does
+
+| Added | Where | Why it could not be borrowed |
+|---|---|---|
+| `membersOf` | `users.ts` | Nothing listed an organization's people. `membershipsFor` answers the mirror question — which organizations one person is in |
+| `changeMembershipRole` | `users.ts` | `addMembership` upserts a role and knows nothing about the two refusals. **O2b runs it as the counter-test**: it demotes the last admin, leaves the organization with nobody who can invite or revoke, and breaks 5A.5's other half in the same write by making the owner a designer |
+| An org scope on both revokes | `invitations.ts`, `apiKeys.ts` | Both took a row id and nothing else. That was safe while the only caller was `/admin`; it stopped being safe the moment a form in a customer's browser could supply the id |
+| `created_by` | migration `023` | 5A.10's creator metadata. **`last_used_at` is deliberately not in it**: `findApiKey` runs on every authenticated request, so recording last use is a write on the hot path and how coarse to make it is a decision with a cost. Recorded as owed rather than guessed at |
+
+**The scope parameter is required, with `null` meaning "any".** Not optional
+defaulting to unscoped — TypeScript then forces every call site to say which it
+is, and `/admin` says `orgId: null` in a comment that explains why. A JS caller
+that omits it entirely gets a named error rather than a query that silently
+matches nothing and reports "no such API key".
+
+#### The surface
+
+Seven writes behind one dispatcher, `web/app/api/organization/[action]/route.ts`,
+typed `Record<OrgActionName, Action>` from the list in `consoleIA.ts` — so a
+missing handler is a build failure rather than a form posting into a 404. Plain
+`<form>` POSTs answered with a 303, the same shape as `/api/org` and
+`/api/theme`: no client JavaScript on a page served under a strict nonce policy,
+and a redirect the back button cannot re-submit.
+
+**`requireOrgAdmin` is called once, before the dispatch**, and asks
+`CONSOLE_AREAS` which roles may reach the area rather than testing for `admin`
+itself. One matrix; the navigation, the page and now the routes all read it.
+
+**No form carries an organization and no handler reads one.** The organization
+comes from the membership the session resolved, and both revokes pass it into
+their `UPDATE`.
+
+**The one-time key.** `createApiKey` returns the plaintext once and stores only a
+sha256, but the request that has it is not the request that renders the page.
+Three options were rejected and the reasons are in `web/lib/keyReveal.ts`:
+rendering it in the POST response means a refresh mints a second key; an
+in-memory store works locally and fails on a second instance; storing it, even
+briefly, is the one thing the design exists to avoid. It travels in a
+120-second, `HttpOnly`, `Path=/organization` cookie to the browser that is about
+to display it, with a control that clears it. **The honest cost is stated rather
+than glossed**: for those two minutes the value is in the cookie jar and a
+refresh re-shows it. "Once" here means once on our side and once in practice on
+theirs.
+
+#### The thing that was missing entirely
+
+**An invitation was a row, a hashed token, and nobody told.** The page said
+*"Invitation sent"* and no message existed anywhere in the codebase. Found by
+clicking the button.
+
+`sendInvitation` in `loginService.ts` is the fix, and the order is the design:
+**reserve, then create, then send.** Creating first would leave a live link
+behind every refused send — a credential issued to somebody who was never told it
+exists. The ceilings are `authThrottle.ts`'s `INVITE_SCOPES`, which have been
+written, tested and uncalled since the abuse ladder shipped: the **global** daily
+budget, so the day's number keeps meaning *mail we sent*, plus per-organization
+and per-address ceilings, because an admin's invite form is an outbound-email
+surface even though the person holding it is paying.
+
+A send that fails *after* the row exists is reported, not rolled back — the
+provider may have accepted the message and failed on the response, so deleting
+would risk revoking a link already in an inbox. The admin is told to resend,
+which supersedes the old token anyway.
+
+The message says the four things 5A.6 asks for — which organization, who invited
+you, what role, how long the link lasts — and **nothing about anybody else in the
+organization** (O8.8). The inviter is a display name, never an address.
+
+#### Evidence
+
+| Layer | What it proves | Where |
+|---|---|---|
+| `organization` suite — **66 checks** on PGlite, a new suite | The domain rules, against a database. O6r/O6b, the cross-process race, run only against real Postgres — PGlite gives every process its own database, so they skip themselves | `test/organization.test.mjs` |
+| `cloudShell` S12 — **22 checks** | The wiring between the page, the shared list and the routes | `test/cloudShell.test.mjs` |
+| `tenant-gate-check` G6 — **16 checks** | Every write, over HTTP, on a production build against real Postgres with `NORMA_DEV_OPEN=0` | `scripts/tenant-gate-check.mjs` |
+
+**Four counter-tests, each the naive version through the same harness:**
+
+| Check | The naive version does |
+|---|---|
+| O2b | `addMembership` as a role change: the organization ends with **no admin at all**, and the owner is no longer one |
+| O3b | An unscoped `UPDATE ... WHERE id = $1`: one tenant revokes another tenant's invitation |
+| O4b | The same for keys: a key dies on its id alone, from any tenant |
+| O6b | Read-then-write acceptance across 10 processes on real Postgres: **10 of 10 consume one single-use link.** The real one: exactly 1 |
+
+**Eleven deliberate breaks, eleven distinct red checks**, each the one that
+should have caught it — a form posting to a literal path (S12.3), an `orgId`
+appearing on a form or being read by a handler (S12.4), a handler renamed out of
+the map (S12.2), the origin check moved below the session read (S12.5c), the gate
+removed from the route (S12.5), a revoke losing its scope (S12.8b), the notice
+rendered as the caller wrote it (S12.6), the cookie losing `HttpOnly` (S12.7),
+the creator taken from a form field (S12.7c), the invite creating a row without
+sending (S12.10), and a membership change no longer audited (S12.11).
+
+**Three HTTP breaks, on a rebuilt production server each time:**
+
+| Break | Went red |
+|---|---|
+| the role check removed from `requireOrgAdmin` | G6.2 and G6.3 — a **member** and a **designer** answer 303 on every one of the seven writes |
+| both revokes scoped `null` | G6.6 and G6.8, plus G6.7 and G6.9 as a consequence: B's admin revokes A's invitation and A's key, and A's own revoke then reports the row already gone |
+| the same-origin check removed | G6.4 — an admin's session driven from another origin succeeds |
+
+> **S12.5c was a presence check and a `false &&` walked straight through it.**
+> Rewritten to assert the *order* — the origin check before any lookup — and
+> labelled as structure, because whether it refuses is G6.4's job over HTTP and
+> no source check can answer it. This is the same lesson as §3ae's two
+> false-green G-checks, arriving a third time: **a regex over source proves the
+> shape, never the behaviour.**
+
+#### Three things only a browser found
+
+| On screen | What was wrong | Fix |
+|---|---|---|
+| "Invitation sent." | Nothing was sent. The whole send path did not exist | `sendInvitation`, above |
+| "Key created. It is shown once, below." | *Below* was three screens down, past Members and Invitations. A one-time secret somebody has to go looking for is a one-time secret they lose | The reveal moved directly under the notice, full width, with a clay rule |
+| The area outline | It kept promising *"members, roles and removal"* in a paragraph above the working controls | `ConsoleArea.built`, and `AreaOutline` renders `holds` minus `built`. An area with nothing outstanding renders nothing (O7.5) |
+
+The third needed a change to the map rather than to the page: `built` is a list
+of verbatim `holds` entries, checked by `unknownBuiltEntries()` (O7.1), so it
+cannot quietly become a second list of workflows. "Still to come" is the
+difference between the two, computed, and written down nowhere.
+
+**Verify:** 1,429 checks across 36 suites on PGlite, **1,464** against real
+Postgres, both typechecks, web build, `npm audit` **0**. Migrations `001`–`023`.
+`scripts/tenant-gate-check.mjs`: **33 checks**, up from 17.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface

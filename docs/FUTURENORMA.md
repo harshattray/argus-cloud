@@ -2,7 +2,31 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-22** — **the organization console has a shell, a
+Last updated: **2026-08-22** — **the Organization area works, and an admin can
+now run their own organization from a browser.**
+
+Members with their roles, invitations with their state, and upload and agent
+keys shown once and revocable. The first area of the console that writes
+anything. **Almost none of it was new logic** — `invitations.ts`, `apiKeys.ts`,
+`users.ts`, the invitation ceilings in `authThrottle.ts` and four audit event
+kinds were all written, tested and unreachable, with no HTTP route and no page
+anywhere. What was missing was a door, the three functions listed in §2, and one
+thing nobody had noticed: **an invitation was a row, a hashed token, and nobody
+told.** The page said *"Invitation sent"* and no message existed. Found by
+clicking the button.
+
+Every write is guarded on the route by `requireOrgAdmin`, which asks
+`CONSOLE_AREAS` which roles may reach the area rather than testing for `admin`
+itself, and every one of them is scoped to the organization the session
+resolved — no form carries an `orgId`. Proven over HTTP: `tenant-gate-check` is
+**33 checks**, up from 17, and a member and a designer are refused all seven
+writes, an admin of one organization cannot touch another's invitation or key
+holding a real row id, and each of those was watched failing on a rebuilt server
+with the guard removed. Verify green at **1,429 checks across thirty-six
+suites** on PGlite and **1,464 on real Postgres**, `npm audit` **0**, migrations
+`001`–`023`. `FinishedSPEC.md` §3af.
+
+Before that, **2026-08-22** — **the organization console has a shell, a
 navigation and a role matrix, and two things that were shipping broken are
 fixed.**
 
@@ -566,30 +590,34 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ **live on `normascope.com` 2026-08-21** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. Since 2026-08-22 there is also **one credential path that skips proving the address** — a local sign-in door for working on the signed-in surface, behind three conditions that must all hold, with no default, a 404 rather than a 403 when closed, and its own `dev-signin` audit kind. It is in the threat model at `PATHWAYS.md` §10.7 5A.13 rather than treated as tooling, and A13.7b shows the naive `NODE_ENV`-only guard open on a Vercel preview. 101 + 67 + 11 checks, and `golive-check` passes all fifteen L9 checks against production — `FinishedSPEC.md` §3aa |
 | **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
-| **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **The individual account page is not built**, so 5A.8's session list is still owed |
+| **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **Since 2026-08-22 the Organization area holds real workflows** and `AreaOutline` renders `holds` minus `built` rather than the whole list, so a half-built area stops promising the controls already on it. **The individual account page is not built**, so 5A.8's session list is still owed |
 | **`memberships.role` has a domain** | ✅ 2026-08-22 | Migration `022`. 001 wrote `admin \| member \| designer` in a **comment** and no constraint, and the seed wrote `'owner'` — not a role, since ownership is `orgs.owner_user_id` (021). No authorization path recognised it, so a locally seeded owner was refused every console area and nothing said why. The column now refuses it. **The upgrade path is tested, not just the fresh install**: `migrations` M9 walks a database to 021, gives it `owner` and `superuser` rows plus one of each valid role, and takes it across 022 — selective repair, five of five memberships kept, no ownership invented, and a counter-test showing constraint-before-repair aborting on that data. Green on PGlite and on real Postgres |
-| **Invitations, owner claims and API keys are services with no door** | ⚠️ **built server-side, unreachable from a browser** — recorded 2026-08-22 | `src/invitations.ts` (create, accept, revoke, list, expire, with the hashed single-use token), `src/ownerClaims.ts` and `src/apiKeys.ts` (create, list, revoke, per-key budgets) are written and under test. **There is no HTTP route and no page for any of them** — `web/app/api/` holds `auth`, `blob`, `ci-explain`, `explain`, `org`, `share`, `trends`, `upload`, `waitlist`, `webhooks` and the unlock routes, and nothing else. So an admin cannot today invite anybody or mint a key without a database client. This is the Organization area's work, and it is the next thing being built |
+| ~~**Invitations, owner claims and API keys are services with no door**~~ **The Organization area** (Step 6, Pathway 5, §10.7 5A.6 and 5A.10) | ✅ 2026-08-22 | Members with roles, invitations with their state, and keys shown once and revocable — the first area of the console that writes. Seven writes behind one dispatcher, all guarded by `requireOrgAdmin`, which reads the role from `CONSOLE_AREAS` rather than naming `admin`. Plain form POSTs and a 303, so the page still ships **zero client JavaScript** under the nonce policy. **No form carries an `orgId`** and both revokes are scoped to the session's organization — the parameter is required with `null` meaning "any", so `/admin`'s cross-tenant reach is a decision somebody wrote down. 66 + 22 + 16 checks, eleven source breaks and three HTTP breaks watched failing — `FinishedSPEC.md` §3af |
+| **An invitation is now actually sent** | ✅ 2026-08-22 | It was a row and a hashed token with nobody told, while the page said "sent". `sendInvitation` reserves the outbound-email budget, **then** creates the row, **then** sends — so a refused ceiling leaves no live link behind that nobody knows about. The ceilings are `authThrottle.ts`'s `INVITE_SCOPES`, written and uncalled since the abuse ladder: the global daily budget plus per-organization and per-address. A provider failure after the row exists is alerted and reported, never rolled back — the message may have been accepted. The mail names the organization, the inviter, the role and the expiry, and **nobody else in the organization** |
+| **`api_keys` records who minted a key** | ✅ 2026-08-22 | Migration `023`. Audit, never authority — 5A.10 is explicit that a key belongs to the organization and survives its creator, and `ON DELETE SET NULL` says the same in schema. **`last_used_at` is deliberately not in it**: `findApiKey` runs on every authenticated request, so recording last use is a write on the hot path and how coarse to make it is its own decision. Owed, not guessed at |
 
 `main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
 session layer. **The working branch is now `staging`, and `main` only ever
 receives it.** **Pathway 1 items 1–10 are implemented**, and the public site is
 **live on `normascope.com`** (§4g) with its legal pages published (§4h). Full
 suite:
-**1,341 checks green** on PGlite across thirty-five suites — `apiKeyRevocation`,
+**1,429 checks green** on PGlite across thirty-six suites — `apiKeyRevocation`,
 `artifactUploads`, `auth`, `authAbuse`, `backup`, `budgetAlerts`,
 `bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
 `enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
-`overview`, `planLimits`, `previewGate`, `providerBudget`,
+`organization`, `overview`, `planLimits`, `previewGate`, `providerBudget`,
 `rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
 `seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks` — and **1,373** against a real Postgres
-server, both run 2026-08-22. Migrations are `001`–`022`.
+`waitlistConfirmationEmail`, `webhooks` — and **1,464** against a real Postgres
+server, both run 2026-08-22. Migrations are `001`–`023`.
 
 Two checks that a suite cannot hold run as scripts, because each needs a
 production build, a server and a real database at once:
 `scripts/golive-check.mjs` against the deployed site, and
-`scripts/tenant-gate-check.mjs` — 17 checks over HTTP with `NORMA_DEV_OPEN=0`,
-watched failing against the pre-fix build.
+`scripts/tenant-gate-check.mjs` — **33 checks** over HTTP with
+`NORMA_DEV_OPEN=0`: the repository trend view and its export, the console's role
+matrix by direct URL, and every write the Organization area offers. Each group
+has been watched failing against a build with its guard removed.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**

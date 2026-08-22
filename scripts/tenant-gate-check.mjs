@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Tenant isolation on the repository views, over HTTP, against a running server.
+// Tenant isolation and role enforcement on the Cloud surface, over HTTP,
+// against a running server.
 //
 //   scripts/test-db.sh start
 //   DATABASE_URL="$(scripts/test-db.sh url)" npm run build:web
@@ -10,11 +11,17 @@
 //      node scripts/tenant-gate-check.mjs
 //
 // **Why this is not in `npm test`.** Every other check in this repo answers
-// without a server. These four routes cannot: what is being tested is the
-// wiring between a session cookie, a repository id in a URL, and a database
-// row, and a unit test of any one of those three is what let the defect below
-// ship in the first place. It needs a build, a server and a real Postgres, so
-// it is a script you run rather than a suite that runs on every push.
+// without a server. These routes cannot: what is being tested is the wiring
+// between a session cookie, an id in a URL or a form field, and a database row,
+// and a unit test of any one of those three is what let the defect below ship in
+// the first place. It needs a build, a server and a real Postgres, so it is a
+// script you run rather than a suite that runs on every push.
+//
+// **What it covers**, in the order it runs: the repository trend view and its
+// CSV export (G1–G4), the console's role matrix by direct URL (G5), and every
+// write the Organization area offers (G6) — invitations, roles, removals and
+// keys, refused for no session, for the wrong role, from another origin, and
+// from another organization's admin holding a real row id.
 //
 // **The defect it exists for.** Until 2026-08-22 `/repos/{id}/trend` and its CSV
 // export were gated by `NORMA_DEV_OPEN` alone — a variable no deployment sets —
@@ -64,6 +71,36 @@ function check(id, condition, detail) {
  */
 function readable(html) {
   return html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+}
+
+/**
+ * A form POST, the way the console's own controls make one.
+ *
+ * `sec-fetch-site` is what a browser sends and what `sameOrigin` reads; the
+ * cross-origin check below is the same call with that header changed, because
+ * the interesting question is not whether the header can be omitted but whether
+ * another site's form can drive these routes.
+ */
+async function post(pathname, token, fields, options = {}) {
+  const headers = {
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-fetch-site": options.site ?? "same-origin",
+  };
+  if (token) {
+    headers.cookie = `${COOKIE}=${token}`;
+  }
+  const res = await fetch(`${BASE}${pathname}`, {
+    method: "POST",
+    redirect: "manual",
+    headers,
+    body: new URLSearchParams(fields).toString(),
+  });
+  return {
+    status: res.status,
+    location: res.headers.get("location") ?? "",
+    setCookie: res.headers.get("set-cookie") ?? "",
+    body: await res.text(),
+  };
 }
 
 async function get(pathname, token) {
@@ -131,6 +168,22 @@ async function tenant(label) {
 const REFUSAL = "This frame has no history here";
 let a;
 let b;
+/** Users created outside `tenant()`, deleted in the same `finally`. */
+const extraUsers = [];
+
+/** Somebody in an organization, with a session, at a role. */
+async function person(orgId, role, label) {
+  const userId = randomUUID();
+  await db.query("INSERT INTO users (id, email, display_name) VALUES ($1, $2, $3)", [
+    userId,
+    `${label}-${userId.slice(0, 8)}@example.com`,
+    label,
+  ]);
+  await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3)", [orgId, userId, role]);
+  extraUsers.push(userId);
+  const session = await createSession(db, { userId, method: "email", userAgent: "tenant-gate-check" });
+  return { userId, token: session.token };
+}
 
 try {
   a = await tenant("a");
@@ -237,16 +290,7 @@ try {
   // a designer. Typing the URL has to reach the same answer.
   {
     const { CONSOLE_AREAS } = await import(path.join(DIST, "consoleIA.js"));
-    const designer = randomUUID();
-    await db.query("INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Designer')", [
-      designer,
-      `designer-${designer.slice(0, 8)}@example.com`,
-    ]);
-    await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'designer')", [
-      a.orgId,
-      designer,
-    ]);
-    const session = await createSession(db, { userId: designer, method: "email", userAgent: "tenant-gate-check" });
+    const session = await person(a.orgId, "designer", "Designer");
 
     const denied = [];
     const allowed = [];
@@ -268,17 +312,171 @@ try {
       "the billing refusal carries none of the area's own content — no ledger, no allowance, no invoices");
 
     // Not vacuous: an admin of the same organization gets the real page.
-    const asAdmin = randomUUID();
-    await db.query("INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Admin')", [
-      asAdmin,
-      `admin-${asAdmin.slice(0, 8)}@example.com`,
-    ]);
-    await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'admin')", [a.orgId, asAdmin]);
-    const adminSession = await createSession(db, { userId: asAdmin, method: "email", userAgent: "tenant-gate-check" });
+    const adminSession = await person(a.orgId, "admin", "Area admin");
     const adminBilling = await get("/billing", adminSession.token);
     check("G5.4",
       adminBilling.text.includes("usage ledger") && !adminBilling.text.includes("is for admins"),
       "counter-check: an admin of the same organization gets the area itself, so the refusal is about the role and not about the page being broken");
+  }
+
+  // ── G6: the Organization area's writes, over HTTP ────────────────────────
+  //
+  // Seven routes that invite people, change what they may do, and mint and
+  // withdraw credentials. Everything about them is decided on the server, and
+  // this is where that claim is tested against a real request rather than
+  // against the source.
+  //
+  // The three questions, in the order an attacker asks them: can somebody with
+  // no session do this, can somebody with the wrong role do this, and can an
+  // admin of one organization do it to another. Then the counter-check — that a
+  // proper admin can, so the refusals are about authorization and not about a
+  // broken route.
+  {
+    // The list the route is typed by and the page builds its forms from. Read
+    // from the same module, so an action added tomorrow is probed tomorrow
+    // rather than whenever somebody remembers to extend this array.
+    const { ORG_ACTIONS, orgActionPath } = await import(path.join(DIST, "consoleIA.js"));
+    const { listInvitations } = await import(path.join(DIST, "invitations.js"));
+    const { createApiKey, findApiKey } = await import(path.join(DIST, "apiKeys.js"));
+
+    const adminA = await person(a.orgId, "admin", "Admin A");
+    const adminB = await person(b.orgId, "admin", "Admin B");
+    const designerA = await person(a.orgId, "designer", "Designer A");
+
+    const url = orgActionPath;
+    const sample = { email: `probe-${randomUUID().slice(0, 8)}@example.com`, role: "member", id: randomUUID(), userId: randomUUID(), label: "probe", kind: "upload" };
+
+    // No session at all.
+    {
+      const codes = [];
+      for (const action of ORG_ACTIONS) {
+        codes.push((await post(url(action), null, sample)).status);
+      }
+      check("G6.1", codes.every((c) => c === 401),
+        `no session → every one of the ${ORG_ACTIONS.length} writes answers 401 (${[...new Set(codes)].join(", ")})`);
+    }
+
+    // A session, the wrong role. `a.token` is a member of A; `designerA` is a
+    // designer of the same organization. Both are inside the tenant and neither
+    // may write to it.
+    {
+      const memberCodes = [];
+      const designerCodes = [];
+      for (const action of ORG_ACTIONS) {
+        memberCodes.push((await post(url(action), a.token, sample)).status);
+        designerCodes.push((await post(url(action), designerA.token, sample)).status);
+      }
+      check("G6.2", memberCodes.every((c) => c === 403),
+        `a member of the organization → 403 on every write (${[...new Set(memberCodes)].join(", ")})`);
+      check("G6.3", designerCodes.every((c) => c === 403),
+        `a designer of the organization → 403 on every write (${[...new Set(designerCodes)].join(", ")})`);
+    }
+
+    // An admin, from somebody else's page. SameSite is one half of the CSRF
+    // policy and this is the other (§10.7 5A.8).
+    {
+      const crossed = await post(url("invite"), adminA.token, sample, { site: "cross-site" });
+      check("G6.4", crossed.status === 403,
+        `an admin's own session driven from another origin → ${crossed.status}, refused before anything is read`);
+    }
+
+    // The counter-check, and the first thing the area is for.
+    {
+      const invited = `newcomer-${randomUUID().slice(0, 8)}@example.com`;
+      const sent = await post(url("invite"), adminA.token, { email: invited, role: "designer" });
+      const rows = await listInvitations(db, a.orgId);
+      const row = rows.find((i) => i.email === invited);
+      check("G6.5",
+        sent.status === 303 && row?.state === "pending" && row?.role === "designer",
+        `an admin of the organization invites somebody → ${sent.status}, and the invitation exists as ${row?.state ?? "nothing"} at the role asked for`);
+
+      // **What the console says about the email, on a server that cannot send
+      // one.** `GATE_MAIL` describes the server under test; it defaults to
+      // `none`, which is what the documented local run is — no `RESEND_API_KEY`,
+      // and `NODE_ENV=production` forbids the console fallback, so the mailer
+      // throws. The row still exists, and the admin has to be told the message
+      // did not go out. The first version of this route said "Invitation sent"
+      // with no mail behind it at all, which is the failure this pins.
+      const notice = new URLSearchParams(sent.location.split("?")[1] ?? "").get("notice");
+      const expected = (process.env.GATE_MAIL ?? "none") === "none" ? "invite-unsent" : "invited";
+      check("G6.5b", notice === expected,
+        `and the notice tells the truth about delivery on a server with mail ${process.env.GATE_MAIL ?? "none"} — "${notice}"`);
+
+      // The other tenant's admin, with the real invitation id. This is the check
+      // the org-scoped UPDATE exists for: the id is real, the session is real,
+      // and the row must not move.
+      const crossed = await post(url("invite-revoke"), adminB.token, { id: row.id });
+      const after = (await listInvitations(db, a.orgId)).find((i) => i.id === row.id);
+      check("G6.6",
+        after?.state === "pending" && crossed.location.includes("invite-gone"),
+        `an admin of another organization revoking it changes nothing (still ${after?.state}) and is told the same thing as somebody clicking an already-dead link`);
+
+      const own = await post(url("invite-revoke"), adminA.token, { id: row.id });
+      const revoked = (await listInvitations(db, a.orgId)).find((i) => i.id === row.id);
+      check("G6.7", own.location.includes("invite-revoked") && revoked?.state === "revoked",
+        "and its own organization's admin revokes it");
+    }
+
+    // Keys: the same shape, on a credential.
+    {
+      const key = await createApiKey(db, a.orgId, { kind: "upload", label: "gate-check" });
+      const crossed = await post(url("key-revoke"), adminB.token, { id: key.id });
+      check("G6.8",
+        (await findApiKey(db, key.plaintext)) !== null && crossed.location.includes("key-gone"),
+        "an admin of another organization cannot revoke this key — it still authenticates, and the refusal is the already-revoked answer");
+
+      const own = await post(url("key-revoke"), adminA.token, { id: key.id });
+      check("G6.9",
+        own.location.includes("key-revoked") && (await findApiKey(db, key.plaintext)) === null,
+        "its own admin revokes it, and it stops authenticating at once");
+    }
+
+    // Minting: the plaintext exists in exactly one place, and the page does not
+    // hold it afterwards.
+    {
+      const created = await post(url("key-create"), adminA.token, { label: "minted by the gate check", kind: "upload" });
+      const cookie = created.setCookie;
+      const carried = /norma-key-once=([^;]+)/.exec(cookie)?.[1] ?? "";
+      const plaintext = carried.slice(carried.indexOf(".") + 1);
+      check("G6.10",
+        created.status === 303 && /HttpOnly/i.test(cookie) && /Path=\/organization/i.test(cookie) && plaintext.startsWith("nsk_"),
+        `creating a key answers ${created.status} and hands the plaintext back in one HttpOnly, path-scoped cookie`);
+
+      // Without the cookie, the page has nothing to show. This is what "shown
+      // once" means in practice.
+      const later = await get("/organization", adminA.token);
+      check("G6.11", plaintext.length > 8 && !later.body.includes(plaintext),
+        "a later plain request for the page does not contain the key — nothing stored it");
+      check("G6.12", (await findApiKey(db, plaintext)) !== null,
+        "counter-check: the key the cookie carried is a real, working credential, so G6.11 is about where it is not, rather than about it never existing");
+    }
+
+    // The page itself, at the tenant boundary.
+    {
+      const mine = await get("/organization", adminA.token);
+      check("G6.13",
+        mine.text.includes("Admin A") && !mine.text.includes("Admin B") && !mine.body.includes(b.orgId),
+        "the Organization page lists this organization's people and names nobody from the other one");
+    }
+
+    // Last admin: the refusal that keeps an organization operable, reached the
+    // way a customer would reach it.
+    {
+      const solo = await person(b.orgId, "admin", "Solo B");
+      // B's only other admin is `adminB`; remove it so `solo` is the last one.
+      await db.query("DELETE FROM memberships WHERE org_id = $1 AND user_id = $2", [b.orgId, adminB.userId]);
+      const refused = await post(url("member-role"), solo.token, { userId: solo.userId, role: "member" });
+      const stillAdmin = (await db.query("SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2", [b.orgId, solo.userId])).rows[0]?.role;
+      check("G6.14",
+        refused.location.includes("last-admin") && stillAdmin === "admin",
+        `the last admin cannot demote themselves through the console either (${refused.location.split("=").pop()}), and the role is unchanged`);
+    }
+
+    // An action nobody wrote.
+    {
+      const nonsense = await post(url("delete-everything"), adminA.token, {});
+      check("G6.15", nonsense.status === 404, `an action that does not exist answers ${nonsense.status} rather than falling through to one that does`);
+    }
   }
 } finally {
   // Delete what was created, whatever happened. Cascades take the repositories,
@@ -287,6 +485,12 @@ try {
     if (!t) continue;
     await db.query("DELETE FROM orgs WHERE id = $1", [t.orgId]);
     await db.query("DELETE FROM users WHERE id = $1", [t.userId]);
+  }
+  // The people G5 and G6 create live in those organizations, so the cascade
+  // takes their memberships and sessions — but a `users` row is not owned by an
+  // organization and would otherwise be left behind on a shared test database.
+  for (const userId of extraUsers) {
+    await db.query("DELETE FROM users WHERE id = $1", [userId]);
   }
   await db.close();
 }

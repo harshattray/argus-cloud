@@ -328,7 +328,7 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
   check("A5.5", !twice.ok, "and cannot accept the same invitation twice");
 
   const other = await createInvitation(db, { orgId, email: "late@studio.com", role: "member" });
-  await revokeInvitation(db, other.invitation.id);
+  await revokeInvitation(db, other.invitation.id, { orgId });
   check("A5.6", (await pendingInvitationsFor(db, "late@studio.com")).length === 0, "a revoked invitation is not pending");
 
   const old = await createInvitation(db, { orgId, email: "old@studio.com", role: "member" });
@@ -644,7 +644,7 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
   check("A12.5", !replay.ok, "and the link is spent — a forwarded copy opens nothing");
 
   const revoked = await createInvitation(db, { orgId, email: `revoked-${RUN}@studio.com`, role: "member" });
-  await revokeInvitation(db, revoked.invitation.id);
+  await revokeInvitation(db, revoked.invitation.id, { orgId });
   const dead = await completeInvitation(deps, { token: revoked.token, ip: freshIp() });
   check("A12.6", !dead.ok && dead.reason === "invalid-invitation", "a withdrawn invitation stops working immediately");
 }
