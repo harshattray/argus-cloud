@@ -473,4 +473,9 @@ if (real?.rebuilt) {
   printRealSummary(real);
 }
 
+// Somebody to sign in as. Both tenants exist by now, and both are named
+// explicitly — `dev-membership.mjs` carries why it is not "every org".
+const { grantDevMembership } = await import("./dev-membership.mjs");
+await grantDevMembership(db, ROOT, [orgId, real?.orgId]);
+
 await db.close();

@@ -432,6 +432,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (result?.rebuilt) {
     printRealSummary(result);
   }
+  // Only on the standalone entry: run through `seed-demo` and that script does
+  // the grant itself, once, after both tenants exist.
+  const { grantDevMembership } = await import("./dev-membership.mjs");
+  await grantDevMembership(db, ROOT, [result?.orgId]);
   await db.close();
 }
 
