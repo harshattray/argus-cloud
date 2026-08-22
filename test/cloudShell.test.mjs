@@ -339,19 +339,33 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
   // Not vacuous: an empty or truncated list would make every check below pass
   // by having nothing to check.
-  const CLOUD_POSES = ["lantern", "hourglass", "parcel", "key", "envelope"];
-  check("S7.1", poses.length >= 14 && CLOUD_POSES.every((p) => poses.includes(p)),
-    `${poses.length} poses declared, including the five the Cloud surface uses (${poses.join(", ")})`);
+  const CLOUD_POSES = ["lantern", "hourglass", "parcel", "key", "envelope", "repair"];
+  check("S7.1", poses.length >= 15 && CLOUD_POSES.every((p) => poses.includes(p)),
+    `${poses.length} poses declared, including the six the Cloud surface uses (${poses.join(", ")})`);
 
   // TypeScript already forces `ARMS` and `MOTION` to hold every pose — they are
   // `Record<TwinPose, …>`. Nothing forces the CSS, and a pose whose class is
   // missing renders a figure that simply never moves, which reads as a design
   // choice rather than as a bug.
+  //
+  // **Unless it is one**, which is what `still: true` is for. This check used to
+  // require keyframes for every pose without exception, and `repair` — the error
+  // state's wrench, deliberately motionless — turned it red on 2026-08-22. The
+  // exemption is read from `MOTION` rather than kept as a list here, so a pose
+  // can only escape the rule by saying in the source that it means to.
+  const still = new Set(
+    [...twins.matchAll(/(\w+):\s*\{[^}]*still:\s*true[^}]*\}/g)].map((m) => m[1])
+  );
+  check("S7.2a", still.size > 0 && still.has("repair"),
+    `the exemption is read from MOTION, not hard-coded here — still poses: ${[...still].join(", ")}`);
+
   const unanimated = poses.filter(
-    (p) => !new RegExp(`@keyframes tw-${p}\\b`).test(css) || !new RegExp(`\\.tw-${p}\\s*\\{`).test(css)
+    (p) =>
+      !still.has(p) &&
+      (!new RegExp(`@keyframes tw-${p}\\b`).test(css) || !new RegExp(`\\.tw-${p}\\s*\\{`).test(css))
   );
   check("S7.2", unanimated.length === 0,
-    `every pose has both its keyframes and its class in globals.css${unanimated.length ? ` — missing: ${unanimated.join(", ")}` : ""}`);
+    `every pose that is not declared still has both its keyframes and its class in globals.css${unanimated.length ? ` — missing: ${unanimated.join(", ")}` : ""}`);
 
   // The prop is what stops a new pose reading as an existing one: a silhouette
   // is recognised before a limb is, so a pose that only moves an elbow is the
@@ -540,6 +554,137 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   const repos = decomment(await readFile(path.join(WEB, "app/repos/page.tsx"), "utf-8"));
   check("S9.11", stripGone && !/SessionControls/.test(repos),
     "the old sign-out strip under the footer is deleted, not left rendering next to the menu");
+}
+
+// ═══ S10 — the error states ═══
+//
+// An error is not an empty result, and every check here defends that one
+// distinction. Told the wrong way round — a shrug, the word "nothing", a page
+// that looks like a finished request — a customer concludes their data is gone.
+//
+// What can go wrong silently, which is what this suite is for:
+//
+//   - the figure gets an idle animation like every other pose, and the error
+//     page reads as work still in progress;
+//   - the boundary prints the exception, leaking a provider name or an internal
+//     identifier to whoever is looking;
+//   - `global-error` ships without its stylesheet and renders unstyled at the
+//     worst possible moment — nothing throws, it just looks broken;
+//   - the Next 16.3 `retry`/`reset` rename goes unnoticed and the recovery
+//     button clears the boundary without re-fetching, so the same failure
+//     comes straight back.
+{
+  const errorState = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/error-state.tsx"), "utf-8")
+  );
+  const errorCss = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/error-state.module.css"), "utf-8")
+  );
+  const globalError = decomment(await readFile(path.join(WEB, "app/global-error.tsx"), "utf-8"));
+  const twins = decomment(
+    await readFile(path.join(WEB, "app/(site)/_components/twins.tsx"), "utf-8")
+  );
+  const globals = decomment(await readFile(path.join(WEB, "app/globals.css"), "utf-8"));
+
+  // ── The figure does not move ──────────────────────────────────────────────
+  //
+  // Two halves, and both are needed. The declaration says the pose is still;
+  // the absent keyframes are what makes it true. Either one alone rots — a
+  // `still: true` the renderer ignores, or missing CSS that looks like an
+  // oversight and gets "fixed".
+  check("S10.1", /repair:\s*\{[^}]*still:\s*true/.test(twins),
+    "`repair` is declared still in MOTION, so a pose that does not animate says so rather than just lacking a rule");
+
+  check("S10.2", !/\.tw-repair\s*\{/.test(globals) && !/@keyframes\s+tw-repair/.test(globals),
+    "and there are no `tw-repair` keyframes — an idling figure beside a failure reads as work still in progress");
+
+  check("S10.2b", /const anim = motion\.still \? undefined : `tw-\$\{pose\}`/.test(twins),
+    "counter-test: without this branch the class is applied from the pose name alone, so adding keyframes later would animate it with nothing in review to stop that");
+
+  // ── It is not a shrug, and no Cloud pose means two things ─────────────────
+  check("S10.3", /pose="repair"/.test(errorState),
+    "the error state uses `repair` — a wrench, not the shrug that already means 'nothing is here' on /agents");
+
+  {
+    // Every pose named across the Cloud surface, counted. The set's rule is one
+    // placement, one pose; a repeat makes one drawing mean two things.
+    const cloudFiles = [
+      "app/_components/cloud/error-state.tsx",
+      "app/repos/page.tsx",
+      "app/repos/[repoId]/trend/page.tsx",
+      "app/login/page.tsx",
+    ];
+    const used = [];
+    for (const file of cloudFiles) {
+      const full = path.join(WEB, file);
+      if (!existsSync(full)) continue;
+      const text = decomment(await readFile(full, "utf-8"));
+      for (const m of text.matchAll(/pose="([a-z]+)"/g)) used.push(m[1]);
+    }
+    check("S10.4", used.length > 0 && new Set(used).size === used.length,
+      `no pose is used twice on the Cloud surface — found ${used.join(", ")}`);
+  }
+
+  // ── Nothing from the exception reaches the page ───────────────────────────
+  //
+  // The boundary receives the whole `Error`. Rendering any of it is how a
+  // provider name, a prompt fragment or an internal id ends up on a customer's
+  // screen — PATHWAYS §10.7 5A.11.
+  const leaks = /\{\s*error\.(message|stack|digest|name)/.test(errorState);
+  check("S10.5", !leaks,
+    "the error component renders nothing off the error object — no message, stack, digest or name");
+
+  check("S10.5b", /digest/.test(errorState) === false && /error\.message/.test(errorState) === false,
+    "counter-test: checking only for `error.message` would pass a page that prints `error.digest`, which is equally an identifier — both are absent");
+
+  // ── The Next 16.3 rename ──────────────────────────────────────────────────
+  //
+  // `retry()` re-fetches the segment's data; `reset()` only clears the boundary
+  // and re-renders from cache. These pages fail on a query, so `reset` puts the
+  // same failure straight back and the button looks dead.
+  for (const [id, file] of [
+    ["S10.6", "app/repos/error.tsx"],
+    ["S10.7", "app/r/error.tsx"],
+    ["S10.8", "app/global-error.tsx"],
+  ]) {
+    const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+    check(id, /retry:\s*\(\)\s*=>\s*void/.test(text) && !/\breset\b/.test(text),
+      `${file} takes \`retry\`, not the pre-16.3 \`reset\` that re-renders from cache without re-fetching`);
+  }
+
+  // ── The document-level fallback stands on its own ────────────────────────
+  check("S10.9", /import "\.\/globals\.css"/.test(globalError),
+    "global-error imports the stylesheet explicitly — it replaces the root layout, so global styles do not arrive on their own");
+
+  check("S10.10", /<html/.test(globalError) && /<body/.test(globalError),
+    "and renders its own html and body, which Next requires of this file");
+
+  // The shortcut that would have been reached for, and why it is blocked.
+  {
+    const middleware = decomment(await readFile(path.join(WEB, "middleware.ts"), "utf-8"));
+    const blocksStyleElements = /style-src-elem 'self'/.test(middleware);
+    check("S10.11", blocksStyleElements && !/<style/.test(globalError),
+      "counter-test: `style-src-elem 'self'` blocks inline <style> blocks, so the usual self-contained-fallback shortcut would have rendered unstyled — the stylesheet import is the only route");
+  }
+
+  // ── The figure survives a phone ───────────────────────────────────────────
+  //
+  // The opposite rule to `.empty .figure`, which is dropped below 560px. There
+  // the drawing is decoration inside a page that still has a heading and
+  // controls; here it is the whole page, and two grey paragraphs on a phone is
+  // exactly what a failed render looks like.
+  {
+    const narrow = /@media\s*\(max-width:\s*620px\)\s*\{([\s\S]*)$/.exec(errorCss);
+    const hidesTwin = narrow !== null && /\.twin\s*\{[^}]*display:\s*none/.test(narrow[1]);
+    check("S10.12", narrow !== null && !hidesTwin,
+      "the figure is kept below 620px rather than hidden — it is most of what stops the page reading as a broken render");
+
+    check("S10.13", narrow !== null && /\.actions\s*\{[^}]*flex-direction:\s*column/.test(narrow[1]),
+      "and the two actions stack into full-width tap targets rather than splitting one narrow row");
+  }
+
+  check("S10.14", /Try again/.test(errorState) && /Back to Cloud/.test(errorState),
+    "both recovery actions are present: retry in place, and a way out");
 }
 
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);

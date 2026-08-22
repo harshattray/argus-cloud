@@ -468,6 +468,7 @@ const shotTerms = [
 // separately below and were never part of this relaxation.
 const CLIENT_ALLOWED = new Map([
   ["brush.tsx", "drag-to-select; Harsha chose a real drag over the zero-JS approximation (2026-08-20)"],
+  ["error.tsx", "the error boundary; Next has no server-rendered form of one (2026-08-22)"],
 ]);
 
 {

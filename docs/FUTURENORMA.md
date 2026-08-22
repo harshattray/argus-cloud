@@ -2,7 +2,37 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-22** — **the signed-in surface got its chrome, and one
+Last updated: **2026-08-22** — **the Cloud surface can now tell a failure from
+an empty result, and the Paddle sandbox catalog exists.**
+
+Until today a Cloud page that threw fell through to the framework's own blank
+page: no wordmark, no theme, no way back, and nothing to say whether the request
+had failed or had honestly found nothing. That second half is the expensive one
+— a customer who reads a failure as an empty result concludes their data is
+gone. There is now one card, shown for a segment failure and for a failure that
+takes the root layout with it, with a retry that re-fetches in place and a way
+out. **The figure on it is the only twin in the set that does not move**, because
+an idling drawing beside "something went wrong" reads as work still in progress.
+Nothing from the exception reaches the page. Verify green at **1293 checks
+across thirty-five suites**, `npm audit` **0**. `FinishedSPEC.md` §3ad.
+
+Two checks changed with it, and one of them is a decision rather than a fix.
+`cloudShell` S7.2 required every twin pose to carry keyframes, and the
+deliberately motionless one turned it red — it now reads a `still` flag out of
+the source, so the exemption has to be declared. `explainers` X4.1 required
+*exactly one* client component under `/repos`, which forbade having an error
+boundary at all, since Next has no server-rendered form of one; it is now an
+allowlist with a reason per entry. **The second is a check being wrong rather
+than code being wrong, and it belongs in its own commit.**
+
+**The Paddle sandbox catalog was created by hand the same day** — two products,
+four prices, each carrying its database slug in Paddle's internal description
+field, every price capped at quantity 1. §4 Step 7 holds the table and the list
+of what is still owed; the work resumes when the path reaches that step. Two of
+Step 7's items turned out to be built already and the doc had not said so: the
+signature verifier and the webhook route.
+
+Before that, **2026-08-22** — **the signed-in surface got its chrome, and one
 defect that had been shipping since 2026-08-20 was found in a browser.**
 `.wordmark img { display: block }` outranks the bare `.onLight` / `.onDark`
 classes that implement the theme cascade, so **both ground-dependent wordmark
@@ -603,10 +633,11 @@ ladder, no lite tier, no trial.
 > packs with no overage invoices, 90-day history, a 30-day money-back guarantee,
 > and no client-side paid locks.
 >
-> **Why this rule exists.** This line previously read "Unlimited repos and
-> seats", while §4 and §5 operated a 10-repo fair-use line and `PATHWAYS.md`
-> §2's Starter hypothesis assumed 3 — three different answers, all written as
-> though decided. See the note under Open Decisions #2.
+> **Repository decision — 2026-08-22.** Starter includes 3 active repositories
+> per billing month, Growth includes 10, and Team includes 25. “Active” means a
+> repository that uploads at least one run during the billing month; registered
+> and archived repositories do not count. These are capacity allowances, not
+> per-repository charges.
 
 Why $59 and not $29: the same person buys both the same way — both sit under
 the amount that triggers a company approval process — so the lower price bought
@@ -633,6 +664,22 @@ $60–80/mo paid-tier floor.
 - **Packs are bought on top** and last 12 months (`pack_purchase`).
 - `ledger.ts` consumes **soonest-to-expire first**, so the monthly allowance
   always burns before anything the customer paid extra for. Already implemented.
+
+> **The word — decided 2026-08-22.** The spendable unit is **"credits"**, and
+> the pack product is **"Normascope Credits"**. One word on every customer
+> surface: Paddle checkout and receipts, the account and billing pages, the
+> pricing page, transactional email, and CLI messages. No branded unit — a buyer
+> should not have to learn a currency before they can judge $59, and a support
+> reply should not carry a translation step.
+>
+> It matches the schema deliberately, so there is one word from `credit_grants`
+> through to the receipt. The internal grant kinds (`plan_allotment`,
+> `pack_purchase`, `goodwill`) stay as they are; they name *where a credit came
+> from*, which is a different question and is never shown as-is to a customer.
+>
+> Decided now because nothing customer-facing said it yet — the account and
+> billing pages are unbuilt (§4 Step 6), so this cost one line instead of a
+> rename across every surface.
 
 #### Credits are derived from cost — decided 2026-08-10
 
@@ -1638,16 +1685,37 @@ one-off page when an existing area can own the workflow.
 
 Sandbox first; production keys last.
 
-1. **Signature adapter.** Paddle signs `ts:body` and sends `ts=<unix>;h1=<hmac>`
-   — **not** the generic HMAC-hex `webhooks.ts` implements today, despite its
-   comment. Write it, test it, keep the tampered-payload case.
-2. **Webhook route.** `src/webhooks.ts` is currently unreachable — no
-   `/api/webhooks/*` exists.
+1. ~~**Signature adapter.**~~ ✅ **Built** — `src/paddle.ts` verifies Paddle's
+   `ts=<unix>;h1=<hmac>` over `ts:body`, with a 300-second tolerance window and
+   tolerance for further `hN=` keys. Not the generic HMAC-hex the old
+   `webhooks.ts` comment described. `FinishedSPEC.md` §3i.
+2. ~~**Webhook route.**~~ ✅ **Built** — `web/app/api/webhooks/paddle/route.ts`,
+   Node runtime, raw body, 2xx for anything decided. `src/webhooks.ts` is
+   reachable. `FinishedSPEC.md` §3i.
 3. **Org provisioning.** With no trial, the purchase webhook is the *only* way an
    org is ever created. Checkout → webhook → org + grant → magic link.
-4. **Real product ids.** Remap `migrations/005`'s provisional `pack_*` slugs
-   after creating the catalog — priced from **G4's** recalibrated COGS, not the
-   pre-crop numbers.
+4. **Real product ids.** Four provisional slugs remap to real Paddle price ids,
+   and the webhook looks products up by them, so the remap *is* the wiring:
+   `cloud_monthly` in `subscription_products` (migration `012`), and
+   `pack_100` / `pack_200` / `pack_1000` in `products` (migrations `005`, `007`).
+
+   The sandbox catalog is four items, at `migrations/007_repricing.sql`'s
+   post-crop prices and **not** `005`'s pre-repricing ones:
+
+   | Paddle item | Billing | Price |
+   |---|---|---|
+   | Normascope Cloud | recurring monthly | $59 |
+   | Normascope Credits — 100 | one-time | $7 |
+   | Normascope Credits — 200 | one-time | $12 |
+   | Normascope Credits — 1000 | one-time | **$55**, not $60 |
+
+   No trial, no annual price, no tier products, no country overrides, and no
+   50-credit pack — `007` retired it. The 1000 pack is $55 because at $60 its
+   per-credit rate matched the 200 pack exactly and volume bought nothing.
+   **Repository allowances do not go in the Paddle catalog** — they are plan
+   configuration read at runtime (`src/plans.ts`) and belong to the application
+   and the pricing page. The 500 monthly credits are granted by our webhook, not
+   by Paddle.
 5. **Fix `reconcile.ts` first.** It counts allotment-funded spend against pack
    revenue only, and will trip the <50% margin alert into an unjustified
    reprice. Small fix; do it before the first paying org.
@@ -1655,11 +1723,69 @@ Sandbox first; production keys last.
    deleted. Plus the 30-day money-back guarantee: a written policy and a runbook
    entry. Verify Paddle's fee treatment on refunds — that is the real per-refund
    exposure.
-7. **E7 live loop in sandbox**: buy → explain → exhaust → clear message, CI green
+7. **Record what we were actually paid, not the number in the box — 2026-08-22.**
+   Paddle converts our $59 into the buyer's currency automatically, so a
+   European pays about €54 and we still receive about $59. That is correct and
+   the conversion stays on. What is wrong is our side: `minorUnitsToMicrodollars`
+   multiplies the amount by 10,000 and calls the result dollars, and the currency
+   code is read nowhere. That €54 goes into our books as $54.
+
+   **No money is lost. The records are wrong**, and every margin figure built on
+   them inherits it — which is Doctrine 2's line about fabricated economics.
+
+   Three things fix it, and the third is the one that matters:
+
+   - read Paddle's **payout total** (what lands in our account, already
+     converted) rather than the transaction total the buyer saw;
+   - store the currency alongside the amount, so nothing has to be assumed;
+   - **refuse to write a revenue row we cannot price in dollars.** If the
+     currency is not USD and no payout figure is present, alert an operator and
+     record nothing. A missing row is a question someone asks. A wrong row is a
+     number someone trusts.
+
+   The same gap swallows **quantity**: `items[0].quantity` is never read, so
+   three packs bought at once charge three times and grant one pack. Paddle's
+   max-quantity is set to 1 on every price, but that is checkout, and checkout
+   is our own client — the server decides.
+
+   Confirm the field names in sandbox with a real non-USD purchase. `parseEvent`
+   already warns that its paths are unverified against a live account.
+8. **E7 live loop in sandbox**: buy → explain → exhaust → clear message, CI green
    → re-buy → works.
 
-**Needs from Harsha:** Paddle sandbox account (free, no business verification),
-then business verification for production. `normascope.com` is registered
+**Where this stands — 2026-08-22.** The sandbox account exists and **the catalog
+is created**: two products, four prices, built by hand rather than through
+Paddle's MCP server.
+
+| Product | Price | Amount | Our slug |
+|---|---|---|---|
+| Normascope Cloud | Monthly subscription | $59, recurring monthly | `cloud_monthly` |
+| Normascope Credits | 100 credits | $7, one-time | `pack_100` |
+| Normascope Credits | 200 credits | $12, one-time | `pack_200` |
+| Normascope Credits | 1,000 credits | $55, one-time | `pack_1000` |
+
+Each price carries its slug in Paddle's **internal description** field, so the
+dashboard shows the database key beside every price and the remap is checkable
+by eye. Every price is **min quantity 1, max quantity 1** — the first line of
+defence for item 7's quantity gap. Automatic currency conversion is **on** and
+correct; no country-specific prices are set. No trials, no annual price, no tier
+products, no 50-credit pack.
+
+**Still owed, and deliberately not done yet** — this work resumes when the path
+reaches Step 7:
+
+- the four `pri_...` ids, which are what the remap migration needs;
+- a notification destination pointing at `preview.normascope.com`, its signing
+  secret in Vercel as `PADDLE_WEBHOOK_SECRET` on the Preview environment;
+- a simulated event from the Paddle dashboard, to prove signature verification
+  against real Paddle rather than against our own fixtures;
+- confirmation that max-quantity 1 limits a single checkout and not a customer's
+  lifetime purchases. Paddle's field help is ambiguous. Buy the same pack twice
+  in two transactions; if the second is refused, raise the limit and fix
+  quantity in the handler instead.
+
+**Needs from Harsha:** ~~Paddle sandbox account~~ **done 2026-08-22**, then
+business verification for production. `normascope.com` is registered
 (2026-08-13); DNS delegation is still owed.
 
 ---
@@ -1772,22 +1898,11 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    The post-validation Growth/Team hypothesis still needs real repository,
    credit, storage, support and retention data before any ladder is published.
 
-   > ⚠️ **The sub-decision that is actually open: what number the fair-use line
-   > is, and whether it is ever said out loud.** Three numbers have been written
-   > down at different times — "unlimited" (§3, 2026-08-05), a **10**-repo
-   > fair-use line (§4, §5, inherited from the pre-single-tier design), and
-   > **3** active repositories for Starter in PATHWAYS' expansion hypothesis
-   > (2026-08-10). This was never sloppiness: the 2026-08-05 commit that decided
-   > $59 recorded the sub-decision as *open* — "whether the 10-repo figure is
-   > published as a fair-use line or dropped entirely in favour of unlimited" —
-   > and then both branches stayed in the text.
-   >
-   > **The trap to avoid:** if we operate a 10-repo line now and later publish a
-   > ladder whose Starter is 3, every existing $59 customer loses seven
-   > repositories at the moment we launch tiers. Grandfathering costs revenue;
-   > not grandfathering costs trust. Decide the launch number *before* it is
-   > quoted to anyone — including in a sales call — and make the ladder's
-   > Starter no smaller than it. Needed for the pricing page at Step 8.
+   > **Closed 2026-08-22:** the launch fair-use line is 3 active repositories
+   > for Starter, 10 for Growth, and 25 for Team. The number is safe to expose in
+   > billing and usage UI. It counts repositories that upload during the billing
+   > month; registered and archived repositories are excluded. This replaces
+   > the older unlimited and 10-repository operational notes.
 3. **Refund policy wording** — 30 days is decided; the exclusions are not.
 3b. ~~**Whether to take the `next` 15 → 16 major**~~ **Closed 2026-08-19, and
    shipped 2026-08-21 at `16.3.1`** — `FinishedSPEC.md` §3z. `npm audit` is
@@ -2126,13 +2241,13 @@ that has not been probed is an open risk, not an assumed pass.
   runtime so a second plan is a configuration row, not an authorization rewrite
   (§4). **The values come from this document's §3 launch contract**; do not
   hard-code a repository or seat number here or in the code. Unlimited seats is
-  settled; the repository figure is not (§3, Open Decisions #2). Any future
-  ladder runs on **repos**, never on seats. (Partly
-  settled: the plan enum is `free | team` as of migration 019 — `lapsed` is a
-  subscription status, not a tier — and PATHWAYS specifies the upload, storage
-  and quota dimensions. **The quota *values* are launch assumptions pending
-  traffic data, not decided here.** **No ladder is published at launch** — the
-  pricing page at §4 Step 8 ships the single $59 plan.)
+  settled; the launch allowances are 3 / 10 / 25 active repositories for
+  Starter / Growth / Team. Any future ladder runs on **repos**, never on seats.
+  (Partly settled: the plan enum is `free | team` as of migration 019 —
+  `lapsed` is a subscription status, not a tier — and PATHWAYS specifies the
+  upload, storage and quota dimensions. The launch quota values are decided
+  here. **No ladder is published at launch** — the pricing page at §4 Step 8
+  ships the single $59 plan.)
 - **Lapse handling** — uploads politely rejected on lapse, **CI stays green**,
   nothing deleted; 14-day grace. (No trial — BuildV5 §G2c. Risk reversal is a
   30-day money-back guarantee.)

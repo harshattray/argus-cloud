@@ -2938,6 +2938,109 @@ request.
 
 ---
 
+### 3ad. Error states: a failure that does not look like an empty result ✅ (2026-08-22)
+
+**The Cloud surface had no error boundary anywhere.** A page that threw fell
+through to whatever the framework draws, which on a production build is a bare
+white page with no wordmark, no theme, no way back, and — worst — nothing to
+distinguish "this failed" from "there is nothing here". That distinction is the
+whole point of the work: an empty state means the request finished and there is
+honestly nothing to show, and a customer who reads a failure as an empty state
+concludes their data is gone. `normascopeWeb.md` §5 "Error states" is the spec;
+Harsha wrote it before this was built.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1293 checks across 35 suites**, up from 1275; both typechecks, web build, `npm audit` **0** |
+| New guards | `cloudShell` **S10.1–S10.14** and **S7.2a**, `explainers` **X4.1a** |
+| Watched failing | ✅ all seven S10 guards broken in turn and put back — the list is below |
+| In a browser | ✅ 1280 and 375, light and dark, against a route made to throw |
+
+**What was built.** A `repair` twin pose, a shared error card, `error.tsx` under
+`/repos` and `/r/`, and `global-error.tsx` for the failure that takes the root
+layout with it. All three render the same card, so a segment error and a
+document error say the same thing in the same words.
+
+**The figure does not move, and it is the only one in the set that does not.**
+Every other twin idles on a 4–6 second cycle. Beside "something went wrong" an
+idling drawing reads as work still in progress, which is the one thing the page
+must not imply — the same argument that kept `hourglass` off this placement,
+since rotation and continuous motion both say *loading*. Rather than choose a
+gentler animation there is none, and `MOTION` gained a `still` flag so that is a
+stated decision rather than absent CSS somebody later "fixes".
+
+> **The existing suite caught the new pose, which is the system working.** S7.2
+> required every pose to have both its keyframes and its class, and `repair`
+> turned it red. The fix was not to exempt it by name: the check now reads the
+> `still` flag out of `MOTION`, so a pose can only escape the rule by declaring
+> in the source that it means to, and **S7.2a** fails if that list stops naming
+> anything real.
+
+**A second check was wrong and was changed, which needs its own commit.**
+`explainers` X4.1 read "exactly one client component on `/repos`". Next requires
+an error boundary to be a Client Component — there is no server-rendered form of
+one — so the rule as written forbade having an error boundary on that tree at
+all. The rule it stood in for is *every client component here is a deliberate
+choice somebody argued for*, which a count cannot express, so it is now an
+allowlist with a reason per entry plus **X4.1a**, which fails if an entry
+outlives its file. The chart checks (X4.1b–d) were not touched and still require
+server rendering. **This is a check change, not a code fix, and the reasoning is
+Harsha's to accept.**
+
+**Seven guards, each watched failing.** Copies, not `git checkout` — see the
+trap below.
+
+| Break | Goes red |
+|---|---|
+| `repair` loses `still: true` | S7.2a, S7.2, S10.1 |
+| somebody adds `tw-repair` keyframes | S10.2 |
+| the error state reuses the `parcel` pose | S10.3, S10.4 |
+| the page prints `error.digest` | S10.5, S10.5b |
+| `retry` reverts to the pre-16.3 `reset` | S10.6 |
+| `global-error` loses its stylesheet | S10.9 |
+| the figure is hidden on a phone | S10.12 |
+
+**Three things the framework forced, each of which had to be handled rather than
+assumed.** `global-error` replaces the root layout, so global styles do not
+arrive — hence an explicit `import "./globals.css"`, and **not** an inline
+`<style>` block, which `style-src-elem 'self'` in `middleware.ts` would refuse.
+The theme cookie cannot reach a Client Component with no root layout above it,
+so without `data-theme` the surface falls through to `prefers-color-scheme`,
+which is the "follow the device" state and the honest fallback. And `next/font`
+cannot be called there either, so the page relies on the real system stack
+`.surface` already names in its own `font` shorthand.
+
+**The prop was wrong the first time, and only a browser said so.** The wrench
+head was drawn square — a 28×24 block with a 12-wide notch cut 12 deep. At the
+size it ships it looked fine; scaled to 420px to check it, the two prongs were
+as long as they were thick and it read as a staple or a small stool. What says
+spanner is a round head with a gap narrower than the ring is thick. Recorded in
+`normascopeWeb.md` §5 beside the two failed drafts from 2026-08-22, because it
+is the third instance of the same lesson: a prop is recognised by the one
+feature that distinguishes it, and at these sizes nothing else survives.
+
+> **A trap worth writing down, and it cost real work.** The script that broke
+> each guard in turn reverted with `git checkout --`. Every file in this change
+> was **untracked**, so the checkout did not undo the break — it deleted the
+> work. `twins.tsx` went back to `HEAD` with the whole pose gone, and a `perl`
+> fallback rewrote a comment into nonsense on the way past. Use copies to
+> restore untracked files. Also: `zsh` arrays are **1-indexed**, so a rewritten
+> script that indexed from `0` silently edited the wrong files and reported
+> nothing at all.
+
+**What `retry` actually does, checked rather than read.** The prop was renamed
+in Next 16.3; `retry()` re-fetches the segment's data, where the older `reset()`
+only cleared the boundary and re-rendered from cache. On a page that fails in a
+query, `reset` would put the same failure straight back and the button would
+look dead. Pressing **Try again** in the browser issued a fresh `?_rsc=` request
+to the route, so the re-fetch is real.
+
+**Nothing from the exception reaches the page** — no message, stack, digest,
+name, provider or identifier (§10.7 5A.11). The digest still exists in the
+server log, which is where an operator should be looking.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface
@@ -3489,16 +3592,16 @@ a question about tiers. Six conflicts between `FUTURENORMA.md` and `PATHWAYS.md`
 |---|---|---|
 | 1 | Doctrine 9 stated "no ladder above it, no lite tier below it" as a rule that does not bend, while §3, §5 and PATHWAYS §2 all plan a ladder after validation | Doctrine 9 reworded to **one tier *at launch***; the unbending part is the order (evidence, then a tier), not the count forever. Mirrored in `CLAUDE.md` |
 | 2 | §4 said "the repo-count ladder is closed" and "plan-tier logic never needs to exist", while §5 said "the repo ladder above Team is still open — needed for the pricing page" | §4 corrected. Plan limits are **configuration read at runtime**, so a second tier is a config row, not an authorization rewrite. This was the one with real rework attached |
-| 3 | §3 promised "unlimited repos and seats"; §4 and §5 operated a 10-repo fair-use line; PATHWAYS' Starter hypothesis assumed 3 — **three numbers** | **`PATHWAYS.md` §2 is now authoritative for what a plan offers** (`CLAUDE.md` carve-out). FUTURENORMA keeps the price and the economics and states no repository figure. Git history shows why: the 2026-08-05 commit that decided $59 recorded this sub-decision as *open* and left both branches in the text |
+| 3 | §3 promised "unlimited repos and seats"; §4 and §5 operated a 10-repo fair-use line; PATHWAYS' Starter hypothesis assumed 3 — **three numbers** | **`PATHWAYS.md` §2 is authoritative for what a plan offers** (`CLAUDE.md` carve-out). **Closed 2026-08-22:** launch allowances are 3 active repositories for Starter, 10 for Growth, and 25 for Team; registered and archived repositories do not count. FUTURENORMA now mirrors the launch contract, and the billing/usage UI may expose it. |
 | 4 | The two documents' running orders diverge after step 3 — and PATHWAYS has no deploy, billing, or launch pathway at all | Divergence **recorded in §4 as a table** rather than silently reconciled. PATHWAYS' order still wins (`CLAUDE.md`); changing it is a strategy decision |
 | 5 | PATHWAYS' Pathway 1 list carried 7 items; §10.3 described three more (1B.1–1B.3) that appeared nowhere in the list | List rewritten to 10 items with §10.3 cross-references. **This one had already bitten** — Pathway 1 read as nearly done while the provider-spend hole was open |
 | 6 | §5 claimed `migrations/001`'s `DEFAULT 'trial'` "is superseded by a later migration" | **No such migration exists** (checked `001`–`009`). Corrected to an open item owed at Step 6 |
 
-> **The one still open, and it has a customer in it:** the launch repository
-> figure. Operating at 10 and later publishing a Starter of 3 would take seven
-> repositories off every existing $59 customer on ladder day. Both documents now
-> forbid quoting a number until it is decided, and require any published Starter
-> to be no smaller than the line already in operation.
+> **The repository decision is now closed (2026-08-22):** the launch allowance
+> is 3 active repositories for Starter, 10 for Growth, and 25 for Team. “Active”
+> means a repository that uploads at least one run during the billing month;
+> registered and archived repositories are excluded. This is a capacity
+> allowance, not per-repository billing, and is safe to display in usage UI.
 
 Also corrected: §4's Step 0 row demanded a pushed tag that §2 says is not a task
 (§2b), and PATHWAYS §10.3 1B.2 still framed pricing around "one credit" per
