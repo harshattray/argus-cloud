@@ -367,6 +367,150 @@ if (REAL_PG) {
   check("M8.2", mismatched === null, `every embedded migration is byte-identical to its file${mismatched ? ` — ${mismatched} differs` : ""}`);
 }
 
+// --- M9: 022 repairs before it constrains --------------------------------
+//
+// **This is an upgrade, not a fresh install, and the two are different tests.**
+// M1 proves 022 applies to an empty database, where the repair statement matches
+// nothing and the CHECK goes on unopposed. What actually has to work is the
+// other case: a database that has been running, already holds `role = 'owner'`
+// rows, and now meets a constraint those rows violate. Get the order wrong and
+// `migrate()` aborts mid-transaction on a live deployment.
+//
+// So the database is walked to 021, given the bad rows, and then taken across
+// 022 by the real runner reading the real file.
+{
+  const staged = await mkdtemp(path.join(HERE, ".tmp-m9-"));
+  try {
+    const all = (await readdir(MIGRATIONS)).filter((f) => f.endsWith(".sql")).sort();
+    const before = all.filter((f) => f < "022_");
+    const from022 = all.filter((f) => f >= "022_");
+
+    for (const name of before) {
+      await writeFile(path.join(staged, name), await readFile(path.join(MIGRATIONS, name), "utf-8"));
+    }
+
+    const db = await freshDb();
+    await migrate(db, staged);
+
+    // Exactly the shape the seed left behind: an owner membership, plus one of
+    // each real role, so the repair has to be selective rather than a blanket
+    // UPDATE.
+    await db.query("INSERT INTO orgs (id, name) VALUES ('m9-org', 'M9')");
+    for (const [id, role] of [
+      ["m9-owner", "owner"],
+      ["m9-admin", "admin"],
+      ["m9-member", "member"],
+      ["m9-designer", "designer"],
+    ]) {
+      await db.query("INSERT INTO users (id, email) VALUES ($1, $2)", [id, `${id}@example.com`]);
+      await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ('m9-org', $1, $2)", [id, role]);
+    }
+    // A second out-of-domain value nobody wrote on purpose, to show the repair
+    // is by domain rather than by the one string we happen to know about.
+    await db.query("INSERT INTO users (id, email) VALUES ('m9-odd', 'm9-odd@example.com')");
+    await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ('m9-org', 'm9-odd', 'superuser')");
+
+    check("M9.1", true, "a database at 021 accepts role = 'owner' — which is how the rows got there");
+
+    for (const name of from022) {
+      await writeFile(path.join(staged, name), await readFile(path.join(MIGRATIONS, name), "utf-8"));
+    }
+
+    let threw = null;
+    try {
+      await migrate(db, staged);
+    } catch (e) {
+      threw = e instanceof Error ? e.message : String(e);
+    }
+    check("M9.2", threw === null, `022 applies to a database that already holds them${threw ? `: ${threw}` : ""}`);
+
+    const roles = await db.query(
+      "SELECT user_id, role FROM memberships WHERE org_id = 'm9-org' ORDER BY user_id"
+    );
+    const byUser = Object.fromEntries(roles.rows.map((r) => [r.user_id, r.role]));
+    check("M9.3", byUser["m9-owner"] === "admin" && byUser["m9-odd"] === "admin",
+      `every out-of-domain role became admin (owner → ${byUser["m9-owner"]}, superuser → ${byUser["m9-odd"]})`);
+
+    check("M9.4",
+      byUser["m9-admin"] === "admin" && byUser["m9-member"] === "member" && byUser["m9-designer"] === "designer",
+      "and the rows that were already valid were left alone — the repair is selective, not a blanket UPDATE");
+
+    // Nobody lost their seat. An UPDATE is the right repair precisely because a
+    // DELETE would have been the other way to satisfy the constraint.
+    check("M9.5", roles.rows.length === 5, `all five memberships survived (${roles.rows.length})`);
+
+    // Ownership is not invented. The organization had no owner before and has
+    // none now: guessing which member owns it is the silent decision 5A.5
+    // forbids, and an `owner` role row was never evidence of the invariant.
+    const owner = await db.query("SELECT owner_user_id FROM orgs WHERE id = 'm9-org'");
+    check("M9.6", owner.rows[0].owner_user_id === null,
+      "and no ownership was invented from the repaired rows");
+
+    let refused = null;
+    try {
+      await db.query("INSERT INTO users (id, email) VALUES ('m9-late', 'm9-late@example.com')");
+      await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ('m9-org', 'm9-late', 'owner')");
+    } catch (e) {
+      refused = e instanceof Error ? e.message : String(e);
+    }
+    check("M9.7", refused !== null, "the constraint is live afterwards — a new 'owner' row is refused");
+
+    // Counter-test, in the sense of CLAUDE.md rule 3: the migration written the
+    // other way round. Constraint first, repair second, on the same data.
+    //
+    // **On a scratch table, and the first version was not.** It dropped the
+    // constraint from `memberships` itself to re-add it the naive way. On
+    // PGlite that is harmless — every process gets its own database. On real
+    // Postgres every suite shares one, `freshDb()` included, so it left the
+    // shared schema with `022` recorded as applied and the constraint gone;
+    // `migrate()` skips a migration already in `schema_migrations`, so nothing
+    // put it back, and `cloudShell` S11.31 failed several suites later. The
+    // check was right and the harness was wrong — which is the failure mode
+    // CLAUDE.md rule 4 warns about, arriving from the other direction.
+    {
+      let naiveThrew = null;
+      try {
+        await db.exec(
+          `CREATE TABLE m9_naive (role TEXT NOT NULL);
+           INSERT INTO m9_naive (role) VALUES ('owner'), ('admin');`
+        );
+        await db.exec(
+          `ALTER TABLE m9_naive
+             ADD CONSTRAINT m9_naive_role_domain CHECK (role IN ('admin', 'member', 'designer'));
+           UPDATE m9_naive SET role = 'admin' WHERE role NOT IN ('admin', 'member', 'designer');`
+        );
+      } catch (e) {
+        naiveThrew = e instanceof Error ? e.message : String(e);
+      }
+      check("M9.8", naiveThrew !== null,
+        "counter-test: constraint before repair fails on exactly this data, which on a deployment is a migration that aborts");
+
+      // And the order 022 actually uses succeeds on the same rows.
+      let properThrew = null;
+      try {
+        await db.exec(
+          `DROP TABLE IF EXISTS m9_proper;
+           CREATE TABLE m9_proper (role TEXT NOT NULL);
+           INSERT INTO m9_proper (role) VALUES ('owner'), ('admin');
+           UPDATE m9_proper SET role = 'admin' WHERE role NOT IN ('admin', 'member', 'designer');
+           ALTER TABLE m9_proper
+             ADD CONSTRAINT m9_proper_role_domain CHECK (role IN ('admin', 'member', 'designer'));`
+        );
+      } catch (e) {
+        properThrew = e instanceof Error ? e.message : String(e);
+      }
+      check("M9.9", properThrew === null,
+        `and repair-then-constrain — 022's order — succeeds on the same rows${properThrew ? `: ${properThrew}` : ""}`);
+
+      await db.exec("DROP TABLE IF EXISTS m9_naive; DROP TABLE IF EXISTS m9_proper;");
+    }
+
+    await db.close();
+  } finally {
+    await rm(staged, { recursive: true, force: true });
+  }
+}
+
 if (!REAL_PG) {
   console.log(
     "\n⚠️  M3 ran on PGlite: 20 concurrent CALLS on one in-process connection.\n" +

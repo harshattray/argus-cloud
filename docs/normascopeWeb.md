@@ -257,6 +257,72 @@ They are not general decoration. **Nine placements, nine poses, no pose twice
 on the site**, and the count is a ceiling: a new placement takes a new pose or
 an existing placement's slot.
 
+### Error states (2026-08-22)
+
+Errors are a separate product state from an empty result. An empty result means
+the request completed and there is honestly nothing to show; an error means the
+page could not complete. It must say which of those happened, protect the
+customer's confidence that their data is unchanged, and offer a recovery path.
+
+The shared error-state spec covers both route-level failures and full-document
+failures, so a segment error and a failure that prevents the normal shell from
+rendering still have the same copy, actions and responsive composition:
+
+| State | Copy/action | Character variation |
+|---|---|---|
+| Route or data failure | “The comparison needs another look”; **Try again** and **Back to Cloud** | `repair`, holding an open-ended wrench low beside the body |
+| Full-document failure | Same recovery contract, even when the normal shell cannot render | Same `repair` pose, with the fallback's own surface tokens |
+
+The `repair` pose is deliberately not `shrug`: shrug says “nothing is here” and
+already belongs to `/agents`, while the wrench says “the system needs a retry”.
+It is also not the `hourglass`: a rotating or continuously moving error figure
+would imply loading. The pose remains still unless the shared twin animation is
+given an explicit, short settle; reduced-motion preferences always win.
+
+Desktop keeps the copy and figure side by side inside a framed card. Below
+`620px`, the figure moves above the copy, aligns to the trailing edge, and the
+actions wrap into full-width tap targets. The figure stays visible on mobile:
+it is part of the explanation, not decoration to discard when space is tight.
+The error boundary never renders raw exception text, provider names, prompts or
+identifiers. This keeps the customer-facing state useful without leaking
+implementation detail, while the retry action still lets a transient failure
+recover in place.
+
+### The console chrome (2026-08-22)
+
+Every signed-in page of the organization console carries the same three rows,
+in the same order, above whatever the page itself is about. They exist because
+seven areas cannot each answer the same four questions differently.
+
+| Row | Holds | The question it answers |
+|---|---|---|
+| Masthead | wordmark, theme switch, account menu | who am I, and how do I stop being |
+| Context | organization (a switcher where there is more than one), role, subscription state, environment | whose data is this, what may I do with it, is the account in good standing, is this the real deployment |
+| Navigation | the areas this role may reach | what else is there |
+
+Four notes, each of which is a decision rather than a style:
+
+- **The chips carry words, not colours.** "Preview", "Payment failed",
+  "designer" — each readable in a screenshot, in a colourblind palette and read
+  aloud. A coloured dot is none of those.
+- **Nothing is shown for a good state.** An active subscription has no chip.
+  The absence is the good news, and a green badge on every page is a badge
+  nobody reads by the second week.
+- **The navigation wraps; it does not scroll sideways.** It scrolled first, on
+  the argument that wrapping puts the current item somewhere unpredictable. A
+  browser settled it: at 666px the current area was **Billing and usage**, and
+  it sat past the right edge — underlined and invisible, so the reader sees a
+  navigation that does not contain the page they are on. Nothing but a script
+  can scroll a chosen element into view on load, and none of this surface runs
+  one. Unpredictable but visible beats tidy but hidden.
+- **It is drawn from the role, and it is not the boundary.** A hidden link is a
+  courtesy; the server makes the same decision again for the page itself.
+
+An area with nothing in it yet says so and lists what will be there — read from
+the ownership map at render time, so the page cannot drift from it. It does not
+carry a figure: the blank states are drawn because an empty page reads as
+broken, and an area that is honestly unbuilt is neither.
+
 | Page | Where | Pose |
 |---|---|---|
 | `/` | hero, top right | camera |
@@ -269,7 +335,7 @@ an existing placement's slot.
 | `/legal` | the document index | stack |
 | 404 | "Nothing here to compare" | empty |
 
-**Five more live on the Cloud surface, not the site (2026-08-20, 2026-08-22).**
+**Six more live on the Cloud surface, not the site (2026-08-20, 2026-08-22).**
 They are the same rule applied to a second product: a new placement takes a new
 pose, and `empty` already belongs to the 404.
 
@@ -278,8 +344,26 @@ pose, and `empty` already belongs to the 404.
 | `/repos/…/trend` | frame not found, or not yours | lantern |
 | `/repos/…/trend` | a range holding no runs | hourglass |
 | `/repos` | an organization that has uploaded nothing | parcel |
-| `/repos` | signed in, and in no organization | envelope |
+| every console page | signed in, and in no organization | envelope |
 | `/login` | beside the sign-in card | key |
+| `/repos`, `/r/…`, and the whole document | the page could not finish | repair |
+
+**`repair` is the only pose on either surface that stands for a failure rather
+than an absence**, and it is the only one that does not move. The wrench hangs
+where `lantern` — the one other pose holding something below the hand — hangs a
+box; that difference is what separates them at 118px, since both use the same
+arm. The stillness is argued under "Error states" above.
+
+> **The failed draft, and it is the same failure `key` had.** The head was first
+> drawn square: a 28×24 block with a 12-wide notch cut 12 deep into its lower
+> edge. Rendered at 420px to check it, the two prongs were as long as they were
+> thick and the thing read as a staple, or a small stool standing beside the
+> figure — a tuning fork at best, never a spanner.
+>
+> What says spanner is a **round head with a gap in it**, and the proportion
+> matters more than the shape: the gap has to be narrower than the ring is
+> thick. A thick C on a thin handle survives at 118px; a square jaw does not,
+> for the reason a key is recognised by its notches and not by its shaft.
 
 `parcel`, `key` and `envelope` were added on 2026-08-22, all three for the same
 reason: the pages were mostly empty colour. `/repos` for a new customer was one

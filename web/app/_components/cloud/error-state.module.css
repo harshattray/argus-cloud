@@ -1,0 +1,150 @@
+/*
+ * The error state's layout. Colour and the three theme states come from
+ * `_styles/surface.module.css`, like everything else on this surface —
+ * `error-state.tsx` carries the reasoning.
+ *
+ * The composition is `.blankSlate`'s (`repos/trends.module.css`) rather than
+ * `.empty`'s: words left, figure right, a real minimum height, and below 620px
+ * the figure moves above the words against the trailing edge. That is
+ * deliberate. `.empty` sits inside a page that still has a heading and controls
+ * around it, so its figure is decoration and is dropped on a phone. This is the
+ * *entire* page — there is nothing else on it — and a phone showing two grey
+ * paragraphs and a pair of buttons is exactly what a page that failed to render
+ * looks like. The drawing is most of what says otherwise, so it stays.
+ */
+
+/*
+ * Only properties `.surface` does not already set. Its own `min-height: 100vh`
+ * and padding are left alone deliberately — two CSS modules setting the same
+ * property on one element resolve by stylesheet order, which nothing here
+ * controls, so the override would work until a bundler changed its mind.
+ */
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The panel is built from tokens rather than from `surface.card`, for the
+ * reason above and one more: `.card` is the full-width sheet a Cloud page
+ * lives in, 1080px and edge to edge. This is a single message that should sit
+ * in the middle of the window. `empty-state.module.css` builds its own panel
+ * the same way and says so.
+ */
+.card {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 34px;
+  padding: 34px 30px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.words {
+  min-width: 0;
+  max-width: 52ch;
+}
+
+.title {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.body {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.actions {
+  margin: 20px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/*
+ * Both actions are 40px tall and share a radius, so the pair reads as one
+ * control group. The recovery action is filled and the way out is outlined:
+ * retrying is what we want the reader to do first, and it is the only one of
+ * the two that can put them back where they were.
+ */
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* `--card` is the button's text, not `--page-bg`: both tokens invert with the
+   theme, and the card's own ground is the one guaranteed to contrast with
+   `--ink` at both ends of the cascade. */
+.primary {
+  background: var(--ink);
+  color: var(--card);
+  border: 1px solid var(--ink);
+}
+
+.secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.primary:hover,
+.secondary:hover {
+  opacity: 0.86;
+}
+
+/* The focus ring is stated rather than left to the UA default: the surface
+   inverts with the theme, and a browser ring computed against the document's
+   ground disappears on one of the two. */
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--clay-deep);
+  outline-offset: 2px;
+}
+
+.twin {
+  --cloud-twin-width: 172px;
+}
+
+@media (max-width: 620px) {
+  .card {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .twin {
+    --cloud-twin-width: 108px;
+    align-self: flex-end;
+  }
+
+  /* Full-width tap targets, and they stack rather than sitting side by side.
+     Two 40px buttons on one row at 320px leaves each about 140px wide, which
+     is under the comfortable target size and puts the destructive-looking
+     choice under the thumb by accident. */
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

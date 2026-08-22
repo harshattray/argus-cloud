@@ -481,6 +481,10 @@
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  /* The menu holds two submit buttons and one link. They are the same control
+     to the reader, so the link loses its underline rather than the buttons
+     gaining one. */
+  text-decoration: none;
 }
 
 .accountMenuItem:hover {
@@ -513,6 +517,92 @@
       block-start span-inline-end;
     margin: 6px 0 0;
     width: max-content;
+  }
+}
+
+/* ---------- the blank slate ----------
+ *
+ * A signed-in page with nothing to list: an organization that has uploaded
+ * nothing, and a person who is in no organization. It is the one state on this
+ * surface with a height of its own.
+ *
+ * **What was wrong was not the footer.** Nothing was pushing it up: the sheet
+ * is sized by its contents, the contents were two lines, so the card stopped a
+ * third of the way down the window and took the Yutic line with it.
+ *
+ * **A `min-height`, not a stretch to the viewport.** Filling the window would
+ * park the Yutic line exactly on the fold at every screen size and make a
+ * three-sentence page look like a page with something missing from it. The
+ * clamp keeps the block roughly a third of a laptop window and stops it
+ * swallowing a short one.
+ *
+ * These lived in `repos/trends.module.css` until the console shell became a
+ * third consumer from another directory. They are here, and both stylesheets
+ * compose them, because a shared component reaching into a page's stylesheet is
+ * the wrong direction for the dependency to point.
+ */
+.blankSlate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 34px;
+  min-height: clamp(260px, 44vh, 400px);
+  padding: 34px 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.blankWords {
+  min-width: 0;
+  max-width: 56ch;
+}
+
+.blankTitle {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.blankBody {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.blankAside {
+  margin: 14px 0 0;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+
+.blankAside a {
+  color: var(--clay-deep);
+  font-weight: 600;
+}
+
+.blankTwin {
+  --cloud-twin-width: 172px;
+}
+
+/*
+ * The figure stays on a phone, unlike the one inside an empty panel — this
+ * page has nothing else on it, and the drawing is most of what stops it
+ * reading as a load that failed. It goes above the words rather than beside
+ * them, against the right margin, which is where `TwinAside` puts one on the
+ * public site at the same width.
+ */
+@media (max-width: 620px) {
+  .blankSlate {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 20px;
+    min-height: 0;
+  }
+
+  .blankTwin {
+    --cloud-twin-width: 108px;
+    align-self: flex-end;
   }
 }
 

@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { CREDITS_PER_ANALYSIS, CREDITS_PER_DEEP } from "argus-cloud/explainService.js";
 import { authorize, loadRun, type FrameReport } from "argus-cloud/reportData.js";
 import { getDb } from "../../../lib/db";
@@ -39,18 +40,6 @@ import styles from "./report.module.css";
 
 export const dynamic = "force-dynamic";
 
-/** Same body for missing, revoked, expired and another org's run: a probe learns nothing. */
-function NotFound({ theme }: { theme?: string }) {
-  return (
-    <div className={styles.page} data-theme={theme}>
-      <main className={styles.notFound}>
-        <h1>Not found</h1>
-        <p>This report doesn&apos;t exist or the link is no longer valid.</p>
-      </main>
-    </div>
-  );
-}
-
 export default async function ReportPage({
   params,
   searchParams,
@@ -71,11 +60,11 @@ export default async function ReportPage({
     orgIds: session?.memberships.map((m) => m.orgId) ?? [],
   });
   if (!access) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
   const run = await loadRun(db, await getStorage(), runId, access);
   if (!run) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
 
   // The share token rides in the path the theme switch returns to, or changing

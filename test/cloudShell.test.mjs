@@ -307,21 +307,35 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   check("S6.11", /alt=""/.test(component) && /aria-hidden/.test(component),
     "and the mark is decorative to a screen reader — the label carries the meaning");
 
-  // Every route where a wait is actually visible has one. All three are
-  // force-dynamic and every control on them is a navigation.
-  for (const [id, rel] of [
-    ["S6.12", "app/repos/[repoId]/loading.tsx"],
-    ["S6.13", "app/repos/[repoId]/trend/loading.tsx"],
-    ["S6.14", "app/r/[runId]/loading.tsx"],
-  ]) {
-    let present = true;
-    try {
-      await readFile(path.join(WEB, rel), "utf-8");
-    } catch {
-      present = false;
-    }
-    check(id, present, `${rel.replace("app/", "")} has a loading state`);
-  }
+  // ── S6.12–S6.14 required three route-level loading states. They are gone ──
+  //
+  // **This check was right and is now wrong, and that is worth writing down
+  // rather than deleting quietly.** It required a `loading.tsx` on the three
+  // dynamic Cloud routes, on the reasoning that every control on them is a
+  // navigation and a navigation with no feedback reads as a broken click.
+  //
+  // What it could not know is that a `loading.tsx` is a Suspense boundary, that
+  // the boundary starts the response streaming the moment the page awaits its
+  // first query, and that Next cannot set a status code once the headers have
+  // gone. So those three files were the reason every refused Cloud page answered
+  // **HTTP 200** — and FUTURENORMA §4 Open decision 5, decided 2026-08-23, is
+  // that a refusal must answer 404. The two cannot both hold on one route.
+  //
+  // The status won, on measurement rather than principle: those pages answer in
+  // 20–80 ms against a local server, including the artifact-heavy report, so the
+  // spinner was covering a wait that is mostly not there. What is genuinely lost
+  // is feedback during a cold start. `_components/cloud/loading.tsx` records how
+  // to get both back if that turns out to matter.
+  //
+  // S14.5 is the check that replaced these, asserting the opposite for the same
+  // reason: no `loading.tsx` on a page that can refuse.
+  check("S6.12", !existsSync(path.join(WEB, "app/r/[runId]/loading.tsx")) &&
+    !existsSync(path.join(WEB, "app/repos/[repoId]/loading.tsx")) &&
+    !existsSync(path.join(WEB, "app/repos/[repoId]/trend/loading.tsx")),
+    "the three route-level loading states are deliberately gone — they pinned every refusal to HTTP 200 (§4 Open decision 5); S14.5 holds the replacement rule");
+
+  check("S6.13", /export function Loading\b/.test(component) && /LoadingPanel/.test(component),
+    "the indicator itself stays, for the in-page busy states in frame-view and share-panel that are not navigations and stream nothing");
 }
 
 // ═══ S7 — the empty states, and the figures in them ═══
@@ -339,19 +353,33 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
   // Not vacuous: an empty or truncated list would make every check below pass
   // by having nothing to check.
-  const CLOUD_POSES = ["lantern", "hourglass", "parcel", "key", "envelope"];
-  check("S7.1", poses.length >= 14 && CLOUD_POSES.every((p) => poses.includes(p)),
-    `${poses.length} poses declared, including the five the Cloud surface uses (${poses.join(", ")})`);
+  const CLOUD_POSES = ["lantern", "hourglass", "parcel", "key", "envelope", "repair"];
+  check("S7.1", poses.length >= 15 && CLOUD_POSES.every((p) => poses.includes(p)),
+    `${poses.length} poses declared, including the six the Cloud surface uses (${poses.join(", ")})`);
 
   // TypeScript already forces `ARMS` and `MOTION` to hold every pose — they are
   // `Record<TwinPose, …>`. Nothing forces the CSS, and a pose whose class is
   // missing renders a figure that simply never moves, which reads as a design
   // choice rather than as a bug.
+  //
+  // **Unless it is one**, which is what `still: true` is for. This check used to
+  // require keyframes for every pose without exception, and `repair` — the error
+  // state's wrench, deliberately motionless — turned it red on 2026-08-22. The
+  // exemption is read from `MOTION` rather than kept as a list here, so a pose
+  // can only escape the rule by saying in the source that it means to.
+  const still = new Set(
+    [...twins.matchAll(/(\w+):\s*\{[^}]*still:\s*true[^}]*\}/g)].map((m) => m[1])
+  );
+  check("S7.2a", still.size > 0 && still.has("repair"),
+    `the exemption is read from MOTION, not hard-coded here — still poses: ${[...still].join(", ")}`);
+
   const unanimated = poses.filter(
-    (p) => !new RegExp(`@keyframes tw-${p}\\b`).test(css) || !new RegExp(`\\.tw-${p}\\s*\\{`).test(css)
+    (p) =>
+      !still.has(p) &&
+      (!new RegExp(`@keyframes tw-${p}\\b`).test(css) || !new RegExp(`\\.tw-${p}\\s*\\{`).test(css))
   );
   check("S7.2", unanimated.length === 0,
-    `every pose has both its keyframes and its class in globals.css${unanimated.length ? ` — missing: ${unanimated.join(", ")}` : ""}`);
+    `every pose that is not declared still has both its keyframes and its class in globals.css${unanimated.length ? ` — missing: ${unanimated.join(", ")}` : ""}`);
 
   // The prop is what stops a new pose reading as an existing one: a silhouette
   // is recognised before a limb is, so a pose that only moves an elbow is the
@@ -383,19 +411,33 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
     /<CloudTwin pose="parcel"/.test(reposPage) && /norma-scope upload/.test(reposPage),
     "the repository list's blank slate carries the parcel figure and the command that ends it");
 
-  // The other thin state on the same page. It is the one a person lands on when
-  // their session resolves and their membership list is empty — legitimate per
-  // §10.7 5A.4, and for a while the only state on the surface still rendering as
-  // a bare paragraph in a card that stopped a third of the way down the window.
+  // The other thin state, which is no longer on that page: it is the one a
+  // person lands on when their session resolves and their membership list is
+  // empty — legitimate per §10.7 5A.4 — and it belongs to *every* area of the
+  // console rather than to the repository list. It moved into the shell when
+  // there were seven areas that could each have drawn their own.
+  const consoleShell = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8")
+  );
   check("S7.6b",
-    /<CloudTwin pose="envelope"/.test(reposPage) && /invitation link/.test(reposPage),
+    /<CloudTwin pose="envelope"/.test(consoleShell) && /invitation link/.test(consoleShell),
     "and the no-organization state carries the envelope figure and names the invitation that ends it");
 
-  // Both `/repos` states use one block. Two copies of the same layout is how
-  // the pair drifts — one gets a height and the other keeps the old collapse.
-  const blankSlateUses = (reposPage.match(/styles\.blankSlate/g) ?? []).length;
-  check("S7.6c", blankSlateUses === 2,
-    `both blank states share .blankSlate rather than each owning a layout (${blankSlateUses} uses)`);
+  // It is drawn once. Two copies of the same state is how the pair drifts — one
+  // gains a figure, the other keeps a bare paragraph — and with seven areas the
+  // copies would not stop at two.
+  const envelopeDraws = [reposPage, consoleShell].filter((f) => /pose="envelope"/.test(f)).length;
+  check("S7.6c", envelopeDraws === 1 && !/pose="envelope"/.test(reposPage),
+    `the no-organization state is drawn in one place, and it is not the repository list (${envelopeDraws} drawing)`);
+
+  // Both blank states still share one layout block, which is the point of the
+  // class: `/repos` with nothing uploaded, and the shell's no-organization
+  // state, each with its own words and the same shape.
+  const blankSlateUses =
+    (reposPage.match(/styles\.blankSlate/g) ?? []).length +
+    (consoleShell.match(/styles\.blankSlate/g) ?? []).length;
+  check("S7.6d", blankSlateUses === 2,
+    `both blank states compose .blankSlate rather than each owning a layout (${blankSlateUses} uses)`);
 
   const login = decomment(await readFile(path.join(WEB, "app/login/page.tsx"), "utf-8"));
   check("S7.7", /<CloudTwin pose="key"/.test(login) && !/TwinLink/.test(login),
@@ -540,6 +582,937 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   const repos = decomment(await readFile(path.join(WEB, "app/repos/page.tsx"), "utf-8"));
   check("S9.11", stripGone && !/SessionControls/.test(repos),
     "the old sign-out strip under the footer is deleted, not left rendering next to the menu");
+}
+
+// ═══ S10 — the error states ═══
+//
+// An error is not an empty result, and every check here defends that one
+// distinction. Told the wrong way round — a shrug, the word "nothing", a page
+// that looks like a finished request — a customer concludes their data is gone.
+//
+// What can go wrong silently, which is what this suite is for:
+//
+//   - the figure gets an idle animation like every other pose, and the error
+//     page reads as work still in progress;
+//   - the boundary prints the exception, leaking a provider name or an internal
+//     identifier to whoever is looking;
+//   - `global-error` ships without its stylesheet and renders unstyled at the
+//     worst possible moment — nothing throws, it just looks broken;
+//   - the Next 16.3 `retry`/`reset` rename goes unnoticed and the recovery
+//     button clears the boundary without re-fetching, so the same failure
+//     comes straight back.
+{
+  const errorState = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/error-state.tsx"), "utf-8")
+  );
+  const errorCss = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/error-state.module.css"), "utf-8")
+  );
+  const globalError = decomment(await readFile(path.join(WEB, "app/global-error.tsx"), "utf-8"));
+  const twins = decomment(
+    await readFile(path.join(WEB, "app/(site)/_components/twins.tsx"), "utf-8")
+  );
+  const globals = decomment(await readFile(path.join(WEB, "app/globals.css"), "utf-8"));
+
+  // ── The figure does not move ──────────────────────────────────────────────
+  //
+  // Two halves, and both are needed. The declaration says the pose is still;
+  // the absent keyframes are what makes it true. Either one alone rots — a
+  // `still: true` the renderer ignores, or missing CSS that looks like an
+  // oversight and gets "fixed".
+  check("S10.1", /repair:\s*\{[^}]*still:\s*true/.test(twins),
+    "`repair` is declared still in MOTION, so a pose that does not animate says so rather than just lacking a rule");
+
+  check("S10.2", !/\.tw-repair\s*\{/.test(globals) && !/@keyframes\s+tw-repair/.test(globals),
+    "and there are no `tw-repair` keyframes — an idling figure beside a failure reads as work still in progress");
+
+  check("S10.2b", /const anim = motion\.still \? undefined : `tw-\$\{pose\}`/.test(twins),
+    "counter-test: without this branch the class is applied from the pose name alone, so adding keyframes later would animate it with nothing in review to stop that");
+
+  // ── It is not a shrug, and no Cloud pose means two things ─────────────────
+  check("S10.3", /pose="repair"/.test(errorState),
+    "the error state uses `repair` — a wrench, not the shrug that already means 'nothing is here' on /agents");
+
+  {
+    // Every pose named across the Cloud surface, counted. The set's rule is one
+    // placement, one pose; a repeat makes one drawing mean two things.
+    const cloudFiles = [
+      "app/_components/cloud/error-state.tsx",
+      "app/repos/page.tsx",
+      "app/repos/[repoId]/trend/page.tsx",
+      "app/login/page.tsx",
+    ];
+    const used = [];
+    for (const file of cloudFiles) {
+      const full = path.join(WEB, file);
+      if (!existsSync(full)) continue;
+      const text = decomment(await readFile(full, "utf-8"));
+      for (const m of text.matchAll(/pose="([a-z]+)"/g)) used.push(m[1]);
+    }
+    check("S10.4", used.length > 0 && new Set(used).size === used.length,
+      `no pose is used twice on the Cloud surface — found ${used.join(", ")}`);
+  }
+
+  // ── Nothing from the exception reaches the page ───────────────────────────
+  //
+  // The boundary receives the whole `Error`. Rendering any of it is how a
+  // provider name, a prompt fragment or an internal id ends up on a customer's
+  // screen — PATHWAYS §10.7 5A.11.
+  const leaks = /\{\s*error\.(message|stack|digest|name)/.test(errorState);
+  check("S10.5", !leaks,
+    "the error component renders nothing off the error object — no message, stack, digest or name");
+
+  check("S10.5b", /digest/.test(errorState) === false && /error\.message/.test(errorState) === false,
+    "counter-test: checking only for `error.message` would pass a page that prints `error.digest`, which is equally an identifier — both are absent");
+
+  // ── The Next 16.3 rename ──────────────────────────────────────────────────
+  //
+  // `retry()` re-fetches the segment's data; `reset()` only clears the boundary
+  // and re-renders from cache. These pages fail on a query, so `reset` puts the
+  // same failure straight back and the button looks dead.
+  for (const [id, file] of [
+    ["S10.6", "app/repos/error.tsx"],
+    ["S10.7", "app/r/error.tsx"],
+    ["S10.8", "app/global-error.tsx"],
+  ]) {
+    const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+    check(id, /retry:\s*\(\)\s*=>\s*void/.test(text) && !/\breset\b/.test(text),
+      `${file} takes \`retry\`, not the pre-16.3 \`reset\` that re-renders from cache without re-fetching`);
+  }
+
+  // ── The document-level fallback stands on its own ────────────────────────
+  check("S10.9", /import "\.\/globals\.css"/.test(globalError),
+    "global-error imports the stylesheet explicitly — it replaces the root layout, so global styles do not arrive on their own");
+
+  check("S10.10", /<html/.test(globalError) && /<body/.test(globalError),
+    "and renders its own html and body, which Next requires of this file");
+
+  // The shortcut that would have been reached for, and why it is blocked.
+  {
+    const middleware = decomment(await readFile(path.join(WEB, "middleware.ts"), "utf-8"));
+    const blocksStyleElements = /style-src-elem 'self'/.test(middleware);
+    check("S10.11", blocksStyleElements && !/<style/.test(globalError),
+      "counter-test: `style-src-elem 'self'` blocks inline <style> blocks, so the usual self-contained-fallback shortcut would have rendered unstyled — the stylesheet import is the only route");
+  }
+
+  // ── The figure survives a phone ───────────────────────────────────────────
+  //
+  // The opposite rule to `.empty .figure`, which is dropped below 560px. There
+  // the drawing is decoration inside a page that still has a heading and
+  // controls; here it is the whole page, and two grey paragraphs on a phone is
+  // exactly what a failed render looks like.
+  {
+    const narrow = /@media\s*\(max-width:\s*620px\)\s*\{([\s\S]*)$/.exec(errorCss);
+    const hidesTwin = narrow !== null && /\.twin\s*\{[^}]*display:\s*none/.test(narrow[1]);
+    check("S10.12", narrow !== null && !hidesTwin,
+      "the figure is kept below 620px rather than hidden — it is most of what stops the page reading as a broken render");
+
+    check("S10.13", narrow !== null && /\.actions\s*\{[^}]*flex-direction:\s*column/.test(narrow[1]),
+      "and the two actions stack into full-width tap targets rather than splitting one narrow row");
+  }
+
+  check("S10.14", /Try again/.test(errorState) && /Back to Cloud/.test(errorState),
+    "both recovery actions are present: retry in place, and a way out");
+}
+
+// ═══ S11 — the console shell, its navigation, and the role matrix ═══
+//
+// The shell exists so that seven areas cannot each answer "whose organization
+// is this, what plan is it on, and what else is there" differently. What can go
+// wrong here is quieter than a broken page:
+//
+//   - the navigation is hand-listed somewhere and drifts from the matrix, so a
+//     role sees a link it cannot open, or an area disappears from the menu
+//     while staying reachable by URL;
+//   - a page trusts the menu instead of checking, and is open to anyone who
+//     types its path — the failure PATHWAYS §5 means by "a route is not a UI
+//     boundary";
+//   - the ownership map claims a path no page answers on, or a page answers on
+//     a path no area claims;
+//   - the active-organization cookie stops being a preference and becomes an
+//     authorization input.
+//
+// The matrix and the map are **imported and evaluated**, not matched with a
+// regex. A role table that has never been asked a question is a table nobody
+// has checked.
+{
+  const {
+    CONSOLE_AREAS,
+    areaForPath,
+    areaById,
+    canReach,
+    navFor,
+    deploymentEnvironment,
+  } = await import(path.join(DIST, "consoleIA.js"));
+
+  const shell = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8")
+  );
+  const consoleLib = decomment(await readFile(path.join(WEB, "lib/console.ts"), "utf-8"));
+
+  // ── Every area answers ────────────────────────────────────────────────────
+  //
+  // A navigation item that 404s is worse than no navigation item: it reads as a
+  // broken product rather than an unfinished one.
+  {
+    const missing = [];
+    for (const area of CONSOLE_AREAS) {
+      const file = path.join(WEB, "app", area.href.replace(/^\//, ""), "page.tsx");
+      if (!existsSync(file)) missing.push(area.href);
+    }
+    check("S11.1", missing.length === 0,
+      `every area in the map has a page at its href (${CONSOLE_AREAS.length} areas, missing: ${missing.join(", ") || "none"})`);
+  }
+
+  // ── The navigation is the matrix, not a copy of it ────────────────────────
+  //
+  // **The first version of this check only looked for `href="/billing"`**, and
+  // a break that special-cased one area inside the expression —
+  // `href={area.id === "billing" ? "/billing" : area.href}` — went straight
+  // through it. So it looks for the *path* anywhere in the file, in any
+  // syntax: the shell has no business naming an area's route at all, because
+  // every route it needs is on the object it is already iterating.
+  {
+    const named = CONSOLE_AREAS.map((a) => a.href).filter((href) => shell.includes(`"${href}"`));
+    check("S11.2", /navFor\(/.test(shell) && named.length === 0,
+      `the shell renders navFor(role) and names no area path itself (found: ${named.join(", ") || "none"})`);
+  }
+
+  // ── Hiding is not deciding ────────────────────────────────────────────────
+  //
+  // Each area's page has to make the decision again on the server. The two
+  // admin-only areas are the ones with something behind them, so a page of
+  // theirs that skipped the check would be open to any member who typed it.
+  {
+    const unguarded = [];
+    for (const area of CONSOLE_AREAS) {
+      const file = path.join(WEB, "app", area.href.replace(/^\//, ""), "page.tsx");
+      if (!existsSync(file)) continue;
+      const text = decomment(await readFile(file, "utf-8"));
+      if (!/consoleContext\(/.test(text)) unguarded.push(area.href);
+    }
+    check("S11.3", unguarded.length === 0,
+      `every area page calls consoleContext on the server (unguarded: ${unguarded.join(", ") || "none"})`);
+  }
+
+  check("S11.3b", /area\.roles\.includes\(membership\.role\)/.test(consoleLib),
+    "and consoleContext decides from the area's own role list rather than from a second copy of the matrix");
+
+  // ── The matrix, evaluated ─────────────────────────────────────────────────
+  {
+    const grid = {};
+    for (const role of ["admin", "member", "designer"]) {
+      grid[role] = CONSOLE_AREAS.filter((a) => canReach(a.id, role)).map((a) => a.id).join(",");
+    }
+    check("S11.4", grid.admin === "overview,runs,trends,explain,organization,billing,data",
+      `an admin reaches all seven areas (${grid.admin})`);
+    check("S11.5", grid.member === "overview,runs,trends,explain" && grid.member === grid.designer,
+      `a member and a designer reach the four read areas and no more (${grid.member})`);
+
+    // The three areas the 5A.9 table gives to admins alone: every write in it —
+    // invite, change roles, create keys, change billing, delete — is admin or
+    // owner. Naming them here means a later widening has to be deliberate.
+    for (const id of ["organization", "billing", "data"]) {
+      check(`S11.5.${id}`,
+        !canReach(id, "member") && !canReach(id, "designer") && canReach(id, "admin"),
+        `${id} is admin-only, matching §10.7 5A.9's table`);
+    }
+
+    // Counter-test: a navigation built from the whole list rather than from the
+    // role shows a designer the billing area, and the link works right up to the
+    // point where the page refuses — which is the version that gets reported as
+    // a bug rather than as a leak.
+    const naive = CONSOLE_AREAS.map((a) => a.id).join(",");
+    check("S11.5b", navFor("designer").map((a) => a.id).join(",") !== naive,
+      `counter-test: an unfiltered nav would offer a designer all seven (${naive})`);
+  }
+
+  // ── The ownership map answers for every path ──────────────────────────────
+  {
+    const ownHref = CONSOLE_AREAS.every((a) => areaForPath(a.href)?.id === a.id);
+    check("S11.6", ownHref, "every area's own href maps back to that area");
+
+    check("S11.7", areaForPath("/repos/abc123")?.id === "runs",
+      "a repository page belongs to Runs and reports");
+    check("S11.8", areaForPath("/repos/abc123/trend")?.id === "trends",
+      "and its trend view belongs to Trends, which is where the reader thinks they are");
+
+    // Counter-test: the string-prefix version this replaced. `/repos` is a
+    // prefix of `/repos/abc123/trend`, so the longest *string* that matches is
+    // still `/repos` — the trend page lands in Runs and the wrong navigation
+    // item lights up while you read a trend.
+    {
+      const prefixOwner = (p) => {
+        let best = null;
+        let len = -1;
+        for (const area of CONSOLE_AREAS) {
+          for (const own of area.owns) {
+            if (own.includes("*")) continue;
+            if ((p === own || p.startsWith(`${own}/`)) && own.length > len) {
+              best = area.id;
+              len = own.length;
+            }
+          }
+        }
+        return best;
+      };
+      check("S11.8b", prefixOwner("/repos/abc123/trend") === "runs" && areaForPath("/repos/abc123/trend")?.id === "trends",
+        "counter-test: string-prefix ownership puts the trend page in Runs — segment matching with a wildcard is what fixes it");
+    }
+
+    check("S11.9", areaForPath("/database") === null && areaForPath("/legal/privacy") === null,
+      "matching is by segment, so /data does not own /database and nothing outside the console is claimed");
+
+    // No two areas claim the same path. Overlap is not caught by the lookup —
+    // it just picks one — so it has to be asserted separately.
+    {
+      const seen = new Map();
+      let clash = null;
+      for (const area of CONSOLE_AREAS) {
+        for (const own of area.owns) {
+          if (seen.has(own)) clash = `${own}: ${seen.get(own)} and ${area.id}`;
+          seen.set(own, area.id);
+        }
+      }
+      check("S11.10", clash === null, `no path pattern is claimed by two areas (${clash ?? "none"})`);
+    }
+  }
+
+  // ── No page outside the map ───────────────────────────────────────────────
+  //
+  // PATHWAYS §5: "do not add a one-off page when an existing area can own the
+  // workflow". This is that rule with teeth — a new signed-in page either
+  // extends an area's `owns`, or is the account surface, or fails here.
+  //
+  // **`isAccountPath` rather than a name in `outside`.** The account page is
+  // genuinely not one of the seven — it is scoped to a person — and the
+  // difference between the two ways of admitting that is where the decision
+  // lives. In the exception set it would be a line in a test file that nobody
+  // reviews as a design choice; asking `consoleIA.ts` means the surface is
+  // declared in the same module as the areas, next to what it holds and what it
+  // still owes.
+  {
+    const { isAccountPath } = await import(path.join(DIST, "consoleIA.js"));
+    const outside = new Set(["(site)", "(pitch)", "admin", "api", "login", "unlock", "r"]);
+    const { readdir } = await import("node:fs/promises");
+    const entries = await readdir(path.join(WEB, "app"), { withFileTypes: true });
+    const orphans = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith("_") || outside.has(entry.name)) continue;
+      if (!existsSync(path.join(WEB, "app", entry.name, "page.tsx"))) continue;
+      const route = `/${entry.name}`;
+      if (areaForPath(route) === null && !isAccountPath(route)) orphans.push(entry.name);
+    }
+    check("S11.11", orphans.length === 0,
+      `every signed-in page belongs to an area or to the account surface (orphans: ${orphans.join(", ") || "none"})`);
+  }
+
+  // ── The context row says all four things ──────────────────────────────────
+  //
+  // Organization, role, subscription state, environment. Each is here because
+  // its absence has a cost: whose data, what you may do with it, whether the
+  // account is in good standing, and whether this is the real deployment.
+  check("S11.12",
+    /OrgSwitcher/.test(shell) && /membership\.role/.test(shell) &&
+      /SubscriptionChip/.test(shell) && /EnvironmentChip/.test(shell),
+    "the context row names the organization, the role, the subscription state and the environment");
+
+  check("S11.13",
+    deploymentEnvironment({ VERCEL_ENV: "production" }) === "production" &&
+      deploymentEnvironment({ VERCEL_ENV: "preview" }) === "preview" &&
+      deploymentEnvironment({}) === "development",
+    "and the environment is read from VERCEL_ENV, with a laptop reading as development");
+
+  // ── Switching organizations ───────────────────────────────────────────────
+  {
+    const route = decomment(await readFile(path.join(WEB, "app/api/org/route.ts"), "utf-8"));
+    check("S11.14", /export async function POST/.test(route) && !/export async function GET/.test(route),
+      "the organization is switched by POST — a GET that changes what a page shows would be followed by prefetchers");
+    check("S11.15", /membershipFor\(session, requested\)/.test(route),
+      "and the route checks the membership before it writes the cookie, so a request for somebody else's organization is refused rather than quietly ignored");
+    check("S11.16", /sameOrigin\(request\)/.test(route) && /status:\s*303/.test(route),
+      "same-origin only, and a 303 so the back button does not re-post it");
+
+    const switcher = decomment(
+      await readFile(path.join(WEB, "app/_components/cloud/org-switcher.tsx"), "utf-8")
+    );
+    check("S11.17", /memberships\.length < 2/.test(switcher),
+      "one membership renders as a name rather than a menu with a single item in it");
+  }
+
+  // ── The cookie is a preference, evaluated ─────────────────────────────────
+  //
+  // Compiled and run rather than read. `web/lib/membership.ts` imports only
+  // types, which is what makes that possible — see the note in the file.
+  {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { execFileSync } = await import("node:child_process");
+    const { tmpdir } = await import("node:os");
+    const { pathToFileURL } = await import("node:url");
+
+    const out = await mkdtemp(path.join(tmpdir(), "norma-membership-"));
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "node_modules", "typescript", "bin", "tsc"),
+          "--noCheck",
+          "--target", "es2022",
+          "--module", "es2022",
+          "--moduleResolution", "bundler",
+          "--outDir", out,
+          path.join(WEB, "lib", "membership.ts"),
+        ],
+        // cwd outside the repo: naming a file on the command line while a
+        // `tsconfig.json` is discoverable from the working directory is TS5112,
+        // which TypeScript treats as an error rather than a warning.
+        { stdio: "pipe", cwd: tmpdir() }
+      );
+      const { activeMembership, membershipFor, hasRole } = await import(
+        pathToFileURL(path.join(out, "membership.js")).href
+      );
+
+      const session = {
+        memberships: [
+          { orgId: "org-held", orgName: "Held", role: "member" },
+          { orgId: "org-also", orgName: "Also", role: "admin" },
+        ],
+      };
+
+      check("S11.18", activeMembership(session, "org-also")?.orgId === "org-also",
+        "a cookie naming an organization the session holds selects it");
+      check("S11.19", activeMembership(session, "org-somebody-elses")?.orgId === "org-held",
+        "a cookie naming one it does not hold is ignored, not obeyed — it falls back to a held membership");
+      check("S11.20", activeMembership(null, "org-held") === null && activeMembership({ memberships: [] }) === null,
+        "no session and no membership both resolve to nothing");
+      check("S11.21", membershipFor(session, "org-somebody-elses") === null,
+        "and asking for another tenant's organization by id resolves to nothing, which is a 404 above this");
+
+      // Counter-test: the version that trusts the cookie. It returns a
+      // membership for an organization the session does not hold — which is a
+      // cross-tenant read, from a value the browser sends.
+      const naive = (s, preferred) =>
+        preferred ? { orgId: preferred, orgName: preferred, role: "admin" } : s.memberships[0];
+      check("S11.22",
+        naive(session, "org-somebody-elses").orgId === "org-somebody-elses" &&
+          activeMembership(session, "org-somebody-elses")?.orgId !== "org-somebody-elses",
+        "counter-test: a cookie taken at face value hands back an organization the session never held");
+
+      check("S11.23", hasRole({ role: "admin" }, ["admin"]) && !hasRole({ role: "designer" }, ["admin"]) && !hasRole(null, ["admin"]),
+        "hasRole answers from an explicit allowed set, and null is never allowed");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  }
+
+  // ── The trend page's gate ─────────────────────────────────────────────────
+  //
+  // **This was broken and shipped.** The trend view and its CSV export answered
+  // only to `NORMA_DEV_OPEN`, which no deployment sets, so both 404ed for every
+  // real customer — while `PATHWAYS.md` §7's table recorded the `/repos/*` gate
+  // as closed, because the repository page above them had been fixed. A
+  // navigation area cannot point at a page nobody can open.
+  for (const [id, file] of [
+    ["S11.24", "app/repos/[repoId]/trend/page.tsx"],
+    ["S11.25", "app/repos/[repoId]/trend/export/route.ts"],
+  ]) {
+    const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+    const membershipGate = /membershipFor\(session, owner\.orgId\)/.test(text);
+    const devOpenAlone = /if\s*\(!repoViewOpen\(\)\)\s*\{/.test(text);
+    check(id, membershipGate && !devOpenAlone,
+      `${file} admits a member of the owning organization, with NORMA_DEV_OPEN left as the local door`);
+  }
+
+  check("S11.26",
+    /!membership && !repoViewOpen\(\)/.test(
+      decomment(await readFile(path.join(WEB, "app/repos/[repoId]/trend/page.tsx"), "utf-8"))
+    ),
+    "counter-test: the refusal needs both to fail — a member with no dev flag is admitted, which is the case that was 404ing");
+
+  // ── Three things a browser found, and a check now holds ───────────────────
+  //
+  // None of these could have failed a suite as it stood. They are here because
+  // each was a real defect on screen.
+
+  // The navigation scrolled sideways, and at 666px the current area — Billing
+  // and usage — sat past the right edge: underlined, and not visible. Nothing
+  // but a script can scroll a chosen element into view on load, and this
+  // surface runs none, so the row wraps instead.
+  {
+    const css = decomment(
+      await readFile(path.join(WEB, "app/_components/cloud/console-shell.module.css"), "utf-8")
+    );
+    const navBlock = /\.nav\s+ul\s*\{([^}]*)\}/.exec(css);
+    check("S11.27",
+      navBlock !== null && /flex-wrap:\s*wrap/.test(navBlock[1]) && !/\.nav\s*\{[^}]*overflow-x/.test(css),
+      "the area navigation wraps rather than scrolling, so the current area is never outside the visible row");
+
+    // The outline list rendered as four unmarked lines: `globals.css` resets
+    // lists for the nav and footers, and this one inherited the reset.
+    check("S11.28", /\.outlineList\s*\{[^}]*list-style:\s*disc/.test(css),
+      "and the outline list states its markers rather than inheriting the global reset that removes them");
+  }
+
+  // "admin or member or designers" — `roles.join(" or ") + "s"`, which no static
+  // check would have questioned and a browser showed immediately.
+  check("S11.29", !/join\(" or "\)/.test(shell) && /roleList\(/.test(shell),
+    "roles are listed by a function that pluralises each one, not by joining and adding an 's' to the last");
+
+  // ── `owner` is not a role ─────────────────────────────────────────────────
+  //
+  // The seed wrote `role: 'owner'` into `memberships`, so the local sign-in
+  // address held a value no authorization path recognises and was refused every
+  // admin-gated area with nothing saying why. 001 wrote the domain in a comment
+  // and no constraint; 022 adds the constraint.
+  {
+    const devMembership = decomment(await readFile(path.join(ROOT, "scripts/dev-membership.mjs"), "utf-8"));
+    check("S11.30", /claimOwnership\(/.test(devMembership) && !/role:\s*"owner"/.test(devMembership),
+      "the seed grants ownership through claimOwnership — which sets the invariant and an admin membership together — rather than inventing an `owner` role");
+
+    const db = await createDb();
+    await migrate(db);
+    const orgId = `console-role-${randomUUID().slice(0, 8)}`;
+    const userId = `u-${randomUUID().slice(0, 8)}`;
+    await db.query("INSERT INTO orgs (id, name) VALUES ($1, $2)", [orgId, "role domain"]);
+    await db.query("INSERT INTO users (id, email) VALUES ($1, $2)", [userId, `${userId}@example.com`]);
+
+    let refused = false;
+    try {
+      await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'owner')", [orgId, userId]);
+    } catch {
+      refused = true;
+    }
+    check("S11.31", refused,
+      "and the column itself refuses it now — a comment naming the domain is not the domain (CLAUDE.md rule 1)");
+
+    // Not vacuous: the three real roles still go in.
+    let accepted = 0;
+    for (const role of ["admin", "member", "designer"]) {
+      await db.query(
+        `INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+        [orgId, userId, role]
+      );
+      accepted++;
+    }
+    check("S11.32", accepted === 3, "while admin, member and designer are all still accepted");
+  }
+}
+
+// ═══ S12 — the Organization area: its forms and the routes behind them ═══
+//
+// The first area of the console that writes anything, and the first place a
+// browser can reach `invitations.ts`, `users.ts` and `apiKeys.ts`. The domain
+// rules themselves are `test/organization.test.mjs` and the behaviour over HTTP
+// is `scripts/tenant-gate-check.mjs`. What is checkable *here* is the wiring
+// between the two, which is where this kind of surface goes wrong:
+//
+//   - a form posts to an action that does not exist, so the control silently
+//     does nothing;
+//   - a form carries an `orgId`, and the organization stops coming from the
+//     session — the exact failure §10.7 5A opens with;
+//   - a page grows a second copy of the role matrix instead of asking the one
+//     in `consoleIA.ts`;
+//   - a message from the query string is rendered as text, so a link can be
+//     made to say anything.
+{
+  const orgAdmin = decomment(await readFile(path.join(WEB, "lib/orgAdmin.ts"), "utf-8"));
+  const route = decomment(await readFile(path.join(WEB, "app/api/organization/[action]/route.ts"), "utf-8"));
+  const page = decomment(await readFile(path.join(WEB, "app/organization/page.tsx"), "utf-8"));
+
+  // The list itself, imported and evaluated. It lives in the server package for
+  // exactly this reason — so the suite reads the same array the route is typed
+  // by and the gate script iterates, rather than a regex's opinion of it.
+  const { ORG_ACTIONS, orgActionPath } = await import(path.join(DIST, "consoleIA.js"));
+  const actions = [...ORG_ACTIONS];
+  check("S12.1", actions.length >= 6, `the action list names ${actions.length} writes (${actions.join(", ")})`);
+  check("S12.1b", orgActionPath(actions[0]) === `/api/organization/${actions[0]}`,
+    `and every action's path is built from it (${orgActionPath(actions[0])})`);
+
+  // ── Every named action has a handler ──────────────────────────────────────
+  {
+    const missing = actions.filter((a) => !new RegExp(`(^|\\s)(async )?"?${a}"?\\(`, "m").test(route));
+    check("S12.2", missing.length === 0,
+      `every action in the list has a handler in the route (missing: ${missing.join(", ") || "none"})`);
+    check("S12.2b", /Record<OrgActionName, Action>/.test(route),
+      "and the dispatch table is typed by that list, so a missing handler is a build failure rather than a 404 found by a customer");
+  }
+
+  // ── Every form posts to one of them ───────────────────────────────────────
+  //
+  // Through `orgActionPath`, never as a literal path: a typed string is how a
+  // form ends up posting into a 404, and the compiler cannot see a typo inside
+  // quotes.
+  {
+    const used = [...page.matchAll(/orgActionPath\("([a-z-]+)"\)/g)].map((m) => m[1]);
+    const unknown = used.filter((a) => !actions.includes(a));
+    const literal = /action="\/api\//.test(page);
+    check("S12.3", used.length > 0 && unknown.length === 0 && !literal,
+      `every form on the page posts through orgActionPath to a declared action (${used.length} forms, unknown: ${unknown.join(", ") || "none"}, literal paths: ${literal})`);
+  }
+
+  // ── The organization is never a form field ────────────────────────────────
+  //
+  // §10.7 5A: *a caller-provided org ID is never authorization.* There is
+  // deliberately no `orgId` input anywhere on this page, and the route reads it
+  // from the membership the session resolved.
+  {
+    const formField = /name="orgId"/.test(page);
+    const fromForm = /form\.get\("orgId"\)/.test(route);
+    check("S12.4", !formField && !fromForm,
+      `no form carries an organization and no handler reads one (field: ${formField}, read: ${fromForm})`);
+    check("S12.4b", /admin\.membership\.orgId/.test(route),
+      "every write is scoped to the organization the session resolved");
+  }
+
+  // ── One gate, from the one matrix ─────────────────────────────────────────
+  {
+    check("S12.5", /requireOrgAdmin\(request\)/.test(route) && (route.match(/requireOrgAdmin\(/g) ?? []).length === 1,
+      "the gate is called once, before the dispatch, so no handler can be reached without it");
+    check("S12.5b", /canReach\("organization"/.test(orgAdmin) && !/=== "admin"/.test(orgAdmin),
+      "and it asks CONSOLE_AREAS which roles may reach the area rather than hard-coding admin — one matrix, seven readers");
+    // **A structure check, and it says so.** Whether the origin check actually
+    // refuses a cross-site POST is `tenant-gate-check.mjs` G6.4, over HTTP, with
+    // a real `sec-fetch-site` header — a source check cannot answer that, and
+    // one that claimed to would pass a call sitting behind `if (false &&`.
+    // What is checkable here is the *order*: it comes before the session is
+    // read, so a cross-origin request is refused before anything is looked up.
+    const originAt = orgAdmin.indexOf("sameOrigin(request)");
+    const sessionAt = orgAdmin.indexOf("await currentSession()");
+    check("S12.5c", originAt !== -1 && sessionAt > originAt,
+      "the same-origin check comes first, before any lookup (SameSite alone is not the whole CSRF policy — §10.7 5A.8; G6.4 proves it refuses)");
+  }
+
+  // ── The reader is told what happened, in our words ────────────────────────
+  //
+  // The query string picks a sentence from a fixed map; it never supplies one.
+  // A page that renders `?notice=` as text is a page a link can put words into,
+  // and this surface has already been green for the wrong reason once because
+  // it echoed a query parameter back.
+  {
+    const mapped = /NOTICES\[code as OrgNotice\]/.test(page) && /hasOwnProperty\.call\(NOTICES, code\)/.test(page);
+    // Attribute positions stripped first, so `code={notice}` — passing the value
+    // *to* the lookup — is not mistaken for rendering it. What is left is JSX
+    // text, and `{code}` or `{notice}` there would be the caller's own string on
+    // the page. `{notice.text}` is the map's sentence and does not match.
+    // A JSX *text* position only — the value written between tags. Attributes
+    // are stripped first so `code={notice}`, which passes the value into the
+    // lookup, is not mistaken for rendering it, and the leading `>` keeps the
+    // component's own `({ code })` parameter out of it. `{notice.text}` is the
+    // map's sentence and does not match either.
+    const jsxText = page.replace(/\w+=\{[^}]*\}/g, "");
+    const echoed = />\s*\{\s*(notice|code)\s*\}/.test(jsxText);
+    check("S12.6", mapped && !echoed,
+      `the notice is looked up in a fixed map and never rendered as the caller wrote it (mapped: ${mapped}, echoed: ${echoed})`);
+  }
+
+  // ── The key is shown once, and never stored ───────────────────────────────
+  {
+    const reveal = decomment(await readFile(path.join(WEB, "lib/keyReveal.ts"), "utf-8"));
+    check("S12.7", /HttpOnly/.test(reveal) && /Path=\/organization/.test(reveal) && /Max-Age=\$\{maxAge\}/.test(reveal),
+      "the one-time key cookie is HttpOnly, scoped to this area's path, and expires on its own");
+    check("S12.7b", !/INSERT|UPDATE|db\./i.test(reveal),
+      "and nothing about the reveal touches the database — the plaintext is never stored, which is the property the whole design exists for");
+    check("S12.7c", /createdBy: admin\.session\.user\.id/.test(route),
+      "the key records who minted it, from the session rather than from a field somebody types");
+  }
+
+  // ── The revoke is attributed to the session ───────────────────────────────
+  //
+  // Migration 018 shipped with a typed-in actor because there was no session to
+  // read, and said in its own comment that Step 6 should fix it. This is that
+  // call site.
+  {
+    check("S12.8", /actor: admin\.session\.user\.display_name/.test(route),
+      "a revocation from the console is attributed to the signed-in admin, not to a name they type");
+    check("S12.8b", /orgId: admin\.membership\.orgId/.test(route) && !/orgId: null/.test(route),
+      "and both revokes are scoped to the session's organization — a row id from a form is a request, not a permission");
+  }
+
+  // ── An invitation is a row *and* a message ────────────────────────────────
+  //
+  // The first version of this route called `createInvitation` directly, and the
+  // page said "Invitation sent" while nothing was sent — the link existed only
+  // in the database. `sendInvitation` is the one entry point that pays the
+  // outbound-email budget, creates the row and hands it to the mailer, in that
+  // order, so a route that reaches past it is a route that can invite somebody
+  // silently.
+  {
+    check("S12.10", /sendInvitation\(/.test(route) && !/createInvitation\(/.test(route),
+      "the invite handler goes through sendInvitation and never creates an invitation row on its own");
+    check("S12.10b", /invite-budget/.test(route) && /invite-unsent/.test(route),
+      "and it tells the two failures apart: a spent ceiling, and a row that exists with no mail behind it");
+  }
+
+  // ── Every membership change is audited ────────────────────────────────────
+  //
+  // §10.7 5A.11: destructive auth and organization actions are audited. The
+  // event kinds have existed since the session layer and had no caller.
+  {
+    const audited = ["invitation-revoked", "role-changed", "member-removed"].filter((kind) =>
+      new RegExp(`kind: "${kind}"`).test(route)
+    );
+    check("S12.11", audited.length === 3,
+      `every membership change records its own audit event (${audited.join(", ") || "none"})`);
+    check("S12.11b", /actorUserId: admin\.session\.user\.id/.test(route),
+      "with the admin who did it named as the actor, separately from the person it was done to");
+  }
+
+  // ── The page cannot promise what it already holds ─────────────────────────
+  {
+    const shell = decomment(await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8"));
+    check("S12.9", /outstanding\(area\)/.test(shell) && !/area\.holds\.map/.test(shell),
+      "the area outline renders holds-minus-built rather than the whole list, so a half-built area stops promising its own working controls");
+    check("S12.9b", /todo\.length === 0/.test(shell),
+      "and an area with nothing outstanding renders no outline at all");
+  }
+}
+
+// ═══ S13 — the account page: the one surface that is not an area ═══
+//
+// The session list is the control somebody reaches for after losing a laptop,
+// and it is reached from a menu whose other two items already end sessions. What
+// can go wrong here is not the domain logic — `test/account.test.mjs` holds that
+// and `tenant-gate-check.mjs` G7 proves it over HTTP — but the wiring:
+//
+//   - the page skips its gate and is readable by typing the path;
+//   - the revoke trusts the id in the form, so a copied id ends a stranger's
+//     browser;
+//   - the page is unreachable, because it has no navigation item by design and
+//     the only entry point is a menu somebody forgot to change;
+//   - the raw user agent or the stored address reaches the page.
+{
+  const accountLib = decomment(await readFile(path.join(WEB, "lib/account.ts"), "utf-8"));
+  const route = decomment(await readFile(path.join(WEB, "app/api/account/[action]/route.ts"), "utf-8"));
+  const page = decomment(await readFile(path.join(WEB, "app/account/page.tsx"), "utf-8"));
+  const menu = decomment(await readFile(path.join(WEB, "app/_components/cloud/account-menu.tsx"), "utf-8"));
+  const consoleLib = decomment(await readFile(path.join(WEB, "lib/console.ts"), "utf-8"));
+
+  const { ACCOUNT_ACTIONS, ACCOUNT_PATH, accountActionPath } = await import(path.join(DIST, "consoleIA.js"));
+  const actions = [...ACCOUNT_ACTIONS];
+
+  // ── Every named action has a handler, and every form posts at one ─────────
+  {
+    const missing = actions.filter((a) => !new RegExp(`(^|\\s)(async )?"?${a}"?\\(`, "m").test(route));
+    check("S13.1", missing.length === 0,
+      `every declared account action has a handler (${actions.join(", ")}; missing: ${missing.join(", ") || "none"})`);
+    check("S13.1b", /Record<AccountActionName, Action>/.test(route),
+      "and the dispatch table is typed by that list, so a missing handler is a build failure rather than a 404");
+
+    const used = [...page.matchAll(/accountActionPath\("([a-z-]+)"\)/g)].map((m) => m[1]);
+    const unknown = used.filter((a) => !actions.includes(a));
+    check("S13.2", used.length > 0 && unknown.length === 0,
+      `every revoke form posts through accountActionPath to a declared action (${used.length} forms, unknown: ${unknown.join(", ") || "none"})`);
+    check("S13.2b", accountActionPath(actions[0]) === `/api/account/${actions[0]}`,
+      `and the path is built from the name (${accountActionPath(actions[0])})`);
+  }
+
+  // ── The gate runs once, before the dispatch ───────────────────────────────
+  {
+    check("S13.3", /requireAccount\(request\)/.test(route) && (route.match(/requireAccount\(/g) ?? []).length === 1,
+      "the gate is called once, before the dispatch, so no handler can be reached without it");
+    // The same structural point S12.5c makes, and with the same limit: whether
+    // it *refuses* a cross-site POST is G7's job over HTTP. What is checkable
+    // here is that the origin is decided before anything is looked up.
+    const originAt = accountLib.indexOf("sameOrigin(request)");
+    const sessionAt = accountLib.indexOf("await currentSession()");
+    check("S13.3b", originAt !== -1 && sessionAt > originAt,
+      "with the same-origin check first, before the session is read");
+    check("S13.3c", !/orgId|membership|canReach/.test(accountLib),
+      "and no organization in the gate at all — a person with no membership still has to be able to end a session (§10.7 5A.4)");
+  }
+
+  // ── The session id from the form is scoped to the person ──────────────────
+  //
+  // The failure this prevents is one row of the table: an id belonging to
+  // somebody else's browser, posted from yours. The scope is passed into the
+  // `UPDATE` — `revokeSession` requires it — rather than checked in a branch
+  // above it, because a branch is a thing that can be reordered away.
+  {
+    check("S13.4", /userId: account\.session\.user\.id/.test(route),
+      "the revoke is scoped to the signed-in user, taken from the session");
+    check("S13.4b", !/userId: null/.test(route) && !/form\.get\("userId"\)/.test(route),
+      "never to null and never to a field in the form");
+    check("S13.4c", /clearSessionCookie\(response\)/.test(route),
+      "and revoking the browser you are holding clears its cookie rather than leaving a page whose session no longer resolves");
+  }
+
+  // ── The page is guarded, and by the same door as the areas ────────────────
+  {
+    check("S13.5", /accountContext\(/.test(page),
+      "the page resolves its own session on the server rather than trusting that the menu linked here");
+    check("S13.5b", /redirect\(`\/login\?next=/.test(consoleLib) &&
+      (consoleLib.match(/redirect\(`\/login\?next=/g) ?? []).length === 2,
+      "and no session sends the reader to sign in, the same way the seven areas do");
+  }
+
+  // ── Reachable, because nothing else links to it ───────────────────────────
+  //
+  // No navigation item by design: it belongs to a person, not to one of the
+  // seven organization areas. That makes the masthead menu the only entry point,
+  // and a page nobody can reach is not a shipped page.
+  {
+    check("S13.6", menu.includes("ACCOUNT_PATH") && !menu.includes('"/account"'),
+      "the account menu links to the surface through its declared path rather than a typed string");
+    check("S13.6b", ACCOUNT_PATH === "/account" && existsSync(path.join(WEB, "app/account/page.tsx")),
+      `and a page answers there (${ACCOUNT_PATH})`);
+  }
+
+  // ── Nothing on the page that must not be on it ────────────────────────────
+  {
+    check("S13.7", !/userAgent|ip_hash|ipHash/.test(page),
+      "the page renders neither the raw user agent nor anything derived from an address (§10.7 5A.8)");
+    const jsxText = page.replace(/\w+=\{[^}]*\}/g, "");
+    const echoed = />\s*\{\s*(notice|code)\s*\}/.test(jsxText);
+    check("S13.7b", /NOTICES\[code as AccountNotice\]/.test(page) && !echoed,
+      `the notice is looked up in a fixed map and never rendered as the caller wrote it (echoed: ${echoed})`);
+  }
+}
+
+// ═══ S14 — a refused page answers 404, and stays that way ═══
+//
+// FUTURENORMA §4 Open decision 5, decided 2026-08-23: every Cloud page refuses
+// with `notFound()` and a real status, not a "Not found" body at HTTP 200.
+// `tenant-gate-check` G8 proves the status over HTTP, which a source check
+// cannot. What this holds is the thing G8 cannot: that the **next** page does it
+// too.
+//
+// The failure it is written against is not a page that refuses wrongly — it is a
+// page added six months from now that copies the pattern from whichever
+// neighbour it was pasted from. Before this change that neighbour rendered a
+// local `NotFound` component; the pattern was the defect, and a pattern spreads
+// by being available.
+{
+  const { readdir } = await import("node:fs/promises");
+
+  /** Every page under the Cloud surface, whatever depth it sits at. */
+  async function pagesUnder(dir, acc = []) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await pagesUnder(full, acc);
+      } else if (entry.name === "page.tsx") {
+        acc.push(full);
+      }
+    }
+    return acc;
+  }
+
+  const cloudPages = [
+    ...(await pagesUnder(path.join(WEB, "app/r"))),
+    ...(await pagesUnder(path.join(WEB, "app/repos"))),
+  ];
+
+  // ── No page renders its own refusal ───────────────────────────────────────
+  {
+    const offenders = [];
+    for (const file of cloudPages) {
+      const text = decomment(await readFile(file, "utf-8"));
+      // A local component named NotFound, or a returned one. Either is a body
+      // rendered by the page itself, which is a 200 by construction: a page has
+      // no way to set a status other than by throwing.
+      if (/function NotFound\b/.test(text) || /return\s*<NotFound\b/.test(text)) {
+        offenders.push(path.relative(WEB, file));
+      }
+    }
+    check("S14.1", offenders.length === 0,
+      `no Cloud page renders its own refusal body (${cloudPages.length} pages checked, offenders: ${offenders.join(", ") || "none"})`);
+  }
+
+  // ── Every page that can refuse, refuses by throwing ───────────────────────
+  {
+    const missing = [];
+    for (const file of cloudPages) {
+      const text = decomment(await readFile(file, "utf-8"));
+      // Only pages that gate on something can refuse. A page with no membership
+      // check and no id to look up has nothing to 404 about.
+      const gates = /membershipFor\(|authorize\(|repoOrg\(/.test(text);
+      if (gates && !/notFound\(\)/.test(text)) {
+        missing.push(path.relative(WEB, file));
+      }
+    }
+    check("S14.2", missing.length === 0,
+      `every Cloud page that gates on a session or an id refuses with notFound() (missing: ${missing.join(", ") || "none"})`);
+  }
+
+  // ── The boundary exists for each family, and takes no props ───────────────
+  //
+  // The identical-body property used to be a promise that every call site
+  // passed the same props to one local component. Next 16's `not-found.js`
+  // "components do not accept any props", so it is now structural — there is
+  // nothing a caller could vary per tenant. This check is what keeps somebody
+  // from reintroducing the variance by other means.
+  {
+    const boundaries = [
+      "app/r/[runId]/not-found.tsx",
+      "app/repos/[repoId]/not-found.tsx",
+      "app/repos/[repoId]/trend/not-found.tsx",
+    ];
+    const absent = boundaries.filter((f) => !existsSync(path.join(WEB, f)));
+    check("S14.3", absent.length === 0,
+      `each page family has its own not-found boundary (missing: ${absent.join(", ") || "none"})`);
+
+    const propped = [];
+    for (const file of boundaries) {
+      if (!existsSync(path.join(WEB, file))) continue;
+      const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+      // `export default function X()` or `X({ … })`. Anything inside those
+      // parentheses is a prop the framework will never pass.
+      const signature = text.match(/export default (?:async )?function \w*\(([^)]*)\)/);
+      if (signature && signature[1].trim().length > 0) {
+        propped.push(`${file} takes ${signature[1].trim()}`);
+      }
+    }
+    check("S14.3b", propped.length === 0,
+      `and none of them declares a parameter, so no caller can vary the body (${propped.join("; ") || "none do"})`);
+  }
+
+  // ── No loading.tsx on a page that can refuse ──────────────────────────────
+  //
+  // **The check that cost the most to learn.** `notFound()` was in place, the
+  // boundaries existed, the suite was green — and every refusal still answered
+  // HTTP 200. A `loading.tsx` is a Suspense boundary; a Suspense boundary starts
+  // the response streaming as soon as the page awaits anything; and Next cannot
+  // change a status code after the headers have gone. So the three files that
+  // made these pages feel fast were the reason the decision had not landed, and
+  // only measuring the live response showed it.
+  //
+  // Nothing about adding a `loading.tsx` back would look wrong in review — it is
+  // the framework's own convention for exactly these slow pages. This is the
+  // check that says why not, in the place somebody would find out.
+  {
+    const streaming = [];
+    for (const file of cloudPages) {
+      const dir = path.dirname(file);
+      const text = decomment(await readFile(file, "utf-8"));
+      const canRefuse = /notFound\(\)/.test(text);
+      if (canRefuse && existsSync(path.join(dir, "loading.tsx"))) {
+        streaming.push(path.relative(WEB, dir));
+      }
+    }
+    check("S14.5", streaming.length === 0,
+      `no page that calls notFound() sits behind a loading.tsx, which would stream the response and pin it to 200 (${streaming.join(", ") || "none do"})`);
+  }
+
+  // ── The refusal sentence is unchanged ─────────────────────────────────────
+  //
+  // Customer-facing wording, moved from one file to another. Pinning it here
+  // means the move is provably a move: if a later edit reworded a refusal, that
+  // is a decision somebody should make on purpose.
+  {
+    const sentences = [
+      ["app/r/[runId]/not-found.tsx", "This report doesn&apos;t exist or the link is no longer valid."],
+      ["app/repos/[repoId]/not-found.tsx", "This repository doesn&apos;t exist or you don&apos;t have access to it."],
+      ["app/repos/[repoId]/trend/not-found.tsx", "This frame has no history here, or you don&apos;t have access to it."],
+    ];
+    const changed = [];
+    for (const [file, sentence] of sentences) {
+      const text = await readFile(path.join(WEB, file), "utf-8");
+      if (!text.includes(sentence)) changed.push(file);
+    }
+    check("S14.4", changed.length === 0,
+      `each refusal says what it said before the status changed (reworded: ${changed.join(", ") || "none"})`);
+  }
 }
 
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);

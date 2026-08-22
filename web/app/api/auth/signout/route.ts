@@ -58,7 +58,11 @@ export async function POST(request: Request): Promise<Response> {
         userId: session.user.id,
       });
     } else {
-      await revokeSession(db, session.session.id, "signed out");
+      // Scoped to the person holding the cookie, like every other revoke. The
+      // id comes from the resolved session rather than from the request, so the
+      // scope cannot fail here — which is exactly why it is passed: a call site
+      // that omits it is the one that later gets an id from somewhere else.
+      await revokeSession(db, session.session.id, "signed out", { userId: session.user.id });
       await recordAuthEvent(db, {
         kind: "signed-out",
         outcome: "allowed",

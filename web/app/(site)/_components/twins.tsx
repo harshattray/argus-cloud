@@ -14,7 +14,7 @@
  *
  * The glasses are the joke that carries `/agents`: the reader that cannot see.
  *
- * One character, fifteen poses, `flip` to mirror it.
+ * One character, sixteen poses, `flip` to mirror it.
  *
  * **Two rules, both learned by breaking them.**
  *
@@ -29,15 +29,22 @@
  * placement needs a new pose or it takes an existing placement's slot. The
  * inventory is in `docs/normascopeWeb.md` §5.
  *
- * **Five of them live on the Cloud surface, not the site.** `lantern` and
+ * **Six of them live on the Cloud surface, not the site.** `lantern` and
  * `hourglass` (2026-08-20) stand in the two places where a signed-in page used
  * to have nothing to show: a frame that is not there, and a range of time that
  * holds no runs. `parcel`, `key` and `envelope` (2026-08-22) took the next
  * three: an organization nothing has uploaded to, the sign-in page, and an
- * account that belongs to no organization. Same rule applied to a second
- * surface — a new placement takes a new pose — and the same reason: `empty`
- * already belongs to the 404, and reusing it would make one drawing mean two
- * different things.
+ * account that belongs to no organization. `repair` (2026-08-22) took the
+ * sixth, and it is the only one on either surface that stands for a *failure*
+ * rather than an absence. Same rule applied to a second surface — a new
+ * placement takes a new pose — and the same reason: `empty` already belongs to
+ * the 404, and reusing it would make one drawing mean two different things.
+ *
+ * **`repair` and `shrug` are the pair to keep apart**, the way `parcel` and
+ * `empty` are below. A shrug says *there is nothing here*, which is an honest
+ * answer to a request that finished; the wrench says *this did not finish*.
+ * Putting a shrug on an error would tell the reader their data is empty when
+ * in fact it was never read, and that is a worse lie than an ugly page.
  *
  * `parcel` and `empty` are the pair to keep apart in your head, because both
  * are about nothing being there. `empty` is a picture frame with no picture in
@@ -75,6 +82,7 @@ export type TwinPose =
   | "parcel"
   | "key"
   | "envelope"
+  | "repair"
   | "offer";
 export type TwinTone = "ink" | "cream";
 
@@ -268,6 +276,29 @@ const ARMS: Record<TwinPose, { left: string; right: string; hands: [number, numb
     hands: [
       [52, 220],
       [148, 220],
+    ],
+  },
+  /* Right arm down and out, a wrench hanging low beside the figure.
+     Same arm as `lantern`, and that is the collision to watch: they are the
+     only two poses with something hanging below the hand. What separates them
+     is the shape of the thing, which is the rule the whole set runs on — the
+     lantern is a box, 38 across and 38 tall, and the wrench is a rod, 12 across
+     and 52 long. A hanging box and a hanging stick survive at 118px where two
+     different elbow angles would not.
+
+     Down beside the body rather than raised, for the same reason `lantern` is:
+     an error state must not look like an act in progress. A tool held up is
+     somebody about to do something; a tool held at rest is a statement that
+     the thing needs work. */
+  repair: {
+    left: "M46 178 C 26 190 22 208 34 216",
+    /* The elbow bulges to 186, copied from `lantern` and for its reason: run
+       the forearm straight from shoulder to hand and it lies along the body's
+       own outline, which curves the same way at this height. */
+    right: "M154 178 C 178 186 186 200 178 216",
+    hands: [
+      [34, 220],
+      [178, 222],
     ],
   },
   /* Both arms out to the edges of a frame held up at chest height. Wider than
@@ -505,6 +536,48 @@ const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
         </>
       );
 
+    /* An open-ended wrench hanging from the hand, jaw pointing down.
+       The jaw is the entire drawing, and the shape of it took two goes.
+
+       **A square head with a slot cut in it is a tuning fork.** That was the
+       first version — a 28×24 block with a 12-wide notch 12 deep — and drawn at
+       420px to check it, the two prongs were as long as they were thick and the
+       whole thing read as a staple, or a little stool standing beside the
+       figure. Nothing about it said spanner.
+
+       What says spanner is a **round head with a gap in it**: a thick C, open at
+       the bottom, on the end of a thin handle. The curve is what separates it
+       from every rectangular prop in the set, and the gap is narrower than the
+       ring is thick, which is the proportion a real open-end wrench has and the
+       square version did not.
+
+       The handle is stroke-only and the head is filled, which looks
+       inconsistent written down and is the same mix `lantern` already uses — a
+       stroked handle arc above filled boxes. It is what avoids a seam: the head
+       is drawn after the handle and its fill covers the end of the line, so
+       there is no outline crossing the middle of the prop.
+
+       Nothing rises above y=224 (the hand) or falls below y=274. The shadow
+       ellipse spans x=44..156, so the wrench at x=163..193 hangs clear of it
+       rather than appearing to rest on the ground. */
+    case "repair":
+      return (
+        <>
+          <path d="M178 224 L178 252" stroke={c.line} strokeWidth="9" strokeLinecap="round" />
+          {/* The C. Outer radius 15, inner 7, with a 80° gap at the bottom —
+              drawn as one closed path (out along the top, back along the
+              inside) rather than as a ring with a notch knocked out of it,
+              because a knock-out would have to be filled with the page's
+              ground and this drawing sits on three different ones. */}
+          <path
+            d="M168.4 273.5 A15 15 0 1 1 187.6 273.5 L182.5 267.4 A7 7 0 1 0 173.5 267.4 Z"
+            fill={c.paper}
+            stroke={c.line}
+            strokeWidth="5"
+          />
+        </>
+      );
+
     /* An hourglass held upright, sand running through it.
        The sand is the only part that says which way up it is, and it is drawn
        as three real shapes — a wedge left in the top, a mound built up in the
@@ -593,8 +666,13 @@ const Prop = ({ pose, c }: { pose: TwinPose; c: Record<string, string> }) => {
  * - `prop` — the prop and **both** hands, for anything held in front.
  * - `arm`  — the right arm, its hand, and whatever that hand holds.
  * - `body` — everything above the shadow, which stays on the ground.
+ *
+ * `still` is the opposite of all three, and it exists so that a pose which does
+ * not move says so rather than merely lacking a rule in `globals.css`. Leaving
+ * the keyframes out would look like an omission, and the next person to notice
+ * would add them. One pose uses it, and its reason is on the entry.
  */
-const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string }> = {
+const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string; still?: true }> = {
   /* The page turns and settles back. */
   reading: { scope: "prop", origin: "100px 250px" },
   /* Both shoulders lift, and the shadow does not. */
@@ -641,6 +719,20 @@ const MOTION: Record<TwinPose, { scope: "prop" | "arm" | "body"; origin?: string
      forward is the one gesture left that is not a rotation, and it is the right
      one here — "this is the thing you are looking for, go and open it". */
   envelope: { scope: "prop", origin: "100px 220px" },
+  /* **It does not move, and that is the decision.** Every other pose in the set
+     idles, and on an error state an idling figure is a lie: a drawing that
+     keeps twitching beside "something went wrong" reads as work still in
+     progress, which is the one thing the page must not imply. The reader has
+     to know the request is over and the next move is theirs.
+
+     This is the same argument that kept `hourglass` off this placement —
+     rotation and continuous motion both say *loading*. Rather than pick a
+     gentler animation, there is none.
+
+     `scope` is still `arm` because the shape of the drawing has not changed:
+     the wrench belongs to the right hand, and if anyone ever does give this a
+     settle, that is the group it has to move with. */
+  repair: { scope: "arm", origin: "154px 178px", still: true },
   /* The cloud drifts. See the note above about why this one never rests. */
   offer: { scope: "arm" },
 };
@@ -793,7 +885,7 @@ export function Twin({
      they only stay together if all three turn about the same point. Under
      `fill-box` each would turn about the centre of its own bounding box and the
      figure would come apart. */
-  const anim = `tw-${pose}`;
+  const anim = motion.still ? undefined : `tw-${pose}`;
   const originStyle = motion.origin ? { transformOrigin: motion.origin } : undefined;
 
   const propGroup = <Prop pose={pose} c={c} />;

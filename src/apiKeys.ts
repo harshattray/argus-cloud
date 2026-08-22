@@ -47,7 +47,19 @@ export class NotEntitled extends Error {
 export async function createApiKey(
   db: Db,
   orgId: string,
-  options: { kind?: "upload" | "agent"; label?: string; monthlyBudgetCredits?: number; ratePerMinute?: number } = {}
+  options: {
+    kind?: "upload" | "agent";
+    label?: string;
+    monthlyBudgetCredits?: number;
+    ratePerMinute?: number;
+    /**
+     * The user who minted it, when a session made the request — §10.7 5A.10's
+     * creator metadata. It is *audit*, never authority: the key belongs to the
+     * organization, and it keeps working when this person leaves. Null for keys
+     * minted by provisioning or by a script, which is honest rather than a gap.
+     */
+    createdBy?: string | null;
+  } = {}
 ): Promise<CreatedKey> {
   const kind = options.kind ?? "upload";
 
@@ -70,8 +82,8 @@ export async function createApiKey(
   const id = randomUUID();
   const plaintext = `nsk_${options.kind === "agent" ? "agent_" : ""}${randomBytes(24).toString("base64url")}`;
   await db.query(
-    `INSERT INTO api_keys (id, org_id, key_hash, kind, label, monthly_budget_credits, rate_per_minute)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO api_keys (id, org_id, key_hash, kind, label, monthly_budget_credits, rate_per_minute, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       id,
       orgId,
@@ -80,6 +92,7 @@ export async function createApiKey(
       options.label ?? "",
       options.monthlyBudgetCredits ?? null,
       options.ratePerMinute ?? null,
+      options.createdBy ?? null,
     ]
   );
   return { id, plaintext };
@@ -111,6 +124,8 @@ export interface ApiKeySummary {
   revoked_at: string | null;
   revoked_by: string;
   revoked_reason: string;
+  /** Who minted it, when a session did. Display name, never the address. */
+  created_by_name: string | null;
 }
 
 /**
@@ -135,8 +150,11 @@ export async function listApiKeys(db: Db, options: { orgId?: string; includeRevo
   const result = await db.query<ApiKeySummary>(
     `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.label,
             k.monthly_budget_credits, k.rate_per_minute,
-            k.created_at, k.revoked_at, k.revoked_by, k.revoked_reason
-       FROM api_keys k JOIN orgs o ON o.id = k.org_id
+            k.created_at, k.revoked_at, k.revoked_by, k.revoked_reason,
+            c.display_name AS created_by_name
+       FROM api_keys k
+       JOIN orgs o ON o.id = k.org_id
+       LEFT JOIN users c ON c.id = k.created_by
       WHERE ${conditions.join(" AND ")}
       ORDER BY k.created_at DESC`,
     params
@@ -165,25 +183,66 @@ export async function listApiKeys(db: Db, options: { orgId?: string; includeRevo
 export async function revokeApiKey(
   db: Db,
   id: string,
-  options: { actor: string; reason?: string }
+  options: {
+    actor: string;
+    reason?: string;
+    /**
+     * The organization this revocation is allowed to touch.
+     *
+     * **Required, with `null` meaning "any" — not defaulted to it.** A key id
+     * reaches this function from a form in an admin's browser, and the id of a
+     * row is not evidence of the right to withdraw it. Scoping the `UPDATE` is
+     * what makes a copied id useless; making the field mandatory is what stops a
+     * later caller from omitting it without noticing. `/admin` passes `null`
+     * because it is the operator surface and revokes across tenants by design.
+     */
+    orgId: string | null;
+  }
 ): Promise<{ revoked: boolean; alreadyRevoked: boolean }> {
+  if (options.orgId === undefined) {
+    // TypeScript already requires the field, so this catches the caller that is
+    // not compiled — a test, a script, a REPL. Without it, `undefined` reaches
+    // the query as a parameter that matches nothing: the revoke fails closed,
+    // which is the right direction, but the error it produces is "no such API
+    // key", which sends the reader looking for a missing row instead of a
+    // missing argument.
+    throw new Error("revokeApiKey needs an orgId — pass null for an operator-wide revocation");
+  }
   const actor = options.actor.trim();
   if (actor.length === 0) {
     // The database enforces this too. Refusing here as well means the operator
     // gets a sentence rather than a constraint violation.
     throw new Error("revoking a key needs an actor — record who is withdrawing it");
   }
+  const params: unknown[] = [id, actor, (options.reason ?? "").trim()];
+  let scoped = "";
+  if (options.orgId !== null) {
+    params.push(options.orgId);
+    scoped = ` AND org_id = $${params.length}`;
+  }
   const result = await db.query<{ id: string }>(
     `UPDATE api_keys
         SET revoked_at = now(), revoked_by = $2, revoked_reason = $3
-      WHERE id = $1 AND revoked_at IS NULL
+      WHERE id = $1 AND revoked_at IS NULL${scoped}
       RETURNING id`,
-    [id, actor, (options.reason ?? "").trim()]
+    params
   );
   if (result.rows.length > 0) {
     return { revoked: true, alreadyRevoked: false };
   }
-  const exists = await db.query<{ id: string }>("SELECT id FROM api_keys WHERE id = $1", [id]);
+  // The existence check is scoped too. Out of scope has to be indistinguishable
+  // from absent, or the thrown "no such API key" becomes a way to ask whether an
+  // id belongs to somebody else.
+  const existsParams: unknown[] = [id];
+  let existsScoped = "";
+  if (options.orgId !== null) {
+    existsParams.push(options.orgId);
+    existsScoped = ` AND org_id = $${existsParams.length}`;
+  }
+  const exists = await db.query<{ id: string }>(
+    `SELECT id FROM api_keys WHERE id = $1${existsScoped}`,
+    existsParams
+  );
   if (exists.rows.length === 0) {
     throw new Error(`no such API key: ${id}`);
   }

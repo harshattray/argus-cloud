@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { normaliseAddress, randomToken, tokenHash } from "./authCrypto.js";
+import { button, emailShell, EMAIL_COLORS, note, paragraph } from "./emailLayout.js";
 import type { Role } from "./users.js";
 
 /**
@@ -180,20 +181,165 @@ export async function acceptInvitation(
   });
 }
 
-export async function revokeInvitation(db: Db, id: string, now: Date = new Date()): Promise<boolean> {
+/**
+ * Withdraws a live invitation, inside one organization.
+ *
+ * **`orgId` is required and it is not optional-with-a-default.** An invitation
+ * id arrives from a form in an admin's browser, which means it arrives from
+ * whoever is holding that browser — and the id of a row is not evidence of the
+ * right to touch it. Scoping the `UPDATE` is what makes a guessed or copied id
+ * useless, and making the parameter mandatory is what stops a future caller from
+ * quietly leaving it off. Pass `null` only where the actor is an operator acting
+ * across tenants, which nothing does today.
+ *
+ * A request for an invitation in another organization returns `false`, which is
+ * the same answer as an invitation that was already revoked. There is no way to
+ * tell the two apart from outside, which is deliberate: a distinguishable
+ * refusal would turn this into a way to ask whether an id exists.
+ */
+export async function revokeInvitation(
+  db: Db,
+  id: string,
+  scope: { orgId: string | null },
+  now: Date = new Date()
+): Promise<boolean> {
+  if (!scope || scope.orgId === undefined) {
+    // The compiled callers cannot get here; a test or a script can. See the
+    // matching guard in `revokeApiKey` for why an explicit refusal beats a
+    // query that silently matches nothing.
+    throw new Error("revokeInvitation needs an orgId — pass null for an operator-wide revocation");
+  }
+  const params: unknown[] = [id, now.toISOString()];
+  let scoped = "";
+  if (scope.orgId !== null) {
+    params.push(scope.orgId);
+    scoped = ` AND org_id = $${params.length}`;
+  }
   const rows = await db.query<{ id: string }>(
-    "UPDATE invitations SET state = 'revoked', resolved_at = $2 WHERE id = $1 AND state = 'pending' RETURNING id",
-    [id, now.toISOString()]
+    `UPDATE invitations SET state = 'revoked', resolved_at = $2
+      WHERE id = $1 AND state = 'pending'${scoped} RETURNING id`,
+    params
   );
   return rows.rows.length > 0;
 }
 
-export async function listInvitations(db: Db, orgId: string): Promise<Invitation[]> {
+/**
+ * One organization's invitations, newest first, for the admin's list.
+ *
+ * **A passed-expiry row reads as `expired` here even if the sweep has not run.**
+ * Every authorization path above already filters on time, so this changes no
+ * decision — what it changes is the page, which would otherwise call a dead link
+ * "pending" until {@link expireInvitations} next ran. The alternative was to
+ * have the page work that out from `expiresAt`, which is the same rule written
+ * twice in two languages; this keeps it in the one place that already knows it.
+ */
+export async function listInvitations(db: Db, orgId: string, now: Date = new Date()): Promise<Invitation[]> {
   const rows = await db.query<Record<string, unknown>>(
-    `${SELECT_INVITE} WHERE i.org_id = $1 ORDER BY i.created_at DESC LIMIT 200`,
-    [orgId]
+    `SELECT i.id, i.org_id, o.name AS org_name, i.email, i.role, i.created_at, i.expires_at,
+            CASE WHEN i.state = 'pending' AND i.expires_at <= $2 THEN 'expired' ELSE i.state END AS state
+       FROM invitations i JOIN orgs o ON o.id = i.org_id
+      WHERE i.org_id = $1 ORDER BY i.created_at DESC LIMIT 200`,
+    [orgId, now.toISOString()]
   );
   return rows.rows.map(toInvitation);
+}
+
+// ---------------------------------------------------------------------------
+// The message
+// ---------------------------------------------------------------------------
+
+/**
+ * Where an invitation link points.
+ *
+ * `/api/auth/invite/accept` redeems server-side and redirects, so the token is
+ * never in the address bar of a rendered page — the same shape as the sign-in
+ * callback, and for the same reason.
+ */
+export function inviteUrl(baseUrl: string, token: string): string {
+  const url = new URL("/api/auth/invite/accept", baseUrl);
+  url.searchParams.set("token", token);
+  return url.toString();
+}
+
+export function inviteSubject(orgName: string): string {
+  return `You've been invited to ${orgName} on Normascope Cloud`;
+}
+
+/**
+ * The invitation email.
+ *
+ * **Four things it has to say**, and §10.7 5A.6 names them: which organization,
+ * who invited you, what role you are being given, and when the link dies. A
+ * message missing any of those is one the recipient has to ask a colleague
+ * about before clicking, which is the opposite of what an invitation is for.
+ *
+ * **What it must not say is who else is in the organization.** 5A.6 again: the
+ * invitation surface names the organization and the inviter, and nothing about
+ * the other members. Someone who never accepts should learn nothing from having
+ * been asked.
+ *
+ * The inviter is a display name, never an address — the same rule the "generated
+ * by" line follows, and the reason `createUser` defaults a display name to the
+ * local part rather than the whole address.
+ */
+export function inviteEmailHtml(
+  input: { link: string; orgName: string; inviterName: string; role: Role; siteUrl: string },
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  return emailShell({
+    title: inviteSubject(input.orgName),
+    preheader: `Works once, expires in ${INVITE_TTL_DAYS} days.`,
+    heading: `Join ${input.orgName}`,
+    siteUrl: input.siteUrl,
+    env,
+    body: [
+      paragraph(
+        `${escapeHtml(input.inviterName)} invited you to <strong>${escapeHtml(input.orgName)}</strong> on ` +
+          `Normascope Cloud as a <strong>${input.role}</strong>.`
+      ),
+      paragraph(`This link works once and expires in ${INVITE_TTL_DAYS} days.`),
+      button(input.link, "Accept the invitation"),
+      note(
+        `If the button does not work, paste this into your browser:<br>` +
+          `<span style="word-break:break-all;color:${EMAIL_COLORS.CLAY}">${input.link}</span>`
+      ),
+      note(
+        "If you were not expecting this, you can ignore it — nothing happens until you accept, " +
+          "and the link stops working on its own."
+      ),
+    ].join("\n                "),
+  });
+}
+
+export function inviteEmailText(input: {
+  link: string;
+  orgName: string;
+  inviterName: string;
+  role: Role;
+}): string {
+  return `Join ${input.orgName} on Normascope Cloud
+
+${input.inviterName} invited you to ${input.orgName} as a ${input.role}.
+
+This link works once and expires in ${INVITE_TTL_DAYS} days.
+
+${input.link}
+
+If you were not expecting this, you can ignore it — nothing happens until you accept, and the link stops working on its own.
+
+Normascope is a product from Yutic.`;
+}
+
+/**
+ * The organization name and the inviter's name go into HTML, and both are typed
+ * by a customer. Escaped rather than trusted.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**

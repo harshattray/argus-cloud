@@ -1,0 +1,29 @@
+-- Who minted an API key — PATHWAYS §10.7 5A.10.
+--
+-- Until now a key carried a label and a creation time and nothing else. That
+-- was the honest state of things while keys could only be created by a script
+-- or by provisioning: there was no session, so there was no person to record.
+-- Step 6's Organization area changes that. An admin mints a key from a browser,
+-- and the first question anybody asks about a key three months later is *who
+-- made this and what for*.
+--
+-- **Creator metadata is audit, never authority.** 5A.10 is explicit that key
+-- usage "is not attributed to a human merely because that human created the
+-- key", and that a departing member's organization keys "remain until an admin
+-- revokes them". So this column answers a question; it does not grant, withhold
+-- or expire anything. `ON DELETE SET NULL` says the same thing in schema: the
+-- person's account can go, and the key is unaffected.
+--
+-- Nullable, and it will stay null for keys minted by provisioning, by the seeds
+-- and by scripts. A default of "the organization" or "system" would be a
+-- sentence invented to fill a column, and the page can say "not recorded"
+-- without one.
+--
+-- **What this deliberately does not add: `last_used_at`.** It is the other half
+-- of the same sentence in 5A.10 and it is genuinely useful — "nothing has used
+-- this key in four months" is the strongest argument for revoking it. It is not
+-- here because `findApiKey` runs on every authenticated request, so recording
+-- last use means a write on the hot path, and how coarse to make that write
+-- (every request? once an hour? a separate counter table?) is a decision with a
+-- cost attached. It is recorded as owed rather than guessed at.
+ALTER TABLE api_keys ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL;

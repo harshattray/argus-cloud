@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ACCOUNT_PATH } from "argus-cloud/consoleIA.js";
 import styles from "../../_styles/surface.module.css";
 
 /**
@@ -88,6 +90,20 @@ export function AccountMenu({ signedInAs }: { signedInAs: string }) {
           Signed in as
           <strong>{signedInAs}</strong>
         </p>
+
+        {/*
+          The page this menu deliberately is not. The two forms below *end*
+          sessions; the account page is where they can be *seen* first — which
+          browser, on what, last used when — and it is the only entry point to
+          it, because the page belongs to a person rather than to one of the
+          console's seven organization areas and so has no navigation item.
+        */}
+        <Link href={ACCOUNT_PATH} className={styles.accountMenuItem}>
+          Your account
+          <span className={styles.accountMenuHint}>
+            Your organizations, and every browser signed in as you.
+          </span>
+        </Link>
 
         <form method="post" action="/api/auth/signout">
           <button className={styles.accountMenuItem} type="submit">

@@ -2938,6 +2938,637 @@ request.
 
 ---
 
+### 3ad. Error states: a failure that does not look like an empty result ✅ (2026-08-22)
+
+**The Cloud surface had no error boundary anywhere.** A page that threw fell
+through to whatever the framework draws, which on a production build is a bare
+white page with no wordmark, no theme, no way back, and — worst — nothing to
+distinguish "this failed" from "there is nothing here". That distinction is the
+whole point of the work: an empty state means the request finished and there is
+honestly nothing to show, and a customer who reads a failure as an empty state
+concludes their data is gone. `normascopeWeb.md` §5 "Error states" is the spec;
+Harsha wrote it before this was built.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1293 checks across 35 suites**, up from 1275; both typechecks, web build, `npm audit` **0** |
+| New guards | `cloudShell` **S10.1–S10.14** and **S7.2a**, `explainers` **X4.1a** |
+| Watched failing | ✅ all seven S10 guards broken in turn and put back — the list is below |
+| In a browser | ✅ 1280 and 375, light and dark, against a route made to throw |
+
+**What was built.** A `repair` twin pose, a shared error card, `error.tsx` under
+`/repos` and `/r/`, and `global-error.tsx` for the failure that takes the root
+layout with it. All three render the same card, so a segment error and a
+document error say the same thing in the same words.
+
+**The figure does not move, and it is the only one in the set that does not.**
+Every other twin idles on a 4–6 second cycle. Beside "something went wrong" an
+idling drawing reads as work still in progress, which is the one thing the page
+must not imply — the same argument that kept `hourglass` off this placement,
+since rotation and continuous motion both say *loading*. Rather than choose a
+gentler animation there is none, and `MOTION` gained a `still` flag so that is a
+stated decision rather than absent CSS somebody later "fixes".
+
+> **The existing suite caught the new pose, which is the system working.** S7.2
+> required every pose to have both its keyframes and its class, and `repair`
+> turned it red. The fix was not to exempt it by name: the check now reads the
+> `still` flag out of `MOTION`, so a pose can only escape the rule by declaring
+> in the source that it means to, and **S7.2a** fails if that list stops naming
+> anything real.
+
+**A second check was wrong and was changed, which needs its own commit.**
+`explainers` X4.1 read "exactly one client component on `/repos`". Next requires
+an error boundary to be a Client Component — there is no server-rendered form of
+one — so the rule as written forbade having an error boundary on that tree at
+all. The rule it stood in for is *every client component here is a deliberate
+choice somebody argued for*, which a count cannot express, so it is now an
+allowlist with a reason per entry plus **X4.1a**, which fails if an entry
+outlives its file. The chart checks (X4.1b–d) were not touched and still require
+server rendering. **This is a check change, not a code fix, and the reasoning is
+Harsha's to accept.**
+
+**Seven guards, each watched failing.** Copies, not `git checkout` — see the
+trap below.
+
+| Break | Goes red |
+|---|---|
+| `repair` loses `still: true` | S7.2a, S7.2, S10.1 |
+| somebody adds `tw-repair` keyframes | S10.2 |
+| the error state reuses the `parcel` pose | S10.3, S10.4 |
+| the page prints `error.digest` | S10.5, S10.5b |
+| `retry` reverts to the pre-16.3 `reset` | S10.6 |
+| `global-error` loses its stylesheet | S10.9 |
+| the figure is hidden on a phone | S10.12 |
+
+**Three things the framework forced, each of which had to be handled rather than
+assumed.** `global-error` replaces the root layout, so global styles do not
+arrive — hence an explicit `import "./globals.css"`, and **not** an inline
+`<style>` block, which `style-src-elem 'self'` in `middleware.ts` would refuse.
+The theme cookie cannot reach a Client Component with no root layout above it,
+so without `data-theme` the surface falls through to `prefers-color-scheme`,
+which is the "follow the device" state and the honest fallback. And `next/font`
+cannot be called there either, so the page relies on the real system stack
+`.surface` already names in its own `font` shorthand.
+
+**The prop was wrong the first time, and only a browser said so.** The wrench
+head was drawn square — a 28×24 block with a 12-wide notch cut 12 deep. At the
+size it ships it looked fine; scaled to 420px to check it, the two prongs were
+as long as they were thick and it read as a staple or a small stool. What says
+spanner is a round head with a gap narrower than the ring is thick. Recorded in
+`normascopeWeb.md` §5 beside the two failed drafts from 2026-08-22, because it
+is the third instance of the same lesson: a prop is recognised by the one
+feature that distinguishes it, and at these sizes nothing else survives.
+
+> **A trap worth writing down, and it cost real work.** The script that broke
+> each guard in turn reverted with `git checkout --`. Every file in this change
+> was **untracked**, so the checkout did not undo the break — it deleted the
+> work. `twins.tsx` went back to `HEAD` with the whole pose gone, and a `perl`
+> fallback rewrote a comment into nonsense on the way past. Use copies to
+> restore untracked files. Also: `zsh` arrays are **1-indexed**, so a rewritten
+> script that indexed from `0` silently edited the wrong files and reported
+> nothing at all.
+
+**What `retry` actually does, checked rather than read.** The prop was renamed
+in Next 16.3; `retry()` re-fetches the segment's data, where the older `reset()`
+only cleared the boundary and re-rendered from cache. On a page that fails in a
+query, `reset` would put the same failure straight back and the button would
+look dead. Pressing **Try again** in the browser issued a fresh `?_rsc=` request
+to the route, so the re-fetch is real.
+
+**Nothing from the exception reaches the page** — no message, stack, digest,
+name, provider or identifier (§10.7 5A.11). The digest still exists in the
+server log, which is where an operator should be looking.
+
+---
+
+### 3ae. The console shell, its navigation, and the role matrix ✅ (2026-08-22)
+
+**PATHWAYS §5 says to build the shell, the navigation, the role matrix and the
+page-ownership map before any individual workflow.** This is that, and nothing
+behind it. Until now `/repos` and `/r/` each assembled their own masthead and
+neither could say which organization you were in, what plan it was on, or what
+else there was to look at. A seventh page written the same way would have been
+a seventh place for those answers to differ.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1341 checks across 35 suites** on PGlite and **1373 on real Postgres**, up from 1293; both typechecks, web build, `npm audit` **0** |
+| New guards | `cloudShell` **S11, 38 checks**; `migrations` **M9, 8 checks** for the 022 upgrade path; **S7.6b–S7.6d** rewritten where the no-organization state moved; `scripts/tenant-gate-check.mjs`, **17 checks over HTTP** |
+| Watched failing | ✅ fifteen breaks applied and reverted from copies — the list is below |
+| In a browser | ✅ 1280, 666 and 375, light and dark, signed in as an admin of two organizations |
+
+**One list, three readers.** `src/consoleIA.ts` holds the seven areas, the paths
+each owns, and the roles each requires. The navigation renders from it, every
+page guards from it, and the suite **imports and evaluates** it rather than
+matching it with a regex — a role table nobody has asked a question is a table
+nobody has checked. It is in the server package for that reason: `web/` imports
+it, so it compiles to `dist/` and a `.mjs` test can run it.
+
+| Area | Route | Roles |
+|---|---|---|
+| Overview | `/overview` | all |
+| Runs and reports | `/repos` | all |
+| Trends | `/trends`, `/repos/*/trend` | all |
+| Explain and automation | `/explain` | all |
+| Organization | `/organization` | admin |
+| Billing and usage | `/billing` | admin |
+| Privacy and data | `/data` | admin |
+
+The three admin-only areas are where every write in §10.7 5A.9's table already
+sat — invite, change roles, create keys, change billing, delete. **The one
+judgement:** 5A.9 gives members and designers a *"permitted read"* of the usage
+ledger, "permitted" is an organization policy, no policy system exists, so the
+launch default is deny. Widening it is a decision, not a bug fix.
+
+**Two route decisions.** *Privacy and data* answers on `/data`, because
+`/legal/privacy` is the public policy and sending someone looking for it to a
+signed-in control plane is a routing mistake you cannot undo later without
+breaking a bookmark. *Runs and reports* keeps `/repos`: an area label is not a
+reason to break a working path.
+
+**Path ownership matches on segments with a `*` wildcard**, so Trends owns
+`/repos/{id}/trend` even though it lives under a repository — the reader came to
+look at movement over time and the navigation agrees with them. S11.8b runs the
+string-prefix version that preceded it and shows the trend page landing in Runs.
+
+**An area with nothing in it renders `area.holds`** rather than restating it, so
+the placeholder and the ownership map cannot drift. No figure: the blank states
+are drawn because an empty page reads as broken, and an honestly unbuilt area is
+neither.
+
+> **The organization switcher checks the membership twice, on purpose.**
+> `/api/org` refuses to *write* a cookie naming an organization the session does
+> not hold; `activeMembership` refuses to *believe* one. The second protects the
+> data — and it is now evaluated rather than read, because the three pure
+> functions moved to `web/lib/membership.ts`, which imports only types and can
+> therefore be compiled and run by the suite. Same split, same reason, as
+> `previewGate.ts` and `gate.ts`.
+
+**A defect that was shipping, found while wiring the Trends area.**
+`/repos/{id}/trend` and its CSV export were still gated by `NORMA_DEV_OPEN`
+alone — which no deployment sets — so **every customer who clicked a sparkline
+got "Not found"**. Step 6 gated the repository page above them and left these
+two behind; the export route's own comment promised the change. `PATHWAYS.md`
+§7's open-item table recorded the whole `/repos/*` gate as closed. Both now take
+membership in the owning organization, with the dev flag left as the local door
+(S11.24–S11.26).
+
+**Verified over HTTP, not only in the source** — `scripts/tenant-gate-check.mjs`,
+17 checks against a **production build** on **real Postgres** with
+`NORMA_DEV_OPEN=0`. S11.24–S11.26 assert the shape of the fix; this asserts the
+behaviour, because a unit test of any one of the three moving parts — cookie,
+URL id, database row — is exactly what let the defect ship.
+
+| Case | Trend page | CSV export |
+|---|---|---|
+| No session | refusal page, no commit | 404, no CSV |
+| Member of the owning organization | renders, real commits | 200, `text/csv`, 4 rows |
+| Member of another organization | refusal page | 404 |
+| Repository that does not exist | same page, 0 bytes apart | 404 |
+
+Isolation is checked **in both directions** (G4): A's session refused on B's
+repository as well as the reverse, because isolation proven one way is isolation
+proven for one fixture. The refusal names nothing of the probed tenant — no
+repository name, commit or organization id (G1.5) — and a nonexistent repository
+is byte-for-byte the same page as one that is not yours, so probing ids maps
+nothing.
+
+> **The script was green for the wrong reason first, twice.** It used the frame
+> label as the marker for "data rendered" — but `hero.png` comes out of the
+> *requester's own query string* and is echoed back in the refusal, so the check
+> proved nothing. The markers are commit shas now, which only come from the
+> database. Then G5 searched the raw HTML for "is for admins" and missed it:
+> React writes `<!-- -->` between adjacent text nodes, so the bytes read
+> `is for <!-- -->admins`. It reported a designer reaching the billing area
+> while the page was refusing them correctly on screen. Both are why the script
+> normalises the body before matching, and why a check nobody has watched fail
+> is not a check.
+
+**Watched failing, twice, each reproducing a real state:**
+
+| Run | Result |
+|---|---|
+| Same build, `NORMA_DEV_OPEN=1` | **10 of 17 red** — the door opens the trend and the export to anyone, including strangers |
+| **Pre-fix source rebuilt**, `NORMA_DEV_OPEN=0` | **4 red, and they are the shipped defect**: G1.2, G2.2, G4.1, G4.2 — the *member* is refused, while every stranger check still passes. Customers 404, nothing leaks |
+
+**Harsha's launch role decision, confirmed on the wire (G5).** Members and
+designers get product and report access; Organization, Billing and Privacy are
+admin-only, and no financial or usage data reaches a member or designer until a
+read-only usage view is designed for it. A designer with a valid session, typing
+the URLs directly, is refused exactly those three areas and reaches exactly the
+other four — and an admin of the same organization gets the real page, so the
+refusal is about the role rather than about a broken page.
+
+> **One thing this surfaced that is not part of the fix.** Pages refuse with a
+> "Not found" *body* at HTTP **200**, not a 404 status. That is how every Cloud
+> page has behaved since Phase H — `/r/`, `/repos/{id}` and the trend view all
+> render a `NotFound` component, and no page calls `notFound()` from
+> `next/navigation`. The route handlers do answer a real 404. Nothing leaks
+> either way, and G1.6 records the status rather than blessing it. Worth
+> deciding deliberately: anything reading status codes — uptime monitoring,
+> analytics, a CDN — counts every refusal as a success.
+
+**A second defect, and it is the one CLAUDE.md rule 1 is about.**
+`scripts/dev-membership.mjs` wrote `role: 'owner'` into `memberships`. `owner`
+is not a role — §10.7 5A.5 and migration 021 both say ownership is
+`orgs.owner_user_id`, an invariant with one holder, and the owner is *also* an
+admin membership. Migration 001 wrote the domain in a **comment** and no
+constraint, so the column took it. Nothing failed; the local sign-in address was
+simply refused every area of the console, with `hasRole(m, ['admin'])` returning
+false for `'owner'` and nothing in that answer saying why. Migration `022`
+repairs the rows and adds the CHECK; the seed calls `claimOwnership`, which sets
+the invariant and the admin membership in one transaction.
+
+**The upgrade path is tested, not just the fresh install** — `migrations` **M9**,
+green on PGlite *and* on real Postgres. M1 only proves 022 applies to an empty
+database, where the repair matches nothing and the CHECK goes on unopposed. What
+has to work is the other case, so M9 walks a database to 021, gives it the rows
+the seed left — `owner`, plus a `superuser` nobody wrote on purpose, plus one of
+each valid role — and then takes it across 022 with the real runner reading the
+real file.
+
+| Check | What it holds |
+|---|---|
+| M9.2 | 022 applies to a database that already holds them, rather than aborting mid-transaction |
+| M9.3 | every out-of-domain role became `admin` — by domain, not by the one string we knew about |
+| M9.4 | valid rows untouched: the repair is selective, not a blanket UPDATE |
+| M9.5 | all five memberships survive — nobody lost a seat, which a DELETE would also have "fixed" |
+| M9.6 | **no ownership was invented.** `owner_user_id` was null and stays null: an `owner` role row was never evidence of the invariant, and guessing which member owns the organization is the silent decision 5A.5 forbids |
+| M9.7 | the constraint is live afterwards |
+| M9.8 | **counter-test** — constraint first, repair second, on the same data: fails, which on a deployment is a migration that aborts halfway |
+| M9.9 | and 022's own order succeeds on those same rows, so M9.8 is about the order rather than about the data |
+
+> **M9's counter-test was wrong the first time, and only real Postgres said
+> so.** It dropped the constraint from `memberships` itself in order to re-add
+> it the naive way. On PGlite that is invisible — every process gets its own
+> database — but on a real server every suite shares one, `freshDb()` included,
+> so it left the schema with `022` recorded as applied and the constraint gone.
+> `migrate()` skips a migration already in `schema_migrations`, so nothing put
+> it back, and `cloudShell` **S11.31 failed six suites later**. The check was
+> right; the harness was leaking. It runs on a scratch table now. This is
+> CLAUDE.md rule 4 arriving from the other direction: PGlite hid a defect *in a
+> test* rather than in the code.
+
+**Three things only a browser could have found**, and each now has a check:
+
+| On screen | Fix | Guard |
+|---|---|---|
+| The navigation scrolled sideways, and at 666px the current area sat past the right edge — underlined, invisible | it wraps; nothing but a script can scroll an element into view on load, and this surface runs none | S11.27 |
+| The outline list rendered as four unmarked lines — `globals.css` resets lists for the nav and footers | `list-style: disc` stated | S11.28 |
+| "Runs and reports is for **admin or member or designers**" | `roleList` pluralises each role and joins the last with "and" | S11.29 |
+
+**Fifteen guards watched failing**, restored from copies rather than
+`git checkout` — most of these files were untracked, and §3ad records what that
+costs.
+
+| Break | Goes red |
+|---|---|
+| an area loses its page | S11.1 |
+| the nav hard-codes an area path, or lists areas instead of calling `navFor` | S11.2 |
+| an area page trusts the menu instead of calling `consoleContext` | S11.3 |
+| billing quietly gains members | S11.5, S11.5.billing |
+| Trends stops owning `/repos/*/trend` | S11.8, S11.8b |
+| two areas claim one path | S11.10 |
+| a one-off page outside every area | S11.11 |
+| `/api/org` writes the cookie without checking the membership | S11.15 |
+| the active-organization cookie is taken at face value | S11.19, S11.22 |
+| the trend page reverts to the dev flag alone | S11.24, S11.26 |
+| the nav scrolls sideways again | S11.27 |
+| the outline list loses its markers | S11.28 |
+| roles are joined and given one plural | S11.29 |
+| the seed invents an `owner` role | S11.30 |
+| the role column loses its constraint | S11.31 |
+
+> **S11.2 was too narrow the first time and a break went through it.** It looked
+> for `href="/billing"`, and `href={area.id === "billing" ? "/billing" : area.href}`
+> passed. It now takes the area hrefs from the map and fails if the shell names
+> any of them in any syntax — the shell has no business naming a route it is
+> already iterating over.
+
+**Two stale `next-server` processes (v15.5.23, this tree is on 16.3.1) had held
+`.pgdata` for two and a half days**, which is the README's documented trap. The
+seed died inside the WASM with `Aborted()` until they were stopped and the data
+directory was replaced.
+
+---
+
+### 3af. The Organization area: members, invitations and keys — and the invitation that was never sent ✅ (2026-08-22)
+
+**The first area of the console that writes anything.** Before this, an admin
+could not invite a colleague or mint an upload key without a database client.
+
+**What was already there, and unreachable.** This is the shape of the whole
+change: `src/invitations.ts` had create, accept, revoke, list and expire with a
+hashed single-use token and a conditional consume; `src/apiKeys.ts` had create,
+list, revoke and per-key budgets; `src/users.ts` had `removeMembership` with the
+owner and last-admin refusals; `src/authThrottle.ts` had `reserveInvite` and the
+`INVITE_SCOPES` ceilings; `src/authEvents.ts` had `invitation-created`,
+`invitation-revoked`, `member-removed` and `role-changed`. **None of them had a
+caller.** `web/app/api/` held ten route groups and not one of them touched any of
+it.
+
+So the work divides into three: the small amount of domain logic that genuinely
+did not exist, the browser surface, and the one thing that turned out to be
+missing entirely.
+
+#### What did not exist and now does
+
+| Added | Where | Why it could not be borrowed |
+|---|---|---|
+| `membersOf` | `users.ts` | Nothing listed an organization's people. `membershipsFor` answers the mirror question — which organizations one person is in |
+| `changeMembershipRole` | `users.ts` | `addMembership` upserts a role and knows nothing about the two refusals. **O2b runs it as the counter-test**: it demotes the last admin, leaves the organization with nobody who can invite or revoke, and breaks 5A.5's other half in the same write by making the owner a designer |
+| An org scope on both revokes | `invitations.ts`, `apiKeys.ts` | Both took a row id and nothing else. That was safe while the only caller was `/admin`; it stopped being safe the moment a form in a customer's browser could supply the id |
+| `created_by` | migration `023` | 5A.10's creator metadata. **`last_used_at` is deliberately not in it**: `findApiKey` runs on every authenticated request, so recording last use is a write on the hot path and how coarse to make it is a decision with a cost. Recorded as owed rather than guessed at |
+
+**The scope parameter is required, with `null` meaning "any".** Not optional
+defaulting to unscoped — TypeScript then forces every call site to say which it
+is, and `/admin` says `orgId: null` in a comment that explains why. A JS caller
+that omits it entirely gets a named error rather than a query that silently
+matches nothing and reports "no such API key".
+
+#### The surface
+
+Seven writes behind one dispatcher, `web/app/api/organization/[action]/route.ts`,
+typed `Record<OrgActionName, Action>` from the list in `consoleIA.ts` — so a
+missing handler is a build failure rather than a form posting into a 404. Plain
+`<form>` POSTs answered with a 303, the same shape as `/api/org` and
+`/api/theme`: no client JavaScript on a page served under a strict nonce policy,
+and a redirect the back button cannot re-submit.
+
+**`requireOrgAdmin` is called once, before the dispatch**, and asks
+`CONSOLE_AREAS` which roles may reach the area rather than testing for `admin`
+itself. One matrix; the navigation, the page and now the routes all read it.
+
+**No form carries an organization and no handler reads one.** The organization
+comes from the membership the session resolved, and both revokes pass it into
+their `UPDATE`.
+
+**The one-time key.** `createApiKey` returns the plaintext once and stores only a
+sha256, but the request that has it is not the request that renders the page.
+Three options were rejected and the reasons are in `web/lib/keyReveal.ts`:
+rendering it in the POST response means a refresh mints a second key; an
+in-memory store works locally and fails on a second instance; storing it, even
+briefly, is the one thing the design exists to avoid. It travels in a
+120-second, `HttpOnly`, `Path=/organization` cookie to the browser that is about
+to display it, with a control that clears it. **The honest cost is stated rather
+than glossed**: for those two minutes the value is in the cookie jar and a
+refresh re-shows it. "Once" here means once on our side and once in practice on
+theirs.
+
+#### The thing that was missing entirely
+
+**An invitation was a row, a hashed token, and nobody told.** The page said
+*"Invitation sent"* and no message existed anywhere in the codebase. Found by
+clicking the button.
+
+`sendInvitation` in `loginService.ts` is the fix, and the order is the design:
+**reserve, then create, then send.** Creating first would leave a live link
+behind every refused send — a credential issued to somebody who was never told it
+exists. The ceilings are `authThrottle.ts`'s `INVITE_SCOPES`, which have been
+written, tested and uncalled since the abuse ladder shipped: the **global** daily
+budget, so the day's number keeps meaning *mail we sent*, plus per-organization
+and per-address ceilings, because an admin's invite form is an outbound-email
+surface even though the person holding it is paying.
+
+A send that fails *after* the row exists is reported, not rolled back — the
+provider may have accepted the message and failed on the response, so deleting
+would risk revoking a link already in an inbox. The admin is told to resend,
+which supersedes the old token anyway.
+
+The message says the four things 5A.6 asks for — which organization, who invited
+you, what role, how long the link lasts — and **nothing about anybody else in the
+organization** (O8.8). The inviter is a display name, never an address.
+
+#### Evidence
+
+| Layer | What it proves | Where |
+|---|---|---|
+| `organization` suite — **66 checks** on PGlite, a new suite | The domain rules, against a database. O6r/O6b, the cross-process race, run only against real Postgres — PGlite gives every process its own database, so they skip themselves | `test/organization.test.mjs` |
+| `cloudShell` S12 — **22 checks** | The wiring between the page, the shared list and the routes | `test/cloudShell.test.mjs` |
+| `tenant-gate-check` G6 — **16 checks** | Every write, over HTTP, on a production build against real Postgres with `NORMA_DEV_OPEN=0` | `scripts/tenant-gate-check.mjs` |
+
+**Four counter-tests, each the naive version through the same harness:**
+
+| Check | The naive version does |
+|---|---|
+| O2b | `addMembership` as a role change: the organization ends with **no admin at all**, and the owner is no longer one |
+| O3b | An unscoped `UPDATE ... WHERE id = $1`: one tenant revokes another tenant's invitation |
+| O4b | The same for keys: a key dies on its id alone, from any tenant |
+| O6b | Read-then-write acceptance across 10 processes on real Postgres: **10 of 10 consume one single-use link.** The real one: exactly 1 |
+
+**Eleven deliberate breaks, eleven distinct red checks**, each the one that
+should have caught it — a form posting to a literal path (S12.3), an `orgId`
+appearing on a form or being read by a handler (S12.4), a handler renamed out of
+the map (S12.2), the origin check moved below the session read (S12.5c), the gate
+removed from the route (S12.5), a revoke losing its scope (S12.8b), the notice
+rendered as the caller wrote it (S12.6), the cookie losing `HttpOnly` (S12.7),
+the creator taken from a form field (S12.7c), the invite creating a row without
+sending (S12.10), and a membership change no longer audited (S12.11).
+
+**Three HTTP breaks, on a rebuilt production server each time:**
+
+| Break | Went red |
+|---|---|
+| the role check removed from `requireOrgAdmin` | G6.2 and G6.3 — a **member** and a **designer** answer 303 on every one of the seven writes |
+| both revokes scoped `null` | G6.6 and G6.8, plus G6.7 and G6.9 as a consequence: B's admin revokes A's invitation and A's key, and A's own revoke then reports the row already gone |
+| the same-origin check removed | G6.4 — an admin's session driven from another origin succeeds |
+
+> **S12.5c was a presence check and a `false &&` walked straight through it.**
+> Rewritten to assert the *order* — the origin check before any lookup — and
+> labelled as structure, because whether it refuses is G6.4's job over HTTP and
+> no source check can answer it. This is the same lesson as §3ae's two
+> false-green G-checks, arriving a third time: **a regex over source proves the
+> shape, never the behaviour.**
+
+#### Three things only a browser found
+
+| On screen | What was wrong | Fix |
+|---|---|---|
+| "Invitation sent." | Nothing was sent. The whole send path did not exist | `sendInvitation`, above |
+| "Key created. It is shown once, below." | *Below* was three screens down, past Members and Invitations. A one-time secret somebody has to go looking for is a one-time secret they lose | The reveal moved directly under the notice, full width, with a clay rule |
+| The area outline | It kept promising *"members, roles and removal"* in a paragraph above the working controls | `ConsoleArea.built`, and `AreaOutline` renders `holds` minus `built`. An area with nothing outstanding renders nothing (O7.5) |
+
+The third needed a change to the map rather than to the page: `built` is a list
+of verbatim `holds` entries, checked by `unknownBuiltEntries()` (O7.1), so it
+cannot quietly become a second list of workflows. "Still to come" is the
+difference between the two, computed, and written down nowhere.
+
+**Verify:** 1,429 checks across 36 suites on PGlite, **1,464** against real
+Postgres, both typechecks, web build, `npm audit` **0**. Migrations `001`–`023`.
+`scripts/tenant-gate-check.mjs`: **33 checks**, up from 17.
+
+---
+
+### 3ag. The account page: every browser signed in as you ✅ (2026-08-23)
+
+**The control somebody reaches for after losing a laptop, with the list it was
+missing.** Since 2026-08-22 the masthead menu could *end* sessions — one, or all
+of them — and deliberately could not *show* them. So the person pressing "sign
+out everywhere" was acting on a set they could not see, and the person who only
+wanted to end the tablet at home had no way to say which one that was. §10.7
+5A.8 specifies the list, and this is it: device label, sign-in method, started,
+last used, expiry, a current-browser marker, and a per-row sign-out.
+
+**It is not an eighth console area, and that decision is in code.** The seven
+areas are organization-scoped: each needs a membership to mean anything, and each
+has a role that may reach it. This page needs neither — it answers for somebody
+in three organizations and for somebody in none, and there is no role that could
+be refused from your own account. `consoleIA.ts` gained a `Surface` type (a
+label, a front door, `holds` and `built`), `ConsoleArea extends Surface`, and
+`ACCOUNT_SURFACE` is declared beside the seven.
+
+**Why declared rather than exempted.** `cloudShell` S11.11 fails a signed-in page
+that no surface claims — PATHWAYS §5's *"do not add a one-off page when an
+existing area can own the workflow"* with teeth. The cheap way past it was to add
+`account` to the exception set inside the test. That would have put the decision
+in a test file nobody reviews as a design choice; asking `isAccountPath()`
+instead keeps it in the module that also records what the page holds and what it
+still owes (C6.1–C6.3).
+
+#### What did not exist and now does
+
+| Added | Where | Why |
+|---|---|---|
+| A user scope on `revokeSession` | `sessions.ts` | It took a session id and nothing else. Safe while the only caller passed an id it had just resolved from a cookie; unsafe the moment a form in a browser supplies one. **Required, with `null` meaning "any"** — the same shape as `revokeApiKey`, for the same reason, including the named error for a caller that is not compiled |
+| The idle cutoff in `listSessions` | `sessions.ts` | The list filtered on revoked and expired, and not on idle — so a browser unused for 31 days appeared as signed in while its next request would already be refused. **C3b runs the two-condition version** and watches it list exactly that row |
+| `deviceLabel` | `sessions.ts` | The stored user agent is a client-chosen string up to 300 characters. It returns one of *our* phrases — "Chrome on macOS", "Safari on iPhone", "Unknown browser" — never a substring of the input, so nothing an attacker sets becomes page content (C4b) |
+| `accountEvents` | `authEvents.ts` | `recentAuthEvents` is the operator's read and returns hashes. This returns three columns — when, what, outcome — scoped to one user. No hashes, and no `reason`, which is a machine string written for an operator |
+| `session-revoked` | `authEvents.ts` | A browser ended *from another browser* is not the same event as signing out, and after a lost laptop the difference is the question being asked |
+
+#### The surface
+
+`/account`, one dispatcher at `/api/account/[action]` typed
+`Record<AccountActionName, Action>` from `ACCOUNT_ACTIONS`, plain form POSTs and a
+303 — the Organization area's shape, so the second account write cannot be
+written slightly differently. `requireAccount` is called once before the dispatch
+and is deliberately two checks rather than four: same origin, and a session. **No
+organization and no role**, because §10.7 5A.4 makes "signed in, member of
+nothing" an ordinary state and that person still has to be able to end a session.
+
+Signing out the browser you are reading on is allowed — somebody working down the
+list reaches their own eventually — and clears the cookie on the way to `/login`,
+rather than leaving a page holding a token that no longer resolves.
+
+#### Watched failing
+
+Six deliberate breaks in the suites, six distinct reds:
+
+| Break | Red |
+|---|---|
+| `revokeSession` ignores its scope | C2.2, C2.3 — Ada's id ends Bob's browser |
+| `listSessions` without the idle condition | C3.4 |
+| `deviceLabel` returns the user agent | C1.2, C1.3, C4.1, C4.2, C4.3, C4b.1 |
+| `isAccountPath` matches by string prefix | C6.3 |
+| The route passes `userId: null` | S13.4b |
+| The route skips `requireAccount` | S13.3 |
+
+And two over HTTP, on a rebuilt production server against real Postgres:
+
+| Break | Red |
+|---|---|
+| The route's scope set to `null` | G7.3, G7.3b, G7.4 — a valid session plus a colleague's row id signs them out |
+| The same-origin check disabled | G7.2, and the cross-site POST then really does end a browser |
+
+#### Three things only a browser showed
+
+| What | Why it mattered |
+|---|---|
+| Four buttons all named "Sign out" | Read aloud, the table is four identical destructive controls and the row is a spatial fact a screen reader does not carry into the name. Each now carries a visually-hidden device label |
+| "The switcher at the top of the page chooses which one you are looking at" | Shown to somebody in **no** organization, one line above "You are not in an organization yet". The sentence appears only when there is more than one membership |
+| *"Also part of this **area**, and not built yet"* | The shared outline's word for the seven. This page is not one of them; it says "this page" now, which is true of both |
+
+**Verify:** 1,478 checks across 37 suites on PGlite, **1,513** against real
+Postgres, both typechecks, web build, `npm audit` **0**. Migrations unchanged at
+`001`–`023` — none of this needed a column. `scripts/tenant-gate-check.mjs`:
+**41 checks**, up from 33.
+
+---
+
+### 3ah. A refused page answers 404 ✅ (2026-08-23)
+
+**FUTURENORMA §4 Open decision 5, closed by Harsha, implemented as
+recommended.** Every Cloud page that can refuse answered a "Not found" **body at
+HTTP 200**. Nothing leaked — the body was identical whichever reason it was —
+but uptime monitoring, analytics, a CDN's cache decision and any error budget
+all counted a refused page as a page served.
+
+**Three families, not seven areas.** The decision as written said "the seven
+console areas render a `NotFound` component". They do not: a console area
+refuses with *"Billing and usage is for admins"* or *"you're not in an
+organization yet"*, which are explained 200s by design and `web/lib/console.ts`
+says why a `denied` is not a 404. The pages that actually refused were
+`/r/{runId}` (2 call sites), `/repos/{repoId}` (3) and the frame trend (4). The
+record has been corrected.
+
+#### What the change is
+
+| Before | After |
+|---|---|
+| A local `NotFound` component in each page, returned from nine call sites | `notFound()` at all nine, and one `not-found.tsx` boundary per family |
+| "Identical body" was a promise that every call site passed the same props | Next 16's `not-found` **takes no props** — there is nothing left that could vary per tenant |
+| HTTP 200 | HTTP 404, with `noindex` arriving from the status rather than a per-page metadata export |
+
+The three sentences are unchanged, byte for byte, and `cloudShell` S14.4 pins
+them so a later reword has to be a decision somebody makes on purpose.
+
+#### The blocker, which was not the status call
+
+`notFound()` was in place, the boundaries existed, the suite was green — and
+every refusal still answered **200**. The cause was a `loading.tsx` on each of
+the three routes:
+
+> A `loading.tsx` is a Suspense boundary. The boundary starts the response
+> streaming as soon as the page awaits its first query. A status code cannot be
+> changed after the headers have gone.
+
+Nothing in the source says that. **It was found by asking the running server**,
+which is the whole argument for `tenant-gate-check` existing at all: three
+source-level checks and a green suite were consistent with a surface that had
+not changed behaviour at all.
+
+**What removing them cost, measured rather than assumed.** Those three pages
+answer in **20–80 ms** against a local Postgres, including the artifact-heavy
+report — whose own comment warned about "sixty signatures before the first byte",
+when presigning is a local HMAC and not a network round trip. The spinner was
+covering a wait that mostly is not there. What is genuinely lost is feedback
+during a cold start; `web/app/_components/cloud/loading.tsx` records how to get
+both back — check before anything suspends, then wrap only the slow part in its
+own `<Suspense>` — and why it was not done here.
+
+`cloudShell` S6.12 used to *require* those three files. It now requires their
+absence, with the reason written where the old check was, because a check that
+encodes a superseded decision is worse than no check.
+
+#### The cost that remains, stated
+
+A `notFound()` response in Next 16.3 is an error document: correct status,
+`noindex`, and **the body rendered by the client rather than the server**. A
+reader with JavaScript disabled gets a blank dead end where they used to get a
+sentence at 200.
+
+Three things were ruled out before accepting it: it is not the boundary being
+`async`, not the theme lookup (tested with a static component and no cookies),
+and not new — `/legal/*` has called `notFound()` since it shipped and answers
+exactly the same way. Real browsers render all three correctly, verified on a
+production build with the right theme applied.
+
+#### Watched failing
+
+| Break | Red |
+|---|---|
+| A page renders its own refusal body again | S14.1 |
+| A boundary declares a prop | S14.3b |
+| A refusal is reworded | S14.4 |
+| A `loading.tsx` restored | S14.5, and over HTTP **G1.6 and G8.1** — with one file back on `/repos/[repoId]`, both that page *and* the nested frame trend returned to 200 while `/r/` stayed 404 |
+
+The last row is the one worth keeping: a boundary applies to everything nested
+under it, so a single file put back where it looks harmless takes two page
+families with it.
+
+**Verify:** 1,483 checks across 37 suites on PGlite, **1,518** against real
+Postgres, both typechecks, web build, `npm audit` **0**. No migration.
+`scripts/tenant-gate-check.mjs`: **45 checks**, up from 41.
+
 ---
 
 ## 4. argus-cloud — the web surface
@@ -3489,16 +4120,16 @@ a question about tiers. Six conflicts between `FUTURENORMA.md` and `PATHWAYS.md`
 |---|---|---|
 | 1 | Doctrine 9 stated "no ladder above it, no lite tier below it" as a rule that does not bend, while §3, §5 and PATHWAYS §2 all plan a ladder after validation | Doctrine 9 reworded to **one tier *at launch***; the unbending part is the order (evidence, then a tier), not the count forever. Mirrored in `CLAUDE.md` |
 | 2 | §4 said "the repo-count ladder is closed" and "plan-tier logic never needs to exist", while §5 said "the repo ladder above Team is still open — needed for the pricing page" | §4 corrected. Plan limits are **configuration read at runtime**, so a second tier is a config row, not an authorization rewrite. This was the one with real rework attached |
-| 3 | §3 promised "unlimited repos and seats"; §4 and §5 operated a 10-repo fair-use line; PATHWAYS' Starter hypothesis assumed 3 — **three numbers** | **`PATHWAYS.md` §2 is now authoritative for what a plan offers** (`CLAUDE.md` carve-out). FUTURENORMA keeps the price and the economics and states no repository figure. Git history shows why: the 2026-08-05 commit that decided $59 recorded this sub-decision as *open* and left both branches in the text |
+| 3 | §3 promised "unlimited repos and seats"; §4 and §5 operated a 10-repo fair-use line; PATHWAYS' Starter hypothesis assumed 3 — **three numbers** | **`PATHWAYS.md` §2 is authoritative for what a plan offers** (`CLAUDE.md` carve-out). **Closed 2026-08-22:** launch allowances are 3 active repositories for Starter, 10 for Growth, and 25 for Team; registered and archived repositories do not count. FUTURENORMA now mirrors the launch contract, and the billing/usage UI may expose it. |
 | 4 | The two documents' running orders diverge after step 3 — and PATHWAYS has no deploy, billing, or launch pathway at all | Divergence **recorded in §4 as a table** rather than silently reconciled. PATHWAYS' order still wins (`CLAUDE.md`); changing it is a strategy decision |
 | 5 | PATHWAYS' Pathway 1 list carried 7 items; §10.3 described three more (1B.1–1B.3) that appeared nowhere in the list | List rewritten to 10 items with §10.3 cross-references. **This one had already bitten** — Pathway 1 read as nearly done while the provider-spend hole was open |
 | 6 | §5 claimed `migrations/001`'s `DEFAULT 'trial'` "is superseded by a later migration" | **No such migration exists** (checked `001`–`009`). Corrected to an open item owed at Step 6 |
 
-> **The one still open, and it has a customer in it:** the launch repository
-> figure. Operating at 10 and later publishing a Starter of 3 would take seven
-> repositories off every existing $59 customer on ladder day. Both documents now
-> forbid quoting a number until it is decided, and require any published Starter
-> to be no smaller than the line already in operation.
+> **The repository decision is now closed (2026-08-22):** the launch allowance
+> is 3 active repositories for Starter, 10 for Growth, and 25 for Team. “Active”
+> means a repository that uploads at least one run during the billing month;
+> registered and archived repositories are excluded. This is a capacity
+> allowance, not per-repository billing, and is safe to display in usage UI.
 
 Also corrected: §4's Step 0 row demanded a pushed tag that §2 says is not a task
 (§2b), and PATHWAYS §10.3 1B.2 still framed pricing around "one credit" per

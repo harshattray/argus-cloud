@@ -28,6 +28,11 @@ export async function revokeKeyAction(formData: FormData): Promise<void> {
   const db = await getDb();
   // Throws on a blank actor — the same rule the database enforces, so this path
   // cannot produce an unattributed revocation either.
-  await revokeApiKey(db, id, { actor, reason });
+  // `orgId: null` — this is the operator surface and it revokes across every
+  // tenant by design. The customer-facing revoke in the Organization area passes
+  // the organization from the session instead, so a copied key id is useless
+  // there. The field is mandatory precisely so that the difference is a decision
+  // somebody wrote down rather than an argument nobody passed.
+  await revokeApiKey(db, id, { actor, reason, orgId: null });
   revalidatePath("/admin/keys");
 }

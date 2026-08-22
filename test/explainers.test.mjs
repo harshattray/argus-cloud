@@ -454,7 +454,22 @@ const shotTerms = [
 // that property survives: the *charts* are still inert server-rendered SVG. Both
 // arrive complete in the first byte, and with JavaScript off or still loading
 // the pages are readable and the range links work — only the drag is missing.
-// So: exactly one client component, and it is not a chart.
+//
+// **Widened once more on 2026-08-22, and the reason matters.** It read "exactly
+// one client component", and `app/repos/error.tsx` turned it red. That was the
+// check being wrong rather than the code: Next requires an error boundary to be
+// a Client Component — there is no server-rendered form of one — so the rule as
+// written forbade having an error boundary at all on this tree.
+//
+// The rule it was standing in for is *"every client component here is a
+// deliberate choice somebody argued for"*, and a count cannot express that. So
+// it is an allowlist with a reason per entry. It keeps its teeth: a new client
+// component that nobody has justified still fails, and the charts are checked
+// separately below and were never part of this relaxation.
+const CLIENT_ALLOWED = new Map([
+  ["brush.tsx", "drag-to-select; Harsha chose a real drag over the zero-JS approximation (2026-08-20)"],
+  ["error.tsx", "the error boundary; Next has no server-rendered form of one (2026-08-22)"],
+]);
 
 {
   const tree = await tsxUnder(path.join(WEB, "app/repos"));
@@ -465,10 +480,19 @@ const shotTerms = [
       clientFiles.push(path.relative(ROOT, file));
     }
   }
+  const unexplained = clientFiles.filter((f) => !CLIENT_ALLOWED.has(path.basename(f)));
   check(
     "X4.1",
-    clientFiles.length === 1 && clientFiles[0].endsWith("brush.tsx"),
-    `exactly one client component on /repos, and it is the brush (${clientFiles.join(", ") || "none"})`
+    clientFiles.length > 0 && unexplained.length === 0,
+    `every client component on /repos is on the allowlist with a reason${unexplained.length ? ` — unexplained: ${unexplained.join(", ")}` : ` (${clientFiles.join(", ")})`}`
+  );
+  // Not vacuous, and not a rubber stamp: the allowlist has to name things that
+  // are actually there. An entry left behind after a file is deleted would
+  // silently widen the rule for whatever takes that filename next.
+  check(
+    "X4.1a",
+    [...CLIENT_ALLOWED.keys()].every((name) => clientFiles.some((f) => path.basename(f) === name)),
+    `every allowlist entry names a file that exists (${[...CLIENT_ALLOWED.keys()].join(", ")})`
   );
   for (const [id, rel] of [
     ["X4.1b", "app/repos/trend-chart.tsx"],

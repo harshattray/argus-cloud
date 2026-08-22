@@ -133,6 +133,30 @@ Simple is not vague. Keep the numbers, the file names, and the real status. Neve
 soften a failure to make it read smoothly — an honest "this is broken" in plain
 words beats a careful sentence nobody finishes.
 
+## The two handbooks — update them when a feature ships
+
+`docs/UserHandbook.md` and `docs/MasterHandbook.md` are the first place their
+readers look. They are not planning documents and they are not evidence
+documents; they answer *"how do I use this"*.
+
+- **`UserHandbook.md` is for customers.** Plain language. **No internals**: no
+  pricing, no margins, no plan names, no vendor or provider names, no file
+  paths, no test names, no section references to our planning docs. It describes
+  what is on the screen and what to do with it.
+- **`MasterHandbook.md` is for us.** The operator surfaces, and the exact command
+  for every job that has no screen yet. Operational only — strategy stays in
+  `FUTURENORMA.md`.
+
+**Both only describe what exists.** Where something is not built, say so plainly
+and give the workaround. Both carry a "not built yet" list; keep it honest,
+because it is the section that stops a reader assuming a gap is their mistake.
+
+**Shipping a customer-visible feature is not done until the relevant handbook
+says how to use it.** Same commit.
+
+> Customer-facing wording in `UserHandbook.md` is Harsha's call before it is
+> published anywhere — propose it, don't invent claims.
+
 ## Commits
 
 **Never add `Co-Authored-By: Claude` (or any AI attribution) to commit

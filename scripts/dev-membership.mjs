@@ -70,7 +70,7 @@ export async function grantDevMembership(db, root, orgIds, log = console.log) {
     return null;
   }
 
-  const { createUser, findUserByEmail, addMembership } = await import(
+  const { createUser, findUserByEmail, addMembership, claimOwnership } = await import(
     path.join(root, "dist", "users.js")
   );
 
@@ -80,7 +80,27 @@ export async function grantDevMembership(db, root, orgIds, log = console.log) {
 
   const named = await db.query("SELECT id, name FROM orgs WHERE id = ANY($1) ORDER BY name", [ids]);
   for (const org of named.rows) {
-    await addMembership(db, { orgId: org.id, userId: user.id, role: "owner" });
+    /*
+     * `claimOwnership`, not `addMembership(role: "owner")`.
+     *
+     * **This wrote `role: "owner"` until 2026-08-22, and `owner` is not a
+     * role.** §10.7 5A.5 and migration 021 both say so: ownership is
+     * `orgs.owner_user_id`, an invariant with exactly one holder, and the owner
+     * is *also* an `admin` membership. The old line set neither — it wrote a
+     * value no authorization path recognises, so the local sign-in address was
+     * refused every admin-gated area of the console with nothing anywhere
+     * saying why. Migration 022 repairs the rows and adds the CHECK the column
+     * should always have had.
+     *
+     * `claimOwnership` sets the invariant and the admin membership in one
+     * transaction. It returns false when the organization already has an owner
+     * — a re-run without `--reset` — and the fallback keeps the address able to
+     * sign in and act.
+     */
+    const claimed = await claimOwnership(db, org.id, user.id);
+    if (!claimed) {
+      await addMembership(db, { orgId: org.id, userId: user.id, role: "admin" });
+    }
   }
 
   log(`\nlocal sign-in: ${email}`);
