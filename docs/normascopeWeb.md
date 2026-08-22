@@ -288,6 +288,41 @@ identifiers. This keeps the customer-facing state useful without leaking
 implementation detail, while the retry action still lets a transient failure
 recover in place.
 
+### The console chrome (2026-08-22)
+
+Every signed-in page of the organization console carries the same three rows,
+in the same order, above whatever the page itself is about. They exist because
+seven areas cannot each answer the same four questions differently.
+
+| Row | Holds | The question it answers |
+|---|---|---|
+| Masthead | wordmark, theme switch, account menu | who am I, and how do I stop being |
+| Context | organization (a switcher where there is more than one), role, subscription state, environment | whose data is this, what may I do with it, is the account in good standing, is this the real deployment |
+| Navigation | the areas this role may reach | what else is there |
+
+Four notes, each of which is a decision rather than a style:
+
+- **The chips carry words, not colours.** "Preview", "Payment failed",
+  "designer" — each readable in a screenshot, in a colourblind palette and read
+  aloud. A coloured dot is none of those.
+- **Nothing is shown for a good state.** An active subscription has no chip.
+  The absence is the good news, and a green badge on every page is a badge
+  nobody reads by the second week.
+- **The navigation wraps; it does not scroll sideways.** It scrolled first, on
+  the argument that wrapping puts the current item somewhere unpredictable. A
+  browser settled it: at 666px the current area was **Billing and usage**, and
+  it sat past the right edge — underlined and invisible, so the reader sees a
+  navigation that does not contain the page they are on. Nothing but a script
+  can scroll a chosen element into view on load, and none of this surface runs
+  one. Unpredictable but visible beats tidy but hidden.
+- **It is drawn from the role, and it is not the boundary.** A hidden link is a
+  courtesy; the server makes the same decision again for the page itself.
+
+An area with nothing in it yet says so and lists what will be there — read from
+the ownership map at render time, so the page cannot drift from it. It does not
+carry a figure: the blank states are drawn because an empty page reads as
+broken, and an area that is honestly unbuilt is neither.
+
 | Page | Where | Pose |
 |---|---|---|
 | `/` | hero, top right | camera |
@@ -309,7 +344,7 @@ pose, and `empty` already belongs to the 404.
 | `/repos/…/trend` | frame not found, or not yours | lantern |
 | `/repos/…/trend` | a range holding no runs | hourglass |
 | `/repos` | an organization that has uploaded nothing | parcel |
-| `/repos` | signed in, and in no organization | envelope |
+| every console page | signed in, and in no organization | envelope |
 | `/login` | beside the sign-in card | key |
 | `/repos`, `/r/…`, and the whole document | the page could not finish | repair |
 

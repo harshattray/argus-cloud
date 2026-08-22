@@ -13,8 +13,10 @@ import {
 import { getDb } from "../../../lib/db";
 import { readTheme } from "../../../lib/theme";
 import { currentSession, membershipFor } from "../../../lib/session";
+import { areaById } from "argus-cloud/consoleIA.js";
 import { CloudFooter, CloudMasthead } from "../../_components/cloud/cloud-shell";
 import { AccountMenu } from "../../_components/cloud/account-menu";
+import { ConsoleChrome } from "../../_components/cloud/console-shell";
 import { Explainer } from "../../_components/cloud/explainer";
 import { Sparkline } from "../sparkline";
 import styles from "../trends.module.css";
@@ -80,7 +82,8 @@ export default async function RepoPage({
   // The refusal is the same "not found" a nonexistent repository gets, so
   // probing ids cannot map out another tenant.
   const session = await currentSession();
-  const permitted = membershipFor(session, owner.orgId) !== null || repoViewOpen();
+  const membership = membershipFor(session, owner.orgId);
+  const permitted = membership !== null || repoViewOpen();
   if (!permitted) {
     return <NotFound theme={theme ?? undefined} />;
   }
@@ -117,6 +120,21 @@ export default async function RepoPage({
             /* Nothing for the development door: it has no session, so there is
                nobody to name and nobody to sign out. */
             session ? <AccountMenu signedInAs={session.user.display_name} /> : undefined
+          }
+          /*
+            The console's context row and navigation, for the same reason and
+            with the same caveat. The organization here is the repository's
+            owner, proved against the session — not the active-organization
+            cookie — so `ConsoleChrome` is given the membership rather than
+            resolving one. It renders nothing for the development door.
+          */
+          context={
+            <ConsoleChrome
+              session={session}
+              membership={membership}
+              area={areaById("runs")}
+              path={`/repos/${owner.id}${page > 1 ? `?page=${page}` : ""}`}
+            />
           }
           meta={
             <>

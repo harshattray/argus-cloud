@@ -1,5 +1,6 @@
 import { frameRuns, parseSpan, repoOrg, repoViewOpen } from "argus-cloud/trendData.js";
 import { getDb } from "../../../../../lib/db";
+import { currentSession, membershipFor } from "../../../../../lib/session";
 
 /**
  * `GET /repos/{repoId}/trend/export?frame=&from=&to=` — every exact run of one
@@ -16,12 +17,18 @@ import { getDb } from "../../../../../lib/db";
  * an export that arrives in pages is an export nobody can sum. It streams
  * whatever the span holds, which retention already bounds at 90 days.
  *
- * **Gated exactly like the page it belongs to**, by `repoViewOpen()`. It is the
- * trend page's export, it shows the same rows the trend page shows, and it
- * becomes session-gated at Step 6 in the same change. Putting it behind the
- * API-key check instead would make it reachable in production while the page it
- * exports 404s — a route serving a tenant's history to any valid key, with no
- * page anywhere that links to it.
+ * **Gated exactly like the page it belongs to**: membership in the organization
+ * that owns the repository, with `NORMA_DEV_OPEN` surviving as the local door.
+ * Putting it behind the API-key check instead would make it reachable in
+ * production while the page it exports 404s — a route serving a tenant's
+ * history to any valid key, with no page anywhere that links to it.
+ *
+ * **Until 2026-08-22 it was gated by `repoViewOpen()` alone**, which the comment
+ * above said would become session-gated at Step 6. Step 6 gated
+ * `/repos/{repoId}` and left this route and the trend page behind, so both 404ed
+ * for every customer while the docs recorded the gate as closed. That is the
+ * failure the sentence about "the same change" was written to prevent, and it
+ * happened anyway.
  *
  * A CSV for CI — key-authenticated, no session — is a different feature with a
  * different audience, and belongs on `/api/trends` when something needs it.
@@ -53,9 +60,6 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ repoId: string }> }
 ): Promise<Response> {
-  if (!repoViewOpen()) {
-    return notFound();
-  }
   const { repoId } = await params;
   const url = new URL(request.url);
   const frame = url.searchParams.get("frame");
@@ -66,6 +70,15 @@ export async function GET(
   const db = await getDb();
   const owner = await repoOrg(db, repoId);
   if (!owner) {
+    return notFound();
+  }
+
+  // The repository id in the URL is a request, not a permission: the owning
+  // organization is read off the repository row and checked against what the
+  // session holds. Same 404 as a nonexistent repository, so probing ids cannot
+  // map out another tenant.
+  const session = await currentSession();
+  if (!membershipFor(session, owner.orgId) && !repoViewOpen()) {
     return notFound();
   }
 

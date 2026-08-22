@@ -5,7 +5,6 @@ import {
   SESSION_TTL_DAYS,
   type ResolvedSession,
 } from "argus-cloud/sessions.js";
-import type { Membership, Role } from "argus-cloud/users.js";
 import { getDb } from "./db";
 
 /**
@@ -39,41 +38,15 @@ export async function currentSession(): Promise<ResolvedSession | null> {
 /**
  * The organization a request is allowed to act on, or null.
  *
- * **`orgId` is the caller's claim and the membership list is the answer.** The
- * lookup is a filter over what the session actually holds, so a stranger asking
- * for someone else's organization gets null and, above this, a 404 — the same
- * response as an organization that does not exist, because telling the two
- * apart would confirm that it does.
- *
- * With no `orgId`, the active-organization cookie is consulted and then the
- * first membership. Both are *preferences*: §10.7 5A.2 is explicit that the
- * selected organization is UI state, and every request re-resolves it. A cookie
- * naming an organization the person does not belong to is ignored, not obeyed.
+ * **The three functions moved to `membership.ts` and are re-exported here**, so
+ * every caller keeps importing them from this module. They left because they
+ * are pure and this file is not: `next/headers` makes it unloadable outside a
+ * Next request, and an authorization rule that can only be checked by reading
+ * its source is a rule nobody has watched answer. `membership.ts` imports
+ * nothing but types, so the suite compiles it and asks it questions — the same
+ * split, for the same reason, as `previewGate.ts` and `gate.ts`.
  */
-export function membershipFor(session: ResolvedSession | null, orgId: string): Membership | null {
-  if (!session) {
-    return null;
-  }
-  return session.memberships.find((m) => m.orgId === orgId) ?? null;
-}
-
-export function activeMembership(session: ResolvedSession | null, preferred?: string | null): Membership | null {
-  if (!session || session.memberships.length === 0) {
-    return null;
-  }
-  if (preferred) {
-    const chosen = session.memberships.find((m) => m.orgId === preferred);
-    if (chosen) {
-      return chosen;
-    }
-  }
-  return session.memberships[0];
-}
-
-/** Roles allowed to perform an action, as a set the caller states explicitly. */
-export function hasRole(membership: Membership | null, allowed: Role[]): boolean {
-  return membership !== null && allowed.includes(membership.role);
-}
+export { membershipFor, activeMembership, hasRole } from "./membership";
 
 // ---------------------------------------------------------------------------
 // Setting and clearing the cookie

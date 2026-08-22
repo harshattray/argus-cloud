@@ -397,19 +397,33 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
     /<CloudTwin pose="parcel"/.test(reposPage) && /norma-scope upload/.test(reposPage),
     "the repository list's blank slate carries the parcel figure and the command that ends it");
 
-  // The other thin state on the same page. It is the one a person lands on when
-  // their session resolves and their membership list is empty — legitimate per
-  // §10.7 5A.4, and for a while the only state on the surface still rendering as
-  // a bare paragraph in a card that stopped a third of the way down the window.
+  // The other thin state, which is no longer on that page: it is the one a
+  // person lands on when their session resolves and their membership list is
+  // empty — legitimate per §10.7 5A.4 — and it belongs to *every* area of the
+  // console rather than to the repository list. It moved into the shell when
+  // there were seven areas that could each have drawn their own.
+  const consoleShell = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8")
+  );
   check("S7.6b",
-    /<CloudTwin pose="envelope"/.test(reposPage) && /invitation link/.test(reposPage),
+    /<CloudTwin pose="envelope"/.test(consoleShell) && /invitation link/.test(consoleShell),
     "and the no-organization state carries the envelope figure and names the invitation that ends it");
 
-  // Both `/repos` states use one block. Two copies of the same layout is how
-  // the pair drifts — one gets a height and the other keeps the old collapse.
-  const blankSlateUses = (reposPage.match(/styles\.blankSlate/g) ?? []).length;
-  check("S7.6c", blankSlateUses === 2,
-    `both blank states share .blankSlate rather than each owning a layout (${blankSlateUses} uses)`);
+  // It is drawn once. Two copies of the same state is how the pair drifts — one
+  // gains a figure, the other keeps a bare paragraph — and with seven areas the
+  // copies would not stop at two.
+  const envelopeDraws = [reposPage, consoleShell].filter((f) => /pose="envelope"/.test(f)).length;
+  check("S7.6c", envelopeDraws === 1 && !/pose="envelope"/.test(reposPage),
+    `the no-organization state is drawn in one place, and it is not the repository list (${envelopeDraws} drawing)`);
+
+  // Both blank states still share one layout block, which is the point of the
+  // class: `/repos` with nothing uploaded, and the shell's no-organization
+  // state, each with its own words and the same shape.
+  const blankSlateUses =
+    (reposPage.match(/styles\.blankSlate/g) ?? []).length +
+    (consoleShell.match(/styles\.blankSlate/g) ?? []).length;
+  check("S7.6d", blankSlateUses === 2,
+    `both blank states compose .blankSlate rather than each owning a layout (${blankSlateUses} uses)`);
 
   const login = decomment(await readFile(path.join(WEB, "app/login/page.tsx"), "utf-8"));
   check("S7.7", /<CloudTwin pose="key"/.test(login) && !/TwinLink/.test(login),
@@ -685,6 +699,380 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
   check("S10.14", /Try again/.test(errorState) && /Back to Cloud/.test(errorState),
     "both recovery actions are present: retry in place, and a way out");
+}
+
+// ═══ S11 — the console shell, its navigation, and the role matrix ═══
+//
+// The shell exists so that seven areas cannot each answer "whose organization
+// is this, what plan is it on, and what else is there" differently. What can go
+// wrong here is quieter than a broken page:
+//
+//   - the navigation is hand-listed somewhere and drifts from the matrix, so a
+//     role sees a link it cannot open, or an area disappears from the menu
+//     while staying reachable by URL;
+//   - a page trusts the menu instead of checking, and is open to anyone who
+//     types its path — the failure PATHWAYS §5 means by "a route is not a UI
+//     boundary";
+//   - the ownership map claims a path no page answers on, or a page answers on
+//     a path no area claims;
+//   - the active-organization cookie stops being a preference and becomes an
+//     authorization input.
+//
+// The matrix and the map are **imported and evaluated**, not matched with a
+// regex. A role table that has never been asked a question is a table nobody
+// has checked.
+{
+  const {
+    CONSOLE_AREAS,
+    areaForPath,
+    areaById,
+    canReach,
+    navFor,
+    deploymentEnvironment,
+  } = await import(path.join(DIST, "consoleIA.js"));
+
+  const shell = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/console-shell.tsx"), "utf-8")
+  );
+  const consoleLib = decomment(await readFile(path.join(WEB, "lib/console.ts"), "utf-8"));
+
+  // ── Every area answers ────────────────────────────────────────────────────
+  //
+  // A navigation item that 404s is worse than no navigation item: it reads as a
+  // broken product rather than an unfinished one.
+  {
+    const missing = [];
+    for (const area of CONSOLE_AREAS) {
+      const file = path.join(WEB, "app", area.href.replace(/^\//, ""), "page.tsx");
+      if (!existsSync(file)) missing.push(area.href);
+    }
+    check("S11.1", missing.length === 0,
+      `every area in the map has a page at its href (${CONSOLE_AREAS.length} areas, missing: ${missing.join(", ") || "none"})`);
+  }
+
+  // ── The navigation is the matrix, not a copy of it ────────────────────────
+  //
+  // **The first version of this check only looked for `href="/billing"`**, and
+  // a break that special-cased one area inside the expression —
+  // `href={area.id === "billing" ? "/billing" : area.href}` — went straight
+  // through it. So it looks for the *path* anywhere in the file, in any
+  // syntax: the shell has no business naming an area's route at all, because
+  // every route it needs is on the object it is already iterating.
+  {
+    const named = CONSOLE_AREAS.map((a) => a.href).filter((href) => shell.includes(`"${href}"`));
+    check("S11.2", /navFor\(/.test(shell) && named.length === 0,
+      `the shell renders navFor(role) and names no area path itself (found: ${named.join(", ") || "none"})`);
+  }
+
+  // ── Hiding is not deciding ────────────────────────────────────────────────
+  //
+  // Each area's page has to make the decision again on the server. The two
+  // admin-only areas are the ones with something behind them, so a page of
+  // theirs that skipped the check would be open to any member who typed it.
+  {
+    const unguarded = [];
+    for (const area of CONSOLE_AREAS) {
+      const file = path.join(WEB, "app", area.href.replace(/^\//, ""), "page.tsx");
+      if (!existsSync(file)) continue;
+      const text = decomment(await readFile(file, "utf-8"));
+      if (!/consoleContext\(/.test(text)) unguarded.push(area.href);
+    }
+    check("S11.3", unguarded.length === 0,
+      `every area page calls consoleContext on the server (unguarded: ${unguarded.join(", ") || "none"})`);
+  }
+
+  check("S11.3b", /area\.roles\.includes\(membership\.role\)/.test(consoleLib),
+    "and consoleContext decides from the area's own role list rather than from a second copy of the matrix");
+
+  // ── The matrix, evaluated ─────────────────────────────────────────────────
+  {
+    const grid = {};
+    for (const role of ["admin", "member", "designer"]) {
+      grid[role] = CONSOLE_AREAS.filter((a) => canReach(a.id, role)).map((a) => a.id).join(",");
+    }
+    check("S11.4", grid.admin === "overview,runs,trends,explain,organization,billing,data",
+      `an admin reaches all seven areas (${grid.admin})`);
+    check("S11.5", grid.member === "overview,runs,trends,explain" && grid.member === grid.designer,
+      `a member and a designer reach the four read areas and no more (${grid.member})`);
+
+    // The three areas the 5A.9 table gives to admins alone: every write in it —
+    // invite, change roles, create keys, change billing, delete — is admin or
+    // owner. Naming them here means a later widening has to be deliberate.
+    for (const id of ["organization", "billing", "data"]) {
+      check(`S11.5.${id}`,
+        !canReach(id, "member") && !canReach(id, "designer") && canReach(id, "admin"),
+        `${id} is admin-only, matching §10.7 5A.9's table`);
+    }
+
+    // Counter-test: a navigation built from the whole list rather than from the
+    // role shows a designer the billing area, and the link works right up to the
+    // point where the page refuses — which is the version that gets reported as
+    // a bug rather than as a leak.
+    const naive = CONSOLE_AREAS.map((a) => a.id).join(",");
+    check("S11.5b", navFor("designer").map((a) => a.id).join(",") !== naive,
+      `counter-test: an unfiltered nav would offer a designer all seven (${naive})`);
+  }
+
+  // ── The ownership map answers for every path ──────────────────────────────
+  {
+    const ownHref = CONSOLE_AREAS.every((a) => areaForPath(a.href)?.id === a.id);
+    check("S11.6", ownHref, "every area's own href maps back to that area");
+
+    check("S11.7", areaForPath("/repos/abc123")?.id === "runs",
+      "a repository page belongs to Runs and reports");
+    check("S11.8", areaForPath("/repos/abc123/trend")?.id === "trends",
+      "and its trend view belongs to Trends, which is where the reader thinks they are");
+
+    // Counter-test: the string-prefix version this replaced. `/repos` is a
+    // prefix of `/repos/abc123/trend`, so the longest *string* that matches is
+    // still `/repos` — the trend page lands in Runs and the wrong navigation
+    // item lights up while you read a trend.
+    {
+      const prefixOwner = (p) => {
+        let best = null;
+        let len = -1;
+        for (const area of CONSOLE_AREAS) {
+          for (const own of area.owns) {
+            if (own.includes("*")) continue;
+            if ((p === own || p.startsWith(`${own}/`)) && own.length > len) {
+              best = area.id;
+              len = own.length;
+            }
+          }
+        }
+        return best;
+      };
+      check("S11.8b", prefixOwner("/repos/abc123/trend") === "runs" && areaForPath("/repos/abc123/trend")?.id === "trends",
+        "counter-test: string-prefix ownership puts the trend page in Runs — segment matching with a wildcard is what fixes it");
+    }
+
+    check("S11.9", areaForPath("/database") === null && areaForPath("/legal/privacy") === null,
+      "matching is by segment, so /data does not own /database and nothing outside the console is claimed");
+
+    // No two areas claim the same path. Overlap is not caught by the lookup —
+    // it just picks one — so it has to be asserted separately.
+    {
+      const seen = new Map();
+      let clash = null;
+      for (const area of CONSOLE_AREAS) {
+        for (const own of area.owns) {
+          if (seen.has(own)) clash = `${own}: ${seen.get(own)} and ${area.id}`;
+          seen.set(own, area.id);
+        }
+      }
+      check("S11.10", clash === null, `no path pattern is claimed by two areas (${clash ?? "none"})`);
+    }
+  }
+
+  // ── No page outside the map ───────────────────────────────────────────────
+  //
+  // PATHWAYS §5: "do not add a one-off page when an existing area can own the
+  // workflow". This is that rule with teeth — a new signed-in page either
+  // extends an area's `owns` or fails here.
+  {
+    const outside = new Set(["(site)", "(pitch)", "admin", "api", "login", "unlock", "r"]);
+    const { readdir } = await import("node:fs/promises");
+    const entries = await readdir(path.join(WEB, "app"), { withFileTypes: true });
+    const orphans = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith("_") || outside.has(entry.name)) continue;
+      if (!existsSync(path.join(WEB, "app", entry.name, "page.tsx"))) continue;
+      if (areaForPath(`/${entry.name}`) === null) orphans.push(entry.name);
+    }
+    check("S11.11", orphans.length === 0,
+      `every signed-in page belongs to an area (orphans: ${orphans.join(", ") || "none"})`);
+  }
+
+  // ── The context row says all four things ──────────────────────────────────
+  //
+  // Organization, role, subscription state, environment. Each is here because
+  // its absence has a cost: whose data, what you may do with it, whether the
+  // account is in good standing, and whether this is the real deployment.
+  check("S11.12",
+    /OrgSwitcher/.test(shell) && /membership\.role/.test(shell) &&
+      /SubscriptionChip/.test(shell) && /EnvironmentChip/.test(shell),
+    "the context row names the organization, the role, the subscription state and the environment");
+
+  check("S11.13",
+    deploymentEnvironment({ VERCEL_ENV: "production" }) === "production" &&
+      deploymentEnvironment({ VERCEL_ENV: "preview" }) === "preview" &&
+      deploymentEnvironment({}) === "development",
+    "and the environment is read from VERCEL_ENV, with a laptop reading as development");
+
+  // ── Switching organizations ───────────────────────────────────────────────
+  {
+    const route = decomment(await readFile(path.join(WEB, "app/api/org/route.ts"), "utf-8"));
+    check("S11.14", /export async function POST/.test(route) && !/export async function GET/.test(route),
+      "the organization is switched by POST — a GET that changes what a page shows would be followed by prefetchers");
+    check("S11.15", /membershipFor\(session, requested\)/.test(route),
+      "and the route checks the membership before it writes the cookie, so a request for somebody else's organization is refused rather than quietly ignored");
+    check("S11.16", /sameOrigin\(request\)/.test(route) && /status:\s*303/.test(route),
+      "same-origin only, and a 303 so the back button does not re-post it");
+
+    const switcher = decomment(
+      await readFile(path.join(WEB, "app/_components/cloud/org-switcher.tsx"), "utf-8")
+    );
+    check("S11.17", /memberships\.length < 2/.test(switcher),
+      "one membership renders as a name rather than a menu with a single item in it");
+  }
+
+  // ── The cookie is a preference, evaluated ─────────────────────────────────
+  //
+  // Compiled and run rather than read. `web/lib/membership.ts` imports only
+  // types, which is what makes that possible — see the note in the file.
+  {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { execFileSync } = await import("node:child_process");
+    const { tmpdir } = await import("node:os");
+    const { pathToFileURL } = await import("node:url");
+
+    const out = await mkdtemp(path.join(tmpdir(), "norma-membership-"));
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "node_modules", "typescript", "bin", "tsc"),
+          "--noCheck",
+          "--target", "es2022",
+          "--module", "es2022",
+          "--moduleResolution", "bundler",
+          "--outDir", out,
+          path.join(WEB, "lib", "membership.ts"),
+        ],
+        // cwd outside the repo: naming a file on the command line while a
+        // `tsconfig.json` is discoverable from the working directory is TS5112,
+        // which TypeScript treats as an error rather than a warning.
+        { stdio: "pipe", cwd: tmpdir() }
+      );
+      const { activeMembership, membershipFor, hasRole } = await import(
+        pathToFileURL(path.join(out, "membership.js")).href
+      );
+
+      const session = {
+        memberships: [
+          { orgId: "org-held", orgName: "Held", role: "member" },
+          { orgId: "org-also", orgName: "Also", role: "admin" },
+        ],
+      };
+
+      check("S11.18", activeMembership(session, "org-also")?.orgId === "org-also",
+        "a cookie naming an organization the session holds selects it");
+      check("S11.19", activeMembership(session, "org-somebody-elses")?.orgId === "org-held",
+        "a cookie naming one it does not hold is ignored, not obeyed — it falls back to a held membership");
+      check("S11.20", activeMembership(null, "org-held") === null && activeMembership({ memberships: [] }) === null,
+        "no session and no membership both resolve to nothing");
+      check("S11.21", membershipFor(session, "org-somebody-elses") === null,
+        "and asking for another tenant's organization by id resolves to nothing, which is a 404 above this");
+
+      // Counter-test: the version that trusts the cookie. It returns a
+      // membership for an organization the session does not hold — which is a
+      // cross-tenant read, from a value the browser sends.
+      const naive = (s, preferred) =>
+        preferred ? { orgId: preferred, orgName: preferred, role: "admin" } : s.memberships[0];
+      check("S11.22",
+        naive(session, "org-somebody-elses").orgId === "org-somebody-elses" &&
+          activeMembership(session, "org-somebody-elses")?.orgId !== "org-somebody-elses",
+        "counter-test: a cookie taken at face value hands back an organization the session never held");
+
+      check("S11.23", hasRole({ role: "admin" }, ["admin"]) && !hasRole({ role: "designer" }, ["admin"]) && !hasRole(null, ["admin"]),
+        "hasRole answers from an explicit allowed set, and null is never allowed");
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  }
+
+  // ── The trend page's gate ─────────────────────────────────────────────────
+  //
+  // **This was broken and shipped.** The trend view and its CSV export answered
+  // only to `NORMA_DEV_OPEN`, which no deployment sets, so both 404ed for every
+  // real customer — while `PATHWAYS.md` §7's table recorded the `/repos/*` gate
+  // as closed, because the repository page above them had been fixed. A
+  // navigation area cannot point at a page nobody can open.
+  for (const [id, file] of [
+    ["S11.24", "app/repos/[repoId]/trend/page.tsx"],
+    ["S11.25", "app/repos/[repoId]/trend/export/route.ts"],
+  ]) {
+    const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+    const membershipGate = /membershipFor\(session, owner\.orgId\)/.test(text);
+    const devOpenAlone = /if\s*\(!repoViewOpen\(\)\)\s*\{/.test(text);
+    check(id, membershipGate && !devOpenAlone,
+      `${file} admits a member of the owning organization, with NORMA_DEV_OPEN left as the local door`);
+  }
+
+  check("S11.26",
+    /!membership && !repoViewOpen\(\)/.test(
+      decomment(await readFile(path.join(WEB, "app/repos/[repoId]/trend/page.tsx"), "utf-8"))
+    ),
+    "counter-test: the refusal needs both to fail — a member with no dev flag is admitted, which is the case that was 404ing");
+
+  // ── Three things a browser found, and a check now holds ───────────────────
+  //
+  // None of these could have failed a suite as it stood. They are here because
+  // each was a real defect on screen.
+
+  // The navigation scrolled sideways, and at 666px the current area — Billing
+  // and usage — sat past the right edge: underlined, and not visible. Nothing
+  // but a script can scroll a chosen element into view on load, and this
+  // surface runs none, so the row wraps instead.
+  {
+    const css = decomment(
+      await readFile(path.join(WEB, "app/_components/cloud/console-shell.module.css"), "utf-8")
+    );
+    const navBlock = /\.nav\s+ul\s*\{([^}]*)\}/.exec(css);
+    check("S11.27",
+      navBlock !== null && /flex-wrap:\s*wrap/.test(navBlock[1]) && !/\.nav\s*\{[^}]*overflow-x/.test(css),
+      "the area navigation wraps rather than scrolling, so the current area is never outside the visible row");
+
+    // The outline list rendered as four unmarked lines: `globals.css` resets
+    // lists for the nav and footers, and this one inherited the reset.
+    check("S11.28", /\.outlineList\s*\{[^}]*list-style:\s*disc/.test(css),
+      "and the outline list states its markers rather than inheriting the global reset that removes them");
+  }
+
+  // "admin or member or designers" — `roles.join(" or ") + "s"`, which no static
+  // check would have questioned and a browser showed immediately.
+  check("S11.29", !/join\(" or "\)/.test(shell) && /roleList\(/.test(shell),
+    "roles are listed by a function that pluralises each one, not by joining and adding an 's' to the last");
+
+  // ── `owner` is not a role ─────────────────────────────────────────────────
+  //
+  // The seed wrote `role: 'owner'` into `memberships`, so the local sign-in
+  // address held a value no authorization path recognises and was refused every
+  // admin-gated area with nothing saying why. 001 wrote the domain in a comment
+  // and no constraint; 022 adds the constraint.
+  {
+    const devMembership = decomment(await readFile(path.join(ROOT, "scripts/dev-membership.mjs"), "utf-8"));
+    check("S11.30", /claimOwnership\(/.test(devMembership) && !/role:\s*"owner"/.test(devMembership),
+      "the seed grants ownership through claimOwnership — which sets the invariant and an admin membership together — rather than inventing an `owner` role");
+
+    const db = await createDb();
+    await migrate(db);
+    const orgId = `console-role-${randomUUID().slice(0, 8)}`;
+    const userId = `u-${randomUUID().slice(0, 8)}`;
+    await db.query("INSERT INTO orgs (id, name) VALUES ($1, $2)", [orgId, "role domain"]);
+    await db.query("INSERT INTO users (id, email) VALUES ($1, $2)", [userId, `${userId}@example.com`]);
+
+    let refused = false;
+    try {
+      await db.query("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'owner')", [orgId, userId]);
+    } catch {
+      refused = true;
+    }
+    check("S11.31", refused,
+      "and the column itself refuses it now — a comment naming the domain is not the domain (CLAUDE.md rule 1)");
+
+    // Not vacuous: the three real roles still go in.
+    let accepted = 0;
+    for (const role of ["admin", "member", "designer"]) {
+      await db.query(
+        `INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+        [orgId, userId, role]
+      );
+      accepted++;
+    }
+    check("S11.32", accepted === 3, "while admin, member and designer are all still accepted");
+  }
 }
 
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);

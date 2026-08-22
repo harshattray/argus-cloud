@@ -3041,6 +3041,132 @@ server log, which is where an operator should be looking.
 
 ---
 
+### 3ae. The console shell, its navigation, and the role matrix ✅ (2026-08-22)
+
+**PATHWAYS §5 says to build the shell, the navigation, the role matrix and the
+page-ownership map before any individual workflow.** This is that, and nothing
+behind it. Until now `/repos` and `/r/` each assembled their own masthead and
+neither could say which organization you were in, what plan it was on, or what
+else there was to look at. A seventh page written the same way would have been
+a seventh place for those answers to differ.
+
+| Check | Result |
+|---|---|
+| `npm run verify` | ✅ **1332 checks across 35 suites**, up from 1293; both typechecks, web build, `npm audit` **0** |
+| New guards | `cloudShell` **S11, 38 checks** (S11.1–S11.32 with sub-ids), and **S7.6b–S7.6d** rewritten where the no-organization state moved |
+| Watched failing | ✅ fifteen breaks applied and reverted from copies — the list is below |
+| In a browser | ✅ 1280, 666 and 375, light and dark, signed in as an admin of two organizations |
+
+**One list, three readers.** `src/consoleIA.ts` holds the seven areas, the paths
+each owns, and the roles each requires. The navigation renders from it, every
+page guards from it, and the suite **imports and evaluates** it rather than
+matching it with a regex — a role table nobody has asked a question is a table
+nobody has checked. It is in the server package for that reason: `web/` imports
+it, so it compiles to `dist/` and a `.mjs` test can run it.
+
+| Area | Route | Roles |
+|---|---|---|
+| Overview | `/overview` | all |
+| Runs and reports | `/repos` | all |
+| Trends | `/trends`, `/repos/*/trend` | all |
+| Explain and automation | `/explain` | all |
+| Organization | `/organization` | admin |
+| Billing and usage | `/billing` | admin |
+| Privacy and data | `/data` | admin |
+
+The three admin-only areas are where every write in §10.7 5A.9's table already
+sat — invite, change roles, create keys, change billing, delete. **The one
+judgement:** 5A.9 gives members and designers a *"permitted read"* of the usage
+ledger, "permitted" is an organization policy, no policy system exists, so the
+launch default is deny. Widening it is a decision, not a bug fix.
+
+**Two route decisions.** *Privacy and data* answers on `/data`, because
+`/legal/privacy` is the public policy and sending someone looking for it to a
+signed-in control plane is a routing mistake you cannot undo later without
+breaking a bookmark. *Runs and reports* keeps `/repos`: an area label is not a
+reason to break a working path.
+
+**Path ownership matches on segments with a `*` wildcard**, so Trends owns
+`/repos/{id}/trend` even though it lives under a repository — the reader came to
+look at movement over time and the navigation agrees with them. S11.8b runs the
+string-prefix version that preceded it and shows the trend page landing in Runs.
+
+**An area with nothing in it renders `area.holds`** rather than restating it, so
+the placeholder and the ownership map cannot drift. No figure: the blank states
+are drawn because an empty page reads as broken, and an honestly unbuilt area is
+neither.
+
+> **The organization switcher checks the membership twice, on purpose.**
+> `/api/org` refuses to *write* a cookie naming an organization the session does
+> not hold; `activeMembership` refuses to *believe* one. The second protects the
+> data — and it is now evaluated rather than read, because the three pure
+> functions moved to `web/lib/membership.ts`, which imports only types and can
+> therefore be compiled and run by the suite. Same split, same reason, as
+> `previewGate.ts` and `gate.ts`.
+
+**A defect that was shipping, found while wiring the Trends area.**
+`/repos/{id}/trend` and its CSV export were still gated by `NORMA_DEV_OPEN`
+alone — which no deployment sets — so **every customer who clicked a sparkline
+got "Not found"**. Step 6 gated the repository page above them and left these
+two behind; the export route's own comment promised the change. `PATHWAYS.md`
+§7's open-item table recorded the whole `/repos/*` gate as closed. Both now take
+membership in the owning organization, with the dev flag left as the local door
+(S11.24–S11.26).
+
+**A second defect, and it is the one CLAUDE.md rule 1 is about.**
+`scripts/dev-membership.mjs` wrote `role: 'owner'` into `memberships`. `owner`
+is not a role — §10.7 5A.5 and migration 021 both say ownership is
+`orgs.owner_user_id`, an invariant with one holder, and the owner is *also* an
+admin membership. Migration 001 wrote the domain in a **comment** and no
+constraint, so the column took it. Nothing failed; the local sign-in address was
+simply refused every area of the console, with `hasRole(m, ['admin'])` returning
+false for `'owner'` and nothing in that answer saying why. Migration `022`
+repairs the rows and adds the CHECK; the seed calls `claimOwnership`, which sets
+the invariant and the admin membership in one transaction.
+
+**Three things only a browser could have found**, and each now has a check:
+
+| On screen | Fix | Guard |
+|---|---|---|
+| The navigation scrolled sideways, and at 666px the current area sat past the right edge — underlined, invisible | it wraps; nothing but a script can scroll an element into view on load, and this surface runs none | S11.27 |
+| The outline list rendered as four unmarked lines — `globals.css` resets lists for the nav and footers | `list-style: disc` stated | S11.28 |
+| "Runs and reports is for **admin or member or designers**" | `roleList` pluralises each role and joins the last with "and" | S11.29 |
+
+**Fifteen guards watched failing**, restored from copies rather than
+`git checkout` — most of these files were untracked, and §3ad records what that
+costs.
+
+| Break | Goes red |
+|---|---|
+| an area loses its page | S11.1 |
+| the nav hard-codes an area path, or lists areas instead of calling `navFor` | S11.2 |
+| an area page trusts the menu instead of calling `consoleContext` | S11.3 |
+| billing quietly gains members | S11.5, S11.5.billing |
+| Trends stops owning `/repos/*/trend` | S11.8, S11.8b |
+| two areas claim one path | S11.10 |
+| a one-off page outside every area | S11.11 |
+| `/api/org` writes the cookie without checking the membership | S11.15 |
+| the active-organization cookie is taken at face value | S11.19, S11.22 |
+| the trend page reverts to the dev flag alone | S11.24, S11.26 |
+| the nav scrolls sideways again | S11.27 |
+| the outline list loses its markers | S11.28 |
+| roles are joined and given one plural | S11.29 |
+| the seed invents an `owner` role | S11.30 |
+| the role column loses its constraint | S11.31 |
+
+> **S11.2 was too narrow the first time and a break went through it.** It looked
+> for `href="/billing"`, and `href={area.id === "billing" ? "/billing" : area.href}`
+> passed. It now takes the area hrefs from the map and fails if the shell names
+> any of them in any syntax — the shell has no business naming a route it is
+> already iterating over.
+
+**Two stale `next-server` processes (v15.5.23, this tree is on 16.3.1) had held
+`.pgdata` for two and a half days**, which is the README's documented trap. The
+seed died inside the WASM with `Aborted()` until they were stopped and the data
+directory was replaced.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface

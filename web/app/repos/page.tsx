@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { orgRepos, type RepoListEntry } from "argus-cloud/trendData.js";
 import { getDb } from "../../lib/db";
-import { readTheme } from "../../lib/theme";
-import { activeMembership, currentSession, ACTIVE_ORG_COOKIE } from "../../lib/session";
-import { CloudFooter, CloudMasthead } from "../_components/cloud/cloud-shell";
+import { consoleContext } from "../../lib/console";
+import { ConsoleGate, ConsoleShell } from "../_components/cloud/console-shell";
 import { CloudTwin } from "../_components/cloud/empty-state";
-import { AccountMenu } from "../_components/cloud/account-menu";
-import { cookies } from "next/headers";
 import styles from "./trends.module.css";
 
 /**
- * The organization's repositories — the page above `/repos/{repoId}`.
+ * The organization's repositories — the page above `/repos/{repoId}`, and the
+ * console's **Runs and reports** area.
  *
  * **This is the page a session made possible.** PATHWAYS Pathway 6 carried it
  * as open item 2: it has to answer "what does this organization have", and
@@ -23,10 +20,10 @@ import styles from "./trends.module.css";
  * and ignored when it names something the person does not belong to (§10.7
  * 5A.2: "The selected organization is UI state only").
  *
- * A signed-in person with no membership is not an error and not a redirect to
- * sign in again — they see an empty state. That is §10.7 5A.4's "a signed-in
- * user with no membership sees no organization data", and the empty state is
- * what stops it reading as a broken page.
+ * **Its chrome, its session handling and its no-organization state moved into
+ * the console shell**, which is where the six other areas get them too. What is
+ * left here is the thing only this page knows how to do: list repositories, and
+ * say something useful when there are none.
  */
 
 export const dynamic = "force-dynamic";
@@ -87,135 +84,66 @@ function BlankSlate() {
   );
 }
 
-/**
- * Signed in, and in no organization.
- *
- * **Not an error, and the page has to say so twice** — once by not looking like
- * one, and once in words. §10.7 5A.4 makes this a legitimate state: a session
- * resolves to a person, and a person is not required to have a membership. The
- * two ways in are an invitation that was emailed, and a subscription that was
- * bought; the copy names both because we cannot tell from here which one
- * applies, and guessing would send half the readers to the wrong place.
- *
- * **It shares `.blankSlate` with the state next door**, which is the point of
- * the class. Both are a signed-in page with nothing to list, and giving each
- * its own height and its own row would let the two drift.
- *
- * **`envelope` is a new pose, which is the rule** (`normascopeWeb.md` §5). The
- * four already on this surface each mean one thing — `parcel` is *nothing has
- * arrived*, `hourglass` is *no runs in this range*, `lantern` is *we looked and
- * it is not there*, `key` is the sign-in door — and none of them is *the thing
- * you need was emailed to you*. An empty state names the next action, so the
- * drawing is the object the reader has to go and find.
- */
-function NoOrganization({ signedInAs }: { signedInAs: string }) {
-  return (
-    <section className={styles.blankSlate}>
-      <div className={styles.blankWords}>
-        <p className={styles.blankTitle}>
-          You&apos;re signed in as {signedInAs}, but not in an organization yet.
-        </p>
-        <p className={styles.blankBody}>
-          Everything on Cloud belongs to an organization. If you were invited, the invitation link that
-          was emailed to you is what puts you in one — it may still be in your inbox. If you bought a
-          subscription and this is unexpected, reply to your receipt and we&apos;ll sort it out.
-        </p>
-      </div>
-      <CloudTwin pose="envelope" className={styles.blankTwin} />
-    </section>
-  );
-}
-
 export default async function ReposPage() {
-  const theme = await readTheme();
-  const session = await currentSession();
-  if (!session) {
-    redirect("/login?next=%2Frepos");
+  const context = await consoleContext("runs", "/repos");
+  if (context.kind !== "ok") {
+    return <ConsoleGate context={context} />;
   }
 
-  const jar = await cookies();
-  const membership = activeMembership(session, jar.get(ACTIVE_ORG_COOKIE)?.value);
-
-  if (!membership) {
-    return (
-      <div className={styles.page} data-theme={theme ?? undefined}>
-        <main className={styles.sheet}>
-          <CloudMasthead
-            title="No organization yet"
-            theme={theme}
-            path="/repos"
-            account={<AccountMenu signedInAs={session.user.display_name} />}
-          />
-          <NoOrganization signedInAs={session.user.display_name} />
-          <CloudFooter />
-        </main>
-      </div>
-    );
-  }
-
-  const repos = await orgRepos(await getDb(), membership.orgId);
+  const repos = await orgRepos(await getDb(), context.membership.orgId);
 
   return (
-    <div className={styles.page} data-theme={theme ?? undefined}>
-      <main className={styles.sheet}>
-        <CloudMasthead
-          title={membership.orgName}
-          crumbs={[{ label: membership.orgName }]}
-          theme={theme}
-          path="/repos"
-          account={<AccountMenu signedInAs={session.user.display_name} />}
-          meta={
-            <>
-              {repos.length} repositor{repos.length === 1 ? "y" : "ies"}
-            </>
-          }
-        />
-
-        {repos.length === 0 ? (
-          <BlankSlate />
-        ) : (
-          <section className={styles.section}>
-            <div className={styles.tableWrap}>
-              <table className={styles.runs}>
-                <thead>
-                  <tr>
-                    <th scope="col">Repository</th>
-                    <th scope="col" className={styles.num}>
-                      Runs
-                    </th>
-                    <th scope="col" className={styles.num}>
-                      Flagged in last run
-                    </th>
-                    <th scope="col">Last run</th>
+    <ConsoleShell
+      context={context}
+      title={context.area.label}
+      meta={
+        <>
+          {repos.length} repositor{repos.length === 1 ? "y" : "ies"}
+        </>
+      }
+    >
+      {repos.length === 0 ? (
+        <BlankSlate />
+      ) : (
+        <section className={styles.section}>
+          <div className={styles.tableWrap}>
+            <table className={styles.runs}>
+              <thead>
+                <tr>
+                  <th scope="col">Repository</th>
+                  <th scope="col" className={styles.num}>
+                    Runs
+                  </th>
+                  <th scope="col" className={styles.num}>
+                    Flagged in last run
+                  </th>
+                  <th scope="col">Last run</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repos.map((repo: RepoListEntry) => (
+                  <tr key={repo.id}>
+                    <td>
+                      <Link href={`/repos/${repo.id}`}>{repo.name}</Link>
+                    </td>
+                    <td className={styles.num}>{repo.runCount}</td>
+                    <td className={styles.num}>
+                      {repo.flaggedInLastRun === null ? (
+                        <span className={styles.muted}>—</span>
+                      ) : repo.flaggedInLastRun > 0 ? (
+                        <span className={styles.pillFlagged}>{repo.flaggedInLastRun}</span>
+                      ) : (
+                        <span className={styles.pillClean}>0</span>
+                      )}
+                    </td>
+                    <td className={styles.muted}>{relative(repo.lastRunAt)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {repos.map((repo: RepoListEntry) => (
-                    <tr key={repo.id}>
-                      <td>
-                        <Link href={`/repos/${repo.id}`}>{repo.name}</Link>
-                      </td>
-                      <td className={styles.num}>{repo.runCount}</td>
-                      <td className={styles.num}>
-                        {repo.flaggedInLastRun === null ? (
-                          <span className={styles.muted}>—</span>
-                        ) : repo.flaggedInLastRun > 0 ? (
-                          <span className={styles.pillFlagged}>{repo.flaggedInLastRun}</span>
-                        ) : (
-                          <span className={styles.pillClean}>0</span>
-                        )}
-                      </td>
-                      <td className={styles.muted}>{relative(repo.lastRunAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        <CloudFooter />
-      </main>
-    </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </ConsoleShell>
   );
 }

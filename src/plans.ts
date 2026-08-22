@@ -62,7 +62,25 @@ export class PlanConfigError extends Error {
   }
 }
 
-export async function planLimitsFor(db: Db, orgId: string): Promise<PlanLimits> {
+/**
+ * An organization's plan and lifecycle, without its limits.
+ *
+ * **What the console chrome asks, and it must not be able to fail the way the
+ * full lookup can.** `planLimitsFor` below throws when a plan has no
+ * `plan_limits` row, which is right for an entitlement decision and wrong for a
+ * label in a masthead: a provisioning gap would take down every console page,
+ * including the billing page somebody would go to about it. These two columns
+ * live on `orgs` and are always present, so this cannot throw for that reason.
+ *
+ * It is also the first half of `planLimitsFor`, rather than a second copy of
+ * the same SELECT.
+ */
+export interface OrgPlanState {
+  plan: string;
+  subscriptionStatus: string;
+}
+
+export async function orgPlanState(db: Db, orgId: string): Promise<OrgPlanState> {
   const org = await db.query<{ plan: string; subscription_status: string }>(
     "SELECT plan, subscription_status FROM orgs WHERE id = $1",
     [orgId]
@@ -70,8 +88,13 @@ export async function planLimitsFor(db: Db, orgId: string): Promise<PlanLimits> 
   if (org.rows.length === 0) {
     throw new PlanConfigError(`no such organization: ${orgId}`);
   }
-  const limits = await planLimitsForPlan(db, org.rows[0].plan);
-  return withStatus(limits, org.rows[0].subscription_status);
+  return { plan: org.rows[0].plan, subscriptionStatus: org.rows[0].subscription_status };
+}
+
+export async function planLimitsFor(db: Db, orgId: string): Promise<PlanLimits> {
+  const state = await orgPlanState(db, orgId);
+  const limits = await planLimitsForPlan(db, state.plan);
+  return withStatus(limits, state.subscriptionStatus);
 }
 
 /**

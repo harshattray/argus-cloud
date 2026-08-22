@@ -1,0 +1,272 @@
+/*
+ * The organization console's chrome: the context row and the area navigation.
+ *
+ * Everything visual here is the surface's — palette, card, masthead, popover
+ * menu — and nothing is redefined. What this file adds is the two rows that
+ * only exist inside the console, plus the states a page can be in before it has
+ * any content of its own.
+ */
+
+.page {
+  composes: surface from "../../_styles/surface.module.css";
+}
+
+.sheet {
+  composes: card from "../../_styles/surface.module.css";
+}
+
+/* ---------- the organization context row ----------
+ *
+ * Organization, role, subscription state, environment — in that order, because
+ * that is the order the questions get asked: *whose data is this, what may I do
+ * with it, is the account in good standing, and is this the real one.*
+ *
+ * It wraps rather than truncates. An organization name is customer-supplied and
+ * an environment chip that fell off the end of the row on a narrow window would
+ * take the answer to the loudest question with it.
+ */
+.context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0 0 12px;
+}
+
+.orgName {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* The switcher button, when there is more than one organization to switch to.
+   Quieter than the account button: it is a label first and a control second. */
+.orgButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--frame-bg);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.orgButton:hover {
+  border-color: var(--ink-faint);
+}
+
+.orgButton:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: 2px;
+}
+
+/* ---------- the chips ----------
+ *
+ * One shape, four meanings, separated by colour and nothing else — so each one
+ * also carries its own word. A chip that says "Preview" is readable in a
+ * screenshot, in a colourblind palette, and read aloud; a coloured dot is not.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.role {
+  composes: chip;
+  color: var(--ink-soft);
+  background: var(--frame-bg);
+  text-transform: capitalize;
+}
+
+.planWarn {
+  composes: chip;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: transparent;
+}
+
+.planBad {
+  composes: chip;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: transparent;
+}
+
+.envProd {
+  composes: chip;
+  color: var(--ink-faint);
+  background: transparent;
+}
+
+.envPreview {
+  composes: chip;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: transparent;
+}
+
+.envDev {
+  composes: chip;
+  color: var(--ink-soft);
+  background: var(--frame-bg);
+}
+
+/* ---------- the area navigation ----------
+ *
+ * The areas this role may reach. **It wraps; it does not scroll sideways.**
+ *
+ * It scrolled first, on the argument that seven items wrapping to three ragged
+ * lines put the current one somewhere unpredictable. A browser settled it: at
+ * 666px the current item was **Billing and usage**, and it sat past the right
+ * edge of the row — underlined, and invisible. A reader arriving on that page
+ * sees a navigation that does not contain the page they are on, and there is no
+ * way to fix that without JavaScript, because nothing but a script can scroll a
+ * chosen element into view on load.
+ *
+ * Unpredictable but visible beats tidy but hidden. The cost is a taller
+ * masthead on a phone, which is the right price for a control plane.
+ */
+.nav ul {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navItem {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px 9px;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-soft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navItem:hover {
+  color: var(--ink);
+  border-bottom-color: var(--line);
+}
+
+.navItem:focus-visible,
+.navOn:focus-visible {
+  outline: 2px solid var(--clay);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.navOn {
+  composes: navItem;
+  color: var(--ink);
+  font-weight: 650;
+  border-bottom-color: var(--clay);
+}
+
+/* ---------- states a page can be in before it has content ---------- */
+
+.blankSlate {
+  composes: blankSlate from "../../_styles/surface.module.css";
+}
+
+.blankWords {
+  composes: blankWords from "../../_styles/surface.module.css";
+}
+
+.blankTitle {
+  composes: blankTitle from "../../_styles/surface.module.css";
+}
+
+.blankBody {
+  composes: blankBody from "../../_styles/surface.module.css";
+}
+
+.blankTwin {
+  composes: blankTwin from "../../_styles/surface.module.css";
+}
+
+/*
+ * The wrong role for this area.
+ *
+ * Deliberately not a blank slate: no figure, no reserved height. Nothing has
+ * failed and nothing is missing — the page is doing exactly what it should — so
+ * it reads as an ordinary panel with an explanation in it.
+ */
+.denied {
+  padding: 30px;
+  border-bottom: 1px solid var(--line);
+  max-width: 64ch;
+}
+
+.deniedTitle {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.deniedBody {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.deniedBody:last-child {
+  margin-bottom: 0;
+  color: var(--ink-faint);
+}
+
+/* ---------- an area with nothing in it yet ---------- */
+
+.outline {
+  padding: 30px;
+  border-bottom: 1px solid var(--line);
+  max-width: 64ch;
+}
+
+.outlinePurpose {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.outlineNote {
+  margin: 0 0 12px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* `list-style: disc` stated, not assumed: `globals.css` resets lists to none for
+   the navigation and the footers, so a plain <ul> here renders as four
+   unmarked lines that read as a paragraph somebody broke badly. */
+.outlineList {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.outlineList li::marker {
+  color: var(--ink-faint);
+}

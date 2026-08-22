@@ -47,6 +47,7 @@ export function CloudMasthead({
   theme,
   path,
   account,
+  context,
 }: {
   title: string;
   crumbs?: Crumb[];
@@ -60,6 +61,13 @@ export function CloudMasthead({
    * share-token report, which has a reader but not a user.
    */
   account?: ReactNode;
+  /**
+   * The organization context row and the console navigation, for pages inside
+   * the console. A second slot for the same reason as `account`: the report
+   * page has a reader, one run, and no organization to name — so what goes here
+   * is passed in by whoever resolved one, not reached for from here.
+   */
+  context?: ReactNode;
 }) {
   return (
     <header className={styles.masthead}>
@@ -75,6 +83,8 @@ export function CloudMasthead({
           {account}
         </div>
       </div>
+
+      {context}
 
       {crumbs.length > 0 && (
         <nav className={styles.crumbs} aria-label="Breadcrumb">
