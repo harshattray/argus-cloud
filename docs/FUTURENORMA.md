@@ -568,21 +568,28 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
 | **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **The individual account page is not built**, so 5A.8's session list is still owed |
 | **`memberships.role` has a domain** | ✅ 2026-08-22 | Migration `022`. 001 wrote `admin \| member \| designer` in a **comment** and no constraint, and the seed wrote `'owner'` — not a role, since ownership is `orgs.owner_user_id` (021). No authorization path recognised it, so a locally seeded owner was refused every console area and nothing said why. The column now refuses it. **The upgrade path is tested, not just the fresh install**: `migrations` M9 walks a database to 021, gives it `owner` and `superuser` rows plus one of each valid role, and takes it across 022 — selective repair, five of five memberships kept, no ownership invented, and a counter-test showing constraint-before-repair aborting on that data. Green on PGlite and on real Postgres |
+| **Invitations, owner claims and API keys are services with no door** | ⚠️ **built server-side, unreachable from a browser** — recorded 2026-08-22 | `src/invitations.ts` (create, accept, revoke, list, expire, with the hashed single-use token), `src/ownerClaims.ts` and `src/apiKeys.ts` (create, list, revoke, per-key budgets) are written and under test. **There is no HTTP route and no page for any of them** — `web/app/api/` holds `auth`, `blob`, `ci-explain`, `explain`, `org`, `share`, `trends`, `upload`, `waitlist`, `webhooks` and the unlock routes, and nothing else. So an admin cannot today invite anybody or mint a key without a database client. This is the Organization area's work, and it is the next thing being built |
 
 `main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
 session layer. **The working branch is now `staging`, and `main` only ever
 receives it.** **Pathway 1 items 1–10 are implemented**, and the public site is
 **live on `normascope.com`** (§4g) with its legal pages published (§4h). Full
 suite:
-**1,242 checks green** on PGlite across thirty-five suites — `apiKeyRevocation`,
+**1,341 checks green** on PGlite across thirty-five suites — `apiKeyRevocation`,
 `artifactUploads`, `auth`, `authAbuse`, `backup`, `budgetAlerts`,
 `bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
 `enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
 `overview`, `planLimits`, `previewGate`, `providerBudget`,
 `rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
 `seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks` — and **1,274** against a real Postgres
-server, both run 2026-08-21. Migrations are `001`–`021`.
+`waitlistConfirmationEmail`, `webhooks` — and **1,373** against a real Postgres
+server, both run 2026-08-22. Migrations are `001`–`022`.
+
+Two checks that a suite cannot hold run as scripts, because each needs a
+production build, a server and a real database at once:
+`scripts/golive-check.mjs` against the deployed site, and
+`scripts/tenant-gate-check.mjs` — 17 checks over HTTP with `NORMA_DEV_OPEN=0`,
+watched failing against the pre-fix build.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
 loop** (item 8, `Blocked` on an account — Step 7's gate), the **backup schedule**
@@ -1984,6 +1991,24 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    See "Magic links are an outbound-email budget" under Step 6. One sub-decision
    is open inside it — first-party challenge versus Turnstile and the CSP
    widening it needs.
+5. **What status code a refused Cloud page answers with — open, raised
+   2026-08-22.** Every Cloud *page* refuses with a "Not found" **body at HTTP
+   200**. That is how all of them have behaved since Phase H: `/r/`,
+   `/repos/{id}`, the trend view and the seven console areas render a
+   `NotFound` component, and no page calls `notFound()` from `next/navigation`.
+   The route handlers under `/api` do answer a real 404.
+
+   **Nothing leaks either way**, which is why this is a decision and not a bug —
+   the refusal body is byte-for-byte identical whether the tenant exists or not,
+   and `scripts/tenant-gate-check.mjs` G1.6 records the status rather than
+   blessing it. What it costs is everything that reads status codes: uptime
+   monitoring, analytics, a CDN and any future error budget count every refusal
+   as a success.
+
+   **Recommendation: switch the pages to `notFound()` and a real 404**, as one
+   change across every page at once rather than per page, with the identical
+   body preserved and a check that it stays identical. Cheap now, and it gets
+   dearer with every page added — the Organization area is about to add several.
 
 ---
 
