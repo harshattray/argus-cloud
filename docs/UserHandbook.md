@@ -690,6 +690,10 @@ would let somebody work out what exists by trying URLs.
 If you expect to see it: check the organization switcher (you may be looking at
 the wrong one), and check whether the share link you were sent has expired.
 
+The page needs JavaScript to draw itself. If you have scripting turned off, a
+report or repository you cannot open shows a blank page rather than this one —
+the address is still a dead end either way, but nothing on screen says so.
+
 ### The sign-in link did not arrive
 
 Wait a couple of minutes, then ask again — there is a short cooldown per address.

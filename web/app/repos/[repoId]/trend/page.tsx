@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { planLimitsFor } from "argus-cloud/plans.js";
 import {
   DETAIL_SIZES,
@@ -28,7 +29,7 @@ import { currentSession, membershipFor } from "../../../../lib/session";
 import { CloudFooter, CloudMasthead } from "../../../_components/cloud/cloud-shell";
 import { ConsoleChrome } from "../../../_components/cloud/console-shell";
 import { AccountMenu } from "../../../_components/cloud/account-menu";
-import { CloudEmpty, CloudTwin } from "../../../_components/cloud/empty-state";
+import { CloudEmpty } from "../../../_components/cloud/empty-state";
 import { Explainer } from "../../../_components/cloud/explainer";
 import { Brush } from "../../brush";
 import { OverviewChart } from "../../overview-chart";
@@ -54,7 +55,8 @@ import styles from "../../trends.module.css";
  * bugs:
  *
  *   1. *This frame is not here, or is not yours.* A real dead end, and the only
- *      one that gets the bare `NotFound` page.
+ *      one that gets the not-found page — which since 2026-08-23 is a real 404
+ *      from `notFound()` and `trend/not-found.tsx`, not a body at 200.
  *   2. *The chosen range holds no runs.* The overview section was rendered as
  *      `{overview && …}`, so choosing 7d on a repository whose last run was a
  *      fortnight ago deleted the section — and with it the range control that
@@ -73,37 +75,6 @@ export const metadata = {
   title: "Frame trend — Normascope Cloud",
   robots: { index: false, follow: false },
 };
-
-/**
- * The dead end, and only the dead end.
- *
- * It answers exactly one question now — *is this frame here, and is it yours* —
- * having previously also been the answer to "did your drag select a period with
- * no runs in it", which is not a dead end at all and had no business losing the
- * masthead over.
- *
- * **`back` is passed whenever the repository is known.** The two cases that
- * cannot pass it are the feature flag being off and a repository that does not
- * resolve, and in neither of those is there a page to offer. Everything else
- * gets a way out, because a page with no navigation and no link is the same
- * mistake the site's 404 exists to avoid.
- */
-function NotFound({ theme, back }: { theme?: string; back?: string }) {
-  return (
-    <div className={styles.page} data-theme={theme}>
-      <main className={styles.notFound}>
-        <CloudTwin pose="lantern" className={styles.notFoundTwin} />
-        <h1>Not found</h1>
-        <p>This frame has no history here, or you don&apos;t have access to it.</p>
-        {back && (
-          <Link className={styles.notFoundBack} href={back}>
-            ← Back to the repository
-          </Link>
-        )}
-      </main>
-    </div>
-  );
-}
 
 export default async function TrendPage({
   params,
@@ -124,12 +95,12 @@ export default async function TrendPage({
   const theme = await readTheme();
 
   if (!frame) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
   const db = await getDb();
   const owner = await repoOrg(db, repoId);
   if (!owner) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
 
   /*
@@ -149,7 +120,7 @@ export default async function TrendPage({
   const session = await currentSession();
   const membership = membershipFor(session, owner.orgId);
   if (!membership && !repoViewOpen()) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
 
   // Retention is what "all retained" resolves to, and it is a column rather than
@@ -160,7 +131,6 @@ export default async function TrendPage({
   const span = parseSpan(from, to);
 
   const where = { orgId: owner.orgId, repoId: owner.id, frame };
-  const repoHref = `/repos/${owner.id}`;
 
   const [overview, selected] = await Promise.all([
     frameOverview(db, { ...where, days: range, retentionDays: plan.retentionDays }),
@@ -178,7 +148,7 @@ export default async function TrendPage({
    */
   const trend = selected ?? (span ? await frameTrend(db, { ...where, limit: trendLimit(limit) }) : null);
   if (!trend) {
-    return <NotFound theme={theme ?? undefined} back={repoHref} />;
+    notFound();
   }
   /** The span was asked for, holds nothing, and has been dropped. Said below. */
   const spanEmpty = span !== null && selected === null;

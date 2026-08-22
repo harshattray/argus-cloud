@@ -345,13 +345,16 @@ DATABASE_URL="$(scripts/test-db.sh url)" npm run build:web
 DATABASE_URL="$(scripts/test-db.sh url)" GATE_BASE=http://127.0.0.1:3200 node scripts/tenant-gate-check.mjs
 ```
 
-41 checks over HTTP against a production build: the repository trend view and its
+45 checks over HTTP against a production build: the repository trend view and its
 export, the console's role matrix by direct URL, every write the Organization
 area offers — each refused for no session, for the wrong role, from another
-origin, and from another organization's admin holding a real row id — and the
+origin, and from another organization's admin holding a real row id — the
 account page's session sign-out, where the same question is asked about a person
-rather than a tenant: two colleagues in one organization cannot sign each other
-out.
+rather than a tenant (two colleagues in one organization cannot sign each other
+out), and the refusal **status** across all three page families.
+
+That last group is the one a source check cannot do. A refused page answering 200
+looked correct in every file; only the running server showed it.
 
 **Do not override `GATE_COOKIE_NAME`.** A production build uses the `__Host-`
 prefixed cookie and the script's default already matches. Overriding it wrongly
@@ -494,6 +497,14 @@ The same page is returned for missing, revoked, expired, and belonging to anothe
 organization — deliberately, so probing URLs maps nothing. Check which
 organization they are signed in as, and whether the share link they were sent is
 still live.
+
+**Since 2026-08-23 these answer HTTP 404**, not 200. Two things follow. Refusals
+now show up in any monitoring that counts status codes, so a spike in 404s on
+`/r/` is worth reading as a signal — most likely an expired share link doing the
+rounds — rather than dismissed as noise. And the body of a 404 is drawn by the
+browser, so a customer with scripting disabled reports "a blank page" rather
+than "Not found". Ask what they see before assuming an outage: a blank page at
+404 is this, and a blank page at 200 is not.
 
 ---
 

@@ -307,21 +307,35 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   check("S6.11", /alt=""/.test(component) && /aria-hidden/.test(component),
     "and the mark is decorative to a screen reader — the label carries the meaning");
 
-  // Every route where a wait is actually visible has one. All three are
-  // force-dynamic and every control on them is a navigation.
-  for (const [id, rel] of [
-    ["S6.12", "app/repos/[repoId]/loading.tsx"],
-    ["S6.13", "app/repos/[repoId]/trend/loading.tsx"],
-    ["S6.14", "app/r/[runId]/loading.tsx"],
-  ]) {
-    let present = true;
-    try {
-      await readFile(path.join(WEB, rel), "utf-8");
-    } catch {
-      present = false;
-    }
-    check(id, present, `${rel.replace("app/", "")} has a loading state`);
-  }
+  // ── S6.12–S6.14 required three route-level loading states. They are gone ──
+  //
+  // **This check was right and is now wrong, and that is worth writing down
+  // rather than deleting quietly.** It required a `loading.tsx` on the three
+  // dynamic Cloud routes, on the reasoning that every control on them is a
+  // navigation and a navigation with no feedback reads as a broken click.
+  //
+  // What it could not know is that a `loading.tsx` is a Suspense boundary, that
+  // the boundary starts the response streaming the moment the page awaits its
+  // first query, and that Next cannot set a status code once the headers have
+  // gone. So those three files were the reason every refused Cloud page answered
+  // **HTTP 200** — and FUTURENORMA §4 Open decision 5, decided 2026-08-23, is
+  // that a refusal must answer 404. The two cannot both hold on one route.
+  //
+  // The status won, on measurement rather than principle: those pages answer in
+  // 20–80 ms against a local server, including the artifact-heavy report, so the
+  // spinner was covering a wait that is mostly not there. What is genuinely lost
+  // is feedback during a cold start. `_components/cloud/loading.tsx` records how
+  // to get both back if that turns out to matter.
+  //
+  // S14.5 is the check that replaced these, asserting the opposite for the same
+  // reason: no `loading.tsx` on a page that can refuse.
+  check("S6.12", !existsSync(path.join(WEB, "app/r/[runId]/loading.tsx")) &&
+    !existsSync(path.join(WEB, "app/repos/[repoId]/loading.tsx")) &&
+    !existsSync(path.join(WEB, "app/repos/[repoId]/trend/loading.tsx")),
+    "the three route-level loading states are deliberately gone — they pinned every refusal to HTTP 200 (§4 Open decision 5); S14.5 holds the replacement rule");
+
+  check("S6.13", /export function Loading\b/.test(component) && /LoadingPanel/.test(component),
+    "the indicator itself stays, for the in-page busy states in frame-view and share-panel that are not navigations and stream nothing");
 }
 
 // ═══ S7 — the empty states, and the figures in them ═══
@@ -1352,6 +1366,152 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
     const echoed = />\s*\{\s*(notice|code)\s*\}/.test(jsxText);
     check("S13.7b", /NOTICES\[code as AccountNotice\]/.test(page) && !echoed,
       `the notice is looked up in a fixed map and never rendered as the caller wrote it (echoed: ${echoed})`);
+  }
+}
+
+// ═══ S14 — a refused page answers 404, and stays that way ═══
+//
+// FUTURENORMA §4 Open decision 5, decided 2026-08-23: every Cloud page refuses
+// with `notFound()` and a real status, not a "Not found" body at HTTP 200.
+// `tenant-gate-check` G8 proves the status over HTTP, which a source check
+// cannot. What this holds is the thing G8 cannot: that the **next** page does it
+// too.
+//
+// The failure it is written against is not a page that refuses wrongly — it is a
+// page added six months from now that copies the pattern from whichever
+// neighbour it was pasted from. Before this change that neighbour rendered a
+// local `NotFound` component; the pattern was the defect, and a pattern spreads
+// by being available.
+{
+  const { readdir } = await import("node:fs/promises");
+
+  /** Every page under the Cloud surface, whatever depth it sits at. */
+  async function pagesUnder(dir, acc = []) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await pagesUnder(full, acc);
+      } else if (entry.name === "page.tsx") {
+        acc.push(full);
+      }
+    }
+    return acc;
+  }
+
+  const cloudPages = [
+    ...(await pagesUnder(path.join(WEB, "app/r"))),
+    ...(await pagesUnder(path.join(WEB, "app/repos"))),
+  ];
+
+  // ── No page renders its own refusal ───────────────────────────────────────
+  {
+    const offenders = [];
+    for (const file of cloudPages) {
+      const text = decomment(await readFile(file, "utf-8"));
+      // A local component named NotFound, or a returned one. Either is a body
+      // rendered by the page itself, which is a 200 by construction: a page has
+      // no way to set a status other than by throwing.
+      if (/function NotFound\b/.test(text) || /return\s*<NotFound\b/.test(text)) {
+        offenders.push(path.relative(WEB, file));
+      }
+    }
+    check("S14.1", offenders.length === 0,
+      `no Cloud page renders its own refusal body (${cloudPages.length} pages checked, offenders: ${offenders.join(", ") || "none"})`);
+  }
+
+  // ── Every page that can refuse, refuses by throwing ───────────────────────
+  {
+    const missing = [];
+    for (const file of cloudPages) {
+      const text = decomment(await readFile(file, "utf-8"));
+      // Only pages that gate on something can refuse. A page with no membership
+      // check and no id to look up has nothing to 404 about.
+      const gates = /membershipFor\(|authorize\(|repoOrg\(/.test(text);
+      if (gates && !/notFound\(\)/.test(text)) {
+        missing.push(path.relative(WEB, file));
+      }
+    }
+    check("S14.2", missing.length === 0,
+      `every Cloud page that gates on a session or an id refuses with notFound() (missing: ${missing.join(", ") || "none"})`);
+  }
+
+  // ── The boundary exists for each family, and takes no props ───────────────
+  //
+  // The identical-body property used to be a promise that every call site
+  // passed the same props to one local component. Next 16's `not-found.js`
+  // "components do not accept any props", so it is now structural — there is
+  // nothing a caller could vary per tenant. This check is what keeps somebody
+  // from reintroducing the variance by other means.
+  {
+    const boundaries = [
+      "app/r/[runId]/not-found.tsx",
+      "app/repos/[repoId]/not-found.tsx",
+      "app/repos/[repoId]/trend/not-found.tsx",
+    ];
+    const absent = boundaries.filter((f) => !existsSync(path.join(WEB, f)));
+    check("S14.3", absent.length === 0,
+      `each page family has its own not-found boundary (missing: ${absent.join(", ") || "none"})`);
+
+    const propped = [];
+    for (const file of boundaries) {
+      if (!existsSync(path.join(WEB, file))) continue;
+      const text = decomment(await readFile(path.join(WEB, file), "utf-8"));
+      // `export default function X()` or `X({ … })`. Anything inside those
+      // parentheses is a prop the framework will never pass.
+      const signature = text.match(/export default (?:async )?function \w*\(([^)]*)\)/);
+      if (signature && signature[1].trim().length > 0) {
+        propped.push(`${file} takes ${signature[1].trim()}`);
+      }
+    }
+    check("S14.3b", propped.length === 0,
+      `and none of them declares a parameter, so no caller can vary the body (${propped.join("; ") || "none do"})`);
+  }
+
+  // ── No loading.tsx on a page that can refuse ──────────────────────────────
+  //
+  // **The check that cost the most to learn.** `notFound()` was in place, the
+  // boundaries existed, the suite was green — and every refusal still answered
+  // HTTP 200. A `loading.tsx` is a Suspense boundary; a Suspense boundary starts
+  // the response streaming as soon as the page awaits anything; and Next cannot
+  // change a status code after the headers have gone. So the three files that
+  // made these pages feel fast were the reason the decision had not landed, and
+  // only measuring the live response showed it.
+  //
+  // Nothing about adding a `loading.tsx` back would look wrong in review — it is
+  // the framework's own convention for exactly these slow pages. This is the
+  // check that says why not, in the place somebody would find out.
+  {
+    const streaming = [];
+    for (const file of cloudPages) {
+      const dir = path.dirname(file);
+      const text = decomment(await readFile(file, "utf-8"));
+      const canRefuse = /notFound\(\)/.test(text);
+      if (canRefuse && existsSync(path.join(dir, "loading.tsx"))) {
+        streaming.push(path.relative(WEB, dir));
+      }
+    }
+    check("S14.5", streaming.length === 0,
+      `no page that calls notFound() sits behind a loading.tsx, which would stream the response and pin it to 200 (${streaming.join(", ") || "none do"})`);
+  }
+
+  // ── The refusal sentence is unchanged ─────────────────────────────────────
+  //
+  // Customer-facing wording, moved from one file to another. Pinning it here
+  // means the move is provably a move: if a later edit reworded a refusal, that
+  // is a decision somebody should make on purpose.
+  {
+    const sentences = [
+      ["app/r/[runId]/not-found.tsx", "This report doesn&apos;t exist or the link is no longer valid."],
+      ["app/repos/[repoId]/not-found.tsx", "This repository doesn&apos;t exist or you don&apos;t have access to it."],
+      ["app/repos/[repoId]/trend/not-found.tsx", "This frame has no history here, or you don&apos;t have access to it."],
+    ];
+    const changed = [];
+    for (const [file, sentence] of sentences) {
+      const text = await readFile(path.join(WEB, file), "utf-8");
+      if (!text.includes(sentence)) changed.push(file);
+    }
+    check("S14.4", changed.length === 0,
+      `each refusal says what it said before the status changed (reworded: ${changed.join(", ") || "none"})`);
   }
 }
 

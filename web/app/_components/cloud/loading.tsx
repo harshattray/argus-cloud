@@ -69,6 +69,31 @@ export function Loading({
  *
  * Sized to roughly the height of what it replaces, so the page does not jump
  * when the real content lands.
+ *
+ * ── It has no callers, and that is a decision rather than an oversight ───────
+ *
+ * `/r/{runId}`, `/repos/{repoId}` and the frame trend each had a `loading.tsx`
+ * that rendered this. **All three were removed on 2026-08-23** because a
+ * `loading.tsx` is a Suspense boundary, a Suspense boundary starts the response
+ * streaming, and Next cannot set a status code after streaming has begun — so
+ * every refused page answered HTTP 200 no matter what `notFound()` did. That is
+ * FUTURENORMA §4 Open decision 5, and the status won.
+ *
+ * **What it cost, measured rather than assumed:** those three pages answer in
+ * 20–80 ms against a local Postgres, including the artifact-heavy report, whose
+ * own comment used to warn about "sixty signatures before the first byte" —
+ * presigning is a local HMAC, not a network round trip. The spinner was covering
+ * a wait that mostly is not there. What it did cover is a cold start, where
+ * there is now no feedback until the server answers.
+ *
+ * **The way to have both**, if that cold start turns out to matter: do the
+ * existence and authorization checks before anything suspends, then wrap only
+ * the slow part of the page in its own `<Suspense>` with this as the fallback.
+ * The report page needs its masthead detached from `loadRun` first, which is why
+ * it was not done here.
+ *
+ * Kept for that reason, and for `frame-view` and `share-panel`, which use
+ * {@link Loading} directly for in-page busy states.
  */
 export function LoadingPanel({ label }: { label?: string }) {
   return (

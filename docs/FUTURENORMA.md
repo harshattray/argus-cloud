@@ -2,8 +2,24 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-23** — **a person can see every browser signed in as
-them, and end any one of them.**
+Last updated: **2026-08-23** — **a refused Cloud page answers 404, and a person
+can see every browser signed in as them.**
+
+**The status.** §4 Open decision 5, closed today: `/r/{runId}`,
+`/repos/{repoId}` and the frame trend refused with a "Not found" body at HTTP
+**200**, so uptime monitoring, analytics and a CDN counted every refusal as a
+page served. They call `notFound()` now, each family has its own `not-found`
+boundary, and the sentences are unchanged. **What made it hard to land was not
+the status call** — each route had a `loading.tsx`, which is a Suspense boundary
+that starts the response streaming before a status can be set, so the change
+looked done and measured 200. Only asking the live server found it. `G8` asserts
+all three families over HTTP, and putting one `loading.tsx` back was watched
+turning two of them straight back to 200. The cost is stated in the decision:
+the body of a 404 is client-rendered in Next 16.3, so a reader with scripting
+off sees a blank dead end — already true of `/legal/*` before today.
+
+**The account page**, earlier the same day — a person can see every browser
+signed in as them, and end any one of them.
 
 The account page. Since 2026-08-22 the masthead menu could *end* sessions and
 deliberately could not *show* them, so "sign out everywhere" asked somebody to
@@ -624,6 +640,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | ~~**Invitations, owner claims and API keys are services with no door**~~ **The Organization area** (Step 6, Pathway 5, §10.7 5A.6 and 5A.10) | ✅ 2026-08-22 | Members with roles, invitations with their state, and keys shown once and revocable — the first area of the console that writes. Seven writes behind one dispatcher, all guarded by `requireOrgAdmin`, which reads the role from `CONSOLE_AREAS` rather than naming `admin`. Plain form POSTs and a 303, so the page still ships **zero client JavaScript** under the nonce policy. **No form carries an `orgId`** and both revokes are scoped to the session's organization — the parameter is required with `null` meaning "any", so `/admin`'s cross-tenant reach is a decision somebody wrote down. 66 + 22 + 16 checks, eleven source breaks and three HTTP breaks watched failing — `FinishedSPEC.md` §3af |
 | **An invitation is now actually sent** | ✅ 2026-08-22 | It was a row and a hashed token with nobody told, while the page said "sent". `sendInvitation` reserves the outbound-email budget, **then** creates the row, **then** sends — so a refused ceiling leaves no live link behind that nobody knows about. The ceilings are `authThrottle.ts`'s `INVITE_SCOPES`, written and uncalled since the abuse ladder: the global daily budget plus per-organization and per-address. A provider failure after the row exists is alerted and reported, never rolled back — the message may have been accepted. The mail names the organization, the inviter, the role and the expiry, and **nobody else in the organization** |
 | ~~**5A.8's session list is owed**~~ **The account page** (Step 6, Pathway 5 / §10.7 5A.8) | ✅ 2026-08-23 | Every browser signed in as one person, with its device label, sign-in method, start, last use, expiry, a current-browser marker and a per-row sign-out; the organizations they belong to; and their own sign-ins in plain words. **Not an eighth console area** — user-scoped, no role, and declared in `consoleIA.ts` as its own surface so no page escapes the ownership map through a test's exception list. `revokeSession` gained a required user scope, `null` meaning "any", because the id now comes from a form. Two defects the work exposed: the list ignored the idle cutoff, so a browser dead for 31 days read as signed in, and the device label was the client's own user-agent string. 33 + 17 + 8 checks, six source breaks and two HTTP breaks watched failing — `FinishedSPEC.md` §3ag |
+| **A refused page answers 404** | ✅ 2026-08-23 | §4 Open decision 5, closed. `/r/{runId}`, `/repos/{repoId}` and the frame trend called a local `NotFound` component and answered **200**, so every counter downstream read a refusal as a page served. One `not-found` boundary per family, the sentences unchanged, and the identical-body property is now structural rather than a discipline — a Next `not-found` takes no props, so there is nothing a caller could vary per tenant. **The blocker was a `loading.tsx` on each route**: a Suspense boundary streams the response, and a status cannot be set afterwards. Removing them cost a spinner over a 20–80 ms wait. G8 asserts it over HTTP; one `loading.tsx` restored was watched turning two families back to 200 — `FinishedSPEC.md` §3ah |
 | **`api_keys` records who minted a key** | ✅ 2026-08-22 | Migration `023`. Audit, never authority — 5A.10 is explicit that a key belongs to the organization and survives its creator, and `ON DELETE SET NULL` says the same in schema. **`last_used_at` is deliberately not in it**: `findApiKey` runs on every authenticated request, so recording last use is a write on the hot path and how coarse to make it is its own decision. Owed, not guessed at |
 
 `main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
@@ -631,7 +648,7 @@ session layer. **The working branch is now `staging`, and `main` only ever
 receives it.** **Pathway 1 items 1–10 are implemented**, and the public site is
 **live on `normascope.com`** (§4g) with its legal pages published (§4h). Full
 suite:
-**1,478 checks green** on PGlite across thirty-seven suites — `account`,
+**1,483 checks green** on PGlite across thirty-seven suites — `account`,
 `apiKeyRevocation`, `artifactUploads`, `auth`, `authAbuse`, `backup`,
 `budgetAlerts`, `bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`,
 `cropGrounding`, `enrichment`, `explainers`, `legal`, `metering`, `migrations`,
@@ -639,16 +656,17 @@ suite:
 `providerBudget`, `rateLimit`, `realSeed`, `reconcile`, `reportPage`,
 `retention`, `secretScan`, `seo`, `siteAnalytics`, `storage`, `trends`,
 `uploadPipeline`, `waitlist`, `waitlistConfirmationEmail`, `webhooks` — and
-**1,513** against a real Postgres server, both run 2026-08-23. Migrations are
+**1,518** against a real Postgres server, both run 2026-08-23. Migrations are
 `001`–`023`.
 
 Two checks that a suite cannot hold run as scripts, because each needs a
 production build, a server and a real database at once:
 `scripts/golive-check.mjs` against the deployed site, and
-`scripts/tenant-gate-check.mjs` — **41 checks** over HTTP with
+`scripts/tenant-gate-check.mjs` — **45 checks** over HTTP with
 `NORMA_DEV_OPEN=0`: the repository trend view and its export, the console's role
-matrix by direct URL, every write the Organization area offers, and the account
-page's session sign-out. Each group
+matrix by direct URL, every write the Organization area offers, the account
+page's session sign-out, and the refusal status across all three page
+families. Each group
 has been watched failing against a build with its guard removed.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
@@ -2070,24 +2088,37 @@ Everything else is settled (`FinishedSPEC.md` §8). These are not:
    See "Magic links are an outbound-email budget" under Step 6. One sub-decision
    is open inside it — first-party challenge versus Turnstile and the CSP
    widening it needs.
-5. **What status code a refused Cloud page answers with — open, raised
-   2026-08-22.** Every Cloud *page* refuses with a "Not found" **body at HTTP
-   200**. That is how all of them have behaved since Phase H: `/r/`,
-   `/repos/{id}`, the trend view and the seven console areas render a
-   `NotFound` component, and no page calls `notFound()` from `next/navigation`.
-   The route handlers under `/api` do answer a real 404.
+5. ~~**What status code a refused Cloud page answers with**~~ — **closed
+   2026-08-23: a real 404.** Raised 2026-08-22, when every Cloud page refused
+   with a "Not found" body at HTTP 200. Nothing leaked either way, which is why
+   it was a decision and not a bug; what it cost was everything that reads
+   status codes — uptime monitoring, analytics, a CDN, any future error budget —
+   counting every refusal as a page served. Harsha approved the recommendation
+   as written: one change across all three page families, the sentences
+   unchanged, and checks that keep it that way.
 
-   **Nothing leaks either way**, which is why this is a decision and not a bug —
-   the refusal body is byte-for-byte identical whether the tenant exists or not,
-   and `scripts/tenant-gate-check.mjs` G1.6 records the status rather than
-   blessing it. What it costs is everything that reads status codes: uptime
-   monitoring, analytics, a CDN and any future error budget count every refusal
-   as a success.
+   **The seven console areas were never part of it**, and the paragraph above
+   said they were. They refuse with *"Billing and usage is for admins"* and
+   *"you're not in an organization yet"*, which are explained 200s by design —
+   `web/lib/console.ts` records why a `denied` is not a 404. The three families
+   that did refuse were `/r/{runId}`, `/repos/{repoId}` and the frame trend.
 
-   **Recommendation: switch the pages to `notFound()` and a real 404**, as one
-   change across every page at once rather than per page, with the identical
-   body preserved and a check that it stays identical. Cheap now, and it gets
-   dearer with every page added — the Organization area is about to add several.
+   **What it took, and it was not the status call.** Each of those routes had a
+   `loading.tsx`. A `loading.tsx` is a Suspense boundary, a Suspense boundary
+   starts the response streaming the moment the page awaits its first query, and
+   Next cannot set a status after the headers have gone — so `notFound()` was in
+   place, the suite was green, and every refusal still answered 200. Only
+   measuring the live response found it. The three files are gone; the pages
+   answer in 20–80 ms, so the spinner was covering a wait that mostly is not
+   there.
+
+   **The cost, stated because it is real.** A `notFound()` response in Next 16.3
+   is an error document: correct status, `noindex`, and the body rendered by the
+   client rather than the server. A reader with JavaScript disabled now gets a
+   blank dead end instead of a sentence at 200. This is not new behaviour —
+   `/legal/*` has answered that way since it shipped — and it is not caused by
+   anything we control; it was tested with a static boundary and without the
+   theme lookup. `FinishedSPEC.md` §3ah.
 
 ---
 

@@ -21,10 +21,10 @@
 // CSV export (G1–G4), the console's role matrix by direct URL (G5), every
 // write the Organization area offers (G6) — invitations, roles, removals and
 // keys, refused for no session, for the wrong role, from another origin, and
-// from another organization's admin holding a real row id — and the account
-// page's session revoke (G7), which is the same question asked about a person
-// rather than a tenant: two colleagues in one organization must not be able to
-// sign each other out.
+// from another organization's admin holding a real row id — the account page's
+// session revoke (G7), which is the same question asked about a person rather
+// than a tenant: two colleagues in one organization must not be able to sign
+// each other out — and the refusal status across all three page families (G8).
 //
 // **The defect it exists for.** Until 2026-08-22 `/repos/{id}/trend` and its CSV
 // export were gated by `NORMA_DEV_OPEN` alone — a variable no deployment sets —
@@ -201,11 +201,11 @@ try {
 
   // ── G1: the trend page ───────────────────────────────────────────────────
   //
-  // Pages refuse with a "Not found" *body* at HTTP 200 rather than a 404
-  // status. That is how every Cloud page has behaved since Phase H — `/r/`,
-  // `/repos/{id}` and this one all render a `NotFound` component — and it
-  // predates the gate fix. So the body is what is asserted; G1.6 reports the
-  // status rather than blessing it.
+  // The body is what proves isolation; the status is what everything else in
+  // the stack reads. **Both are asserted since 2026-08-23** — FUTURENORMA §4
+  // Open decision 5. Until then every Cloud page refused with a "Not found"
+  // body at HTTP **200**, and G1.6 recorded that fact rather than blessing it;
+  // it is now the check that would fail against any build predating the switch.
   {
     const anon = await get(trendA, null);
     check("G1.1", anon.body.includes(REFUSAL) && !anon.body.includes("acommit"),
@@ -233,8 +233,11 @@ try {
         !stranger.body.includes("acommit") && !stranger.body.includes(a.orgId),
       "and the refusal names nothing belonging to the tenant that was probed — no repository name, commit or organization id");
 
-    check("G1.6", anon.status === 200 && stranger.status === 200,
-      `NOTE — pages refuse at HTTP ${anon.status}, not 404. Standing behaviour of the whole Cloud surface, unchanged by the gate fix; the route handler below does answer 404`);
+    check("G1.6", anon.status === 404 && stranger.status === 404 && missing.status === 404,
+      `every refusal answers HTTP 404 — no session ${anon.status}, another tenant ${stranger.status}, no such repository ${missing.status}. This check read 200 until 2026-08-23 and recorded it as a NOTE; it is an assertion now`);
+
+    check("G1.6b", owner.status === 200,
+      `and the page that is genuinely theirs still answers ${owner.status}, so the 404 is about refusal and not about the route`);
   }
 
   // ── G2: the CSV export ───────────────────────────────────────────────────
@@ -556,6 +559,80 @@ try {
       check("G7.6", mine.status === 200 && mine.text.includes("Bob Account") && !mine.body.includes(ada.userId),
         `the account page names the person reading it and carries no id belonging to anybody else (${mine.status})`);
     }
+  }
+
+  // ── G8: every page family refuses with a real 404 ────────────────────────
+  //
+  // FUTURENORMA §4 Open decision 5, decided 2026-08-23. The decision was to
+  // change **every page at once**, so this is the check that the set is
+  // complete rather than three checks that each happen to pass: it walks the
+  // three families that have a refusal — a run report, a repository, a frame
+  // trend — and asks the same two questions of each.
+  //
+  // **Why the status mattered enough to change.** Nothing leaked either way;
+  // the body was already identical whichever reason it was. What a 200 cost was
+  // everything downstream that counts: uptime monitoring, analytics, a CDN's
+  // cache decision, and any error budget would all have recorded a refused page
+  // as a page served.
+  //
+  // **And why the body still has to be checked here.** A `not-found.tsx`
+  // boundary renders the same markup for everyone by construction — it takes no
+  // props — but the response also carries the framework's own payload, which
+  // includes the id from the URL. So the two bodies are compared for *drift*
+  // rather than equality, exactly as G1.4 does, and for the absence of anything
+  // belonging to the tenant that was probed.
+  {
+    const nowhere = "00000000-0000-4000-8000-000000000000";
+    const b2 = b.token;
+
+    const families = [
+      { name: "run report", mine: null, theirs: `/r/${nowhere}`, probe: `/r/${a.repoId}` },
+      { name: "repository", mine: `/repos/${a.repoId}`, theirs: `/repos/${nowhere}`, probe: `/repos/${a.repoId}` },
+      {
+        name: "frame trend",
+        mine: `/repos/${a.repoId}/trend?frame=hero.png`,
+        theirs: `/repos/${nowhere}/trend?frame=hero.png`,
+        probe: `/repos/${a.repoId}/trend?frame=hero.png`,
+      },
+    ];
+
+    const statuses = [];
+    const leaks = [];
+    for (const family of families) {
+      // Somebody else's, and nobody's. Both are refusals; both must be 404.
+      const crossed = await get(family.probe, b2);
+      const absent = await get(family.theirs, b2);
+      statuses.push(`${family.name} ${crossed.status}/${absent.status}`);
+      if (crossed.status !== 404 || absent.status !== 404) {
+        leaks.push(`${family.name}: status ${crossed.status}/${absent.status}`);
+      }
+      // Nothing of A's in a refusal handed to B.
+      if (crossed.body.includes(`gate-${a.label}`) || crossed.body.includes("acommit") || crossed.body.includes(a.orgId)) {
+        leaks.push(`${family.name}: names the probed tenant`);
+      }
+      const drift = Math.abs(crossed.body.length - absent.body.length);
+      if (drift > 8) {
+        leaks.push(`${family.name}: "not yours" and "not real" differ by ${drift} bytes`);
+      }
+    }
+
+    check("G8.1", leaks.length === 0,
+      `all three page families refuse with a real 404, name nothing of the probed tenant, and cannot tell "not yours" from "not real" — ${statuses.join(", ")}${leaks.length ? ` — ${leaks.join("; ")}` : ""}`);
+
+    // The counter-check. If these answered 404 for everybody the block above
+    // would pass while the surface was broken.
+    const served = await Promise.all(
+      families.filter((f) => f.mine).map((f) => get(f.mine, a.token))
+    );
+    check("G8.2", served.every((r) => r.status === 200),
+      `and the same paths answer 200 for the tenant they belong to (${served.map((r) => r.status).join(", ")})`);
+
+    // A 404 must not be indexable. Next injects this for a 404 status, so this
+    // is really a check that the status is what makes it happen rather than a
+    // `robots` export somebody has to remember on each new page.
+    const refused = await get(`/repos/${nowhere}`, b2);
+    check("G8.3", /noindex/i.test(refused.body),
+      "and a refused page carries noindex, which arrives with the status rather than from a metadata export per page");
   }
 } finally {
   // Delete what was created, whatever happened. Cascades take the repositories,

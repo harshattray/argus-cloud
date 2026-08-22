@@ -3484,6 +3484,93 @@ Postgres, both typechecks, web build, `npm audit` **0**. Migrations unchanged at
 
 ---
 
+### 3ah. A refused page answers 404 ✅ (2026-08-23)
+
+**FUTURENORMA §4 Open decision 5, closed by Harsha, implemented as
+recommended.** Every Cloud page that can refuse answered a "Not found" **body at
+HTTP 200**. Nothing leaked — the body was identical whichever reason it was —
+but uptime monitoring, analytics, a CDN's cache decision and any error budget
+all counted a refused page as a page served.
+
+**Three families, not seven areas.** The decision as written said "the seven
+console areas render a `NotFound` component". They do not: a console area
+refuses with *"Billing and usage is for admins"* or *"you're not in an
+organization yet"*, which are explained 200s by design and `web/lib/console.ts`
+says why a `denied` is not a 404. The pages that actually refused were
+`/r/{runId}` (2 call sites), `/repos/{repoId}` (3) and the frame trend (4). The
+record has been corrected.
+
+#### What the change is
+
+| Before | After |
+|---|---|
+| A local `NotFound` component in each page, returned from nine call sites | `notFound()` at all nine, and one `not-found.tsx` boundary per family |
+| "Identical body" was a promise that every call site passed the same props | Next 16's `not-found` **takes no props** — there is nothing left that could vary per tenant |
+| HTTP 200 | HTTP 404, with `noindex` arriving from the status rather than a per-page metadata export |
+
+The three sentences are unchanged, byte for byte, and `cloudShell` S14.4 pins
+them so a later reword has to be a decision somebody makes on purpose.
+
+#### The blocker, which was not the status call
+
+`notFound()` was in place, the boundaries existed, the suite was green — and
+every refusal still answered **200**. The cause was a `loading.tsx` on each of
+the three routes:
+
+> A `loading.tsx` is a Suspense boundary. The boundary starts the response
+> streaming as soon as the page awaits its first query. A status code cannot be
+> changed after the headers have gone.
+
+Nothing in the source says that. **It was found by asking the running server**,
+which is the whole argument for `tenant-gate-check` existing at all: three
+source-level checks and a green suite were consistent with a surface that had
+not changed behaviour at all.
+
+**What removing them cost, measured rather than assumed.** Those three pages
+answer in **20–80 ms** against a local Postgres, including the artifact-heavy
+report — whose own comment warned about "sixty signatures before the first byte",
+when presigning is a local HMAC and not a network round trip. The spinner was
+covering a wait that mostly is not there. What is genuinely lost is feedback
+during a cold start; `web/app/_components/cloud/loading.tsx` records how to get
+both back — check before anything suspends, then wrap only the slow part in its
+own `<Suspense>` — and why it was not done here.
+
+`cloudShell` S6.12 used to *require* those three files. It now requires their
+absence, with the reason written where the old check was, because a check that
+encodes a superseded decision is worse than no check.
+
+#### The cost that remains, stated
+
+A `notFound()` response in Next 16.3 is an error document: correct status,
+`noindex`, and **the body rendered by the client rather than the server**. A
+reader with JavaScript disabled gets a blank dead end where they used to get a
+sentence at 200.
+
+Three things were ruled out before accepting it: it is not the boundary being
+`async`, not the theme lookup (tested with a static component and no cookies),
+and not new — `/legal/*` has called `notFound()` since it shipped and answers
+exactly the same way. Real browsers render all three correctly, verified on a
+production build with the right theme applied.
+
+#### Watched failing
+
+| Break | Red |
+|---|---|
+| A page renders its own refusal body again | S14.1 |
+| A boundary declares a prop | S14.3b |
+| A refusal is reworded | S14.4 |
+| A `loading.tsx` restored | S14.5, and over HTTP **G1.6 and G8.1** — with one file back on `/repos/[repoId]`, both that page *and* the nested frame trend returned to 200 while `/r/` stayed 404 |
+
+The last row is the one worth keeping: a boundary applies to everything nested
+under it, so a single file put back where it looks harmless takes two page
+families with it.
+
+**Verify:** 1,483 checks across 37 suites on PGlite, **1,518** against real
+Postgres, both typechecks, web build, `npm audit` **0**. No migration.
+`scripts/tenant-gate-check.mjs`: **45 checks**, up from 41.
+
+---
+
 ## 4. argus-cloud — the web surface
 
 **This section changed more than any other.** The previous audit described "six

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   MAX_FRAMES_LISTED,
   pageNumber,
@@ -45,18 +46,6 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-/** The same body a nonexistent repository gets, for the same reason as `/r/`. */
-function NotFound({ theme }: { theme?: string }) {
-  return (
-    <div className={styles.page} data-theme={theme}>
-      <main className={styles.notFound}>
-        <h1>Not found</h1>
-        <p>This repository doesn&apos;t exist or you don&apos;t have access to it.</p>
-      </main>
-    </div>
-  );
-}
-
 export default async function RepoPage({
   params,
   searchParams,
@@ -71,7 +60,7 @@ export default async function RepoPage({
   const db = await getDb();
   const owner = await repoOrg(db, repoId);
   if (!owner) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
 
   // Membership in the organization that owns this repository, or the local
@@ -85,12 +74,12 @@ export default async function RepoPage({
   const membership = membershipFor(session, owner.orgId);
   const permitted = membership !== null || repoViewOpen();
   if (!permitted) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
   const page = pageNumber(pageParam);
   const overview = await repoOverview(db, { orgId: owner.orgId, repo: owner.id, page });
   if (!overview) {
-    return <NotFound theme={theme ?? undefined} />;
+    notFound();
   }
 
   const flaggedNow = overview.frames.filter((f) => f.flagged).length;
