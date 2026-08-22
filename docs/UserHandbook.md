@@ -25,11 +25,12 @@ jump to the part you need.
 7. [Runs and reports](#7-runs-and-reports)
 8. [Trends](#8-trends)
 9. [Organization](#9-organization)
-10. [Overview, Explain and automation, Billing and usage, Privacy and data](#10-the-four-areas-that-are-not-built-yet)
-11. [Sharing a report with someone outside your organization](#11-sharing-a-report-with-someone-outside-your-organization)
-12. [What we keep, and for how long](#12-what-we-keep-and-for-how-long)
-13. [When something goes wrong](#13-when-something-goes-wrong)
-14. [Not built yet — the honest list](#14-not-built-yet--the-honest-list)
+10. [Your account](#10-your-account)
+11. [Overview, Explain and automation, Billing and usage, Privacy and data](#11-the-four-areas-that-are-not-built-yet)
+12. [Sharing a report with someone outside your organization](#12-sharing-a-report-with-someone-outside-your-organization)
+13. [What we keep, and for how long](#13-what-we-keep-and-for-how-long)
+14. [When something goes wrong](#14-when-something-goes-wrong)
+15. [Not built yet — the honest list](#15-not-built-yet--the-honest-list)
 
 ---
 
@@ -111,7 +112,8 @@ already inside an organization invited you. Section 3 covers both.
   you have lost a laptop or think someone else has your browser.
 
 Both are in the account menu — the button with your name in the top-right corner
-of every page.
+of every page. The same menu has **Your account**, which lists every browser
+signed in as you and lets you end one of them on its own. Section 10.
 
 ---
 
@@ -210,7 +212,7 @@ Seven areas. You only see the ones your role can open — see section 5.
 | **Privacy and data** | What we hold for you, and how to get it out or delete it |
 
 Four of those seven are still being built. The area itself will tell you so, and
-list what is coming. Section 10 has the details.
+list what is coming. Section 11 has the details.
 
 ### Words with a dotted underline
 
@@ -536,7 +538,68 @@ can see what is coming.
 
 ---
 
-## 10. The four areas that are not built yet
+## 10. Your account
+
+Everything above is about an organization. This page is about **you**: the same
+page whichever organization you are looking at, and it works even if you are in
+none.
+
+Open it from the account menu — the button with your name in the top-right
+corner of every page — and choose **Your account**.
+
+### You
+
+Your name, the address you sign in with, and the date you joined. Nothing here
+can be edited yet.
+
+### Organizations
+
+Every organization you belong to and your role in each. If you are in more than
+one, the one you are currently looking at is marked, and the switcher at the top
+of the page is what changes it.
+
+### Browsers signed in
+
+One row for every browser that is signed in as you, newest use first:
+
+| Column | What it means |
+|---|---|
+| Browser | Which browser and which kind of device — "Chrome on macOS", "Safari on iPhone". The one you are reading this on is marked **this browser** |
+| Signed in with | GitHub, or an emailed link |
+| Started | When that browser signed in |
+| Last used | When it last loaded a page |
+| Expires | How long it has left before it has to sign in again |
+
+**Sign out** on a row ends that one browser. It stops working on its very next
+request — there is no delay and nothing to wait for. Signing out the row marked
+*this browser* is allowed: it signs you out here and returns you to the sign-in
+page.
+
+**Sign out everywhere**, below the table, ends every row including this one. That
+is the one to use if a device is lost.
+
+Two things this page deliberately does not show. We do not keep the addresses
+these browsers connected from, so there is no location column and there never
+will be. And two rows can carry the same name — the same browser on the same
+laptop, signed in twice — in which case the **Started** and **Last used** times
+are what tell them apart. If you are not sure, sign out everywhere and sign back
+in; nothing is lost by doing that.
+
+### Recent activity
+
+The last few sign-ins and sign-outs on your account, in plain words. If something
+here was not you, sign out everywhere and then sign back in.
+
+### Still to come on this page
+
+Linking a GitHub account and an email address to one login, pending invitations,
+leaving an organization, notification and interface preferences, and exporting or
+deleting your personal data. The page lists these at the bottom so you can see
+what is coming.
+
+---
+
+## 11. The four areas that are not built yet
 
 They are in the navigation because they are part of the structure, and each one
 tells you what will be in it. Opening one is not a broken link — there is simply
@@ -573,7 +636,7 @@ long an image link stays valid.
 
 ---
 
-## 11. Sharing a report with someone outside your organization
+## 12. Sharing a report with someone outside your organization
 
 Open the run report and use the sharing panel.
 
@@ -597,7 +660,7 @@ being removed.
 
 ---
 
-## 12. What we keep, and for how long
+## 13. What we keep, and for how long
 
 | Thing | How long |
 |---|---|
@@ -615,7 +678,7 @@ the report instead.
 
 ---
 
-## 13. When something goes wrong
+## 14. When something goes wrong
 
 ### "Not found"
 
@@ -657,23 +720,25 @@ on the very next request, so there is no reason to wait.
 
 ---
 
-## 14. Not built yet — the honest list
+## 15. Not built yet — the honest list
 
 So you know where the edges are:
 
-- **Your own account page.** There is currently no page listing your active
-  sessions and letting you end one of them individually. *Sign out* and *Sign out
-  everywhere* work today; seeing the list does not exist yet.
 - **Four of the seven areas** — Overview, Explain and automation, Billing and
-  usage, Privacy and data. Section 10.
+  usage, Privacy and data. Section 11.
+- **Changing your name or address**, and **preferences** — notification routing,
+  timezone, interface settings. The account page shows what it holds; it does not
+  let you edit any of it yet. Section 10.
 - **A trends front door.** Trends across the whole organization. Per-frame trends
   work today, reached from a sparkline.
 - **Transferring ownership** and **deleting an organization** from the
   dashboard. Contact us.
 - **Self-serve export and deletion.** Contact us.
 - **Sign-in replacing the key box** on the Explain and sharing controls.
-- **Linking a GitHub account and an email address to one login** from an account
-  page.
+- **Linking a GitHub account and an email address to one login.** The account
+  page names this as coming; today the two are separate ways in.
+- **Leaving an organization yourself**, and **seeing an invitation you have not
+  accepted** on your account page. Ask an admin, or use the link in your inbox.
 
 ---
 

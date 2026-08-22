@@ -18,10 +18,13 @@
 // script you run rather than a suite that runs on every push.
 //
 // **What it covers**, in the order it runs: the repository trend view and its
-// CSV export (G1–G4), the console's role matrix by direct URL (G5), and every
+// CSV export (G1–G4), the console's role matrix by direct URL (G5), every
 // write the Organization area offers (G6) — invitations, roles, removals and
 // keys, refused for no session, for the wrong role, from another origin, and
-// from another organization's admin holding a real row id.
+// from another organization's admin holding a real row id — and the account
+// page's session revoke (G7), which is the same question asked about a person
+// rather than a tenant: two colleagues in one organization must not be able to
+// sign each other out.
 //
 // **The defect it exists for.** Until 2026-08-22 `/repos/{id}/trend` and its CSV
 // export were gated by `NORMA_DEV_OPEN` alone — a variable no deployment sets —
@@ -476,6 +479,82 @@ try {
     {
       const nonsense = await post(url("delete-everything"), adminA.token, {});
       check("G6.15", nonsense.status === 404, `an action that does not exist answers ${nonsense.status} rather than falling through to one that does`);
+    }
+  }
+
+  // ── G7: the account page, and the session it is allowed to end ───────────
+  //
+  // The account page is the first surface where somebody acts on a list of
+  // **their own credentials**, and the id of a row travels through a browser to
+  // get there. So the question is the one G6 asks about organizations, asked
+  // about people instead: can a session id belonging to somebody else be ended
+  // by whoever holds it.
+  //
+  // It is not a tenant boundary — two people in the *same* organization must
+  // not be able to sign each other out either, which is why the pair below are
+  // both inside organization A.
+  {
+    const { ACCOUNT_PATH, accountActionPath } = await import(path.join(DIST, "consoleIA.js"));
+    const { createSession } = await import(path.join(DIST, "sessions.js"));
+
+    const url = accountActionPath("session-revoke");
+    const ada = await person(a.orgId, "member", "Ada Account");
+    const bob = await person(a.orgId, "admin", "Bob Account");
+
+    // A second browser for each, so there is something to end that is not the
+    // session making the request.
+    const adaPhone = await createSession(db, { userId: ada.userId, method: "email", userAgent: "gate phone" });
+    const bobPhone = await createSession(db, { userId: bob.userId, method: "email", userAgent: "gate phone" });
+
+    const live = async (id) =>
+      (await db.query("SELECT revoked_at FROM sessions WHERE id = $1", [id])).rows[0]?.revoked_at === null;
+
+    {
+      const anonymous = await post(url, null, { id: adaPhone.id });
+      check("G7.1", anonymous.status === 401 && (await live(adaPhone.id)),
+        `no session → ${anonymous.status}, and the browser it named is still signed in`);
+    }
+
+    {
+      const crossed = await post(url, ada.token, { id: adaPhone.id }, { site: "cross-site" });
+      check("G7.2", crossed.status === 403 && (await live(adaPhone.id)),
+        `a real session driven from another origin → ${crossed.status}, refused before anything is read`);
+    }
+
+    // The one that matters. Bob holds a valid session and a real id — Ada's
+    // phone — and posts it as if it were his own row.
+    {
+      const stolen = await post(url, bob.token, { id: adaPhone.id });
+      const notice = new URLSearchParams(stolen.location.split("?")[1] ?? "").get("notice");
+      check("G7.3", (await live(adaPhone.id)),
+        "somebody else's session id, posted with a valid session of your own, ends nothing");
+      check("G7.3b", notice === "session-gone",
+        `and the answer is the same one an already-revoked id gets (${notice}) — a refusal that says "not yours" is a way to ask whether an id exists`);
+    }
+
+    // The counter-check: the same request, from the person it belongs to.
+    {
+      const own = await post(url, ada.token, { id: adaPhone.id });
+      const notice = new URLSearchParams(own.location.split("?")[1] ?? "").get("notice");
+      check("G7.4", own.status === 303 && notice === "session-revoked" && !(await live(adaPhone.id)),
+        `your own browser, ended from your own account page → ${own.status} ${notice}`);
+    }
+
+    // Ending the browser you are holding: allowed, and it must not leave a page
+    // whose cookie no longer resolves.
+    {
+      const self = await post(url, bobPhone.token, { id: bobPhone.id });
+      const cleared = /norma_session=;/.test(self.setCookie) || /norma_session=;/.test(self.setCookie.replace("__Host-", ""));
+      check("G7.5", self.status === 303 && self.location.includes("/login") && !(await live(bobPhone.id)),
+        `the browser reading the page can end itself → ${self.status} to ${self.location.replace(BASE, "")}`);
+      check("G7.5b", cleared, "and its cookie is cleared on the way out, so it does not carry a token that no longer resolves");
+    }
+
+    // The page itself: one person's browsers, nobody else's.
+    {
+      const mine = await get(ACCOUNT_PATH, bob.token);
+      check("G7.6", mine.status === 200 && mine.text.includes("Bob Account") && !mine.body.includes(ada.userId),
+        `the account page names the person reading it and carries no id belonging to anybody else (${mine.status})`);
     }
   }
 } finally {

@@ -2,8 +2,37 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-22** — **the Organization area works, and an admin can
-now run their own organization from a browser.**
+Last updated: **2026-08-23** — **a person can see every browser signed in as
+them, and end any one of them.**
+
+The account page. Since 2026-08-22 the masthead menu could *end* sessions and
+deliberately could not *show* them, so "sign out everywhere" asked somebody to
+act on a set they could not see. The list §10.7 5A.8 specifies is now there —
+device, sign-in method, when it started, when it was last used, when it expires,
+which one you are reading on — with a sign-out on each row, the organizations you
+belong to, and the last few sign-ins on your account in plain words.
+
+**It is not an eighth console area.** The seven are organization-scoped; this one
+answers for somebody in three organizations and for somebody in none, and no role
+could be refused from your own account. `consoleIA.ts` declares it as a separate
+surface rather than a test exempting the path, so *"every signed-in page belongs
+to something somebody decided about"* stays one question with one answer.
+
+**The scope was the risk, and it is the same one twice.** A session id now
+arrives from a form in a browser, so `revokeSession` gained a required user scope
+— `null` means "any", exactly as `revokeApiKey`'s organization scope does. Proven
+over HTTP on a rebuilt production server: a colleague in the *same* organization,
+holding a valid session and a real row id, ends nothing, and the unscoped version
+was watched ending it. `tenant-gate-check` is **41 checks**, up from 33. Two
+smaller things the work exposed: the session list did not apply the idle cutoff,
+so a browser dead for 31 days read as signed in; and the device label is now one
+of our phrases rather than the client's user-agent string. Verify green at
+**1,478 checks across thirty-seven suites** on PGlite and **1,513 on real
+Postgres**, `npm audit` **0**, migrations unchanged at `001`–`023`.
+`FinishedSPEC.md` §3ag.
+
+Before that, **2026-08-22** — **the Organization area works, and an admin can
+run their own organization from a browser.**
 
 Members with their roles, invitations with their state, and upload and agent
 keys shown once and revocable. The first area of the console that writes
@@ -590,10 +619,11 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ **live on `normascope.com` 2026-08-21** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. Since 2026-08-22 there is also **one credential path that skips proving the address** — a local sign-in door for working on the signed-in surface, behind three conditions that must all hold, with no default, a 404 rather than a 403 when closed, and its own `dev-signin` audit kind. It is in the threat model at `PATHWAYS.md` §10.7 5A.13 rather than treated as tooling, and A13.7b shows the naive `NODE_ENV`-only guard open on a Vercel preview. 101 + 67 + 11 checks, and `golive-check` passes all fifteen L9 checks against production — `FinishedSPEC.md` §3aa |
 | **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
-| **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **Since 2026-08-22 the Organization area holds real workflows** and `AreaOutline` renders `holds` minus `built` rather than the whole list, so a half-built area stops promising the controls already on it. **The individual account page is not built**, so 5A.8's session list is still owed |
+| **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **Since 2026-08-22 the Organization area holds real workflows** and `AreaOutline` renders `holds` minus `built` rather than the whole list, so a half-built area stops promising the controls already on it. **Since 2026-08-23 the account page is built** and 5A.8's session list is no longer owed |
 | **`memberships.role` has a domain** | ✅ 2026-08-22 | Migration `022`. 001 wrote `admin \| member \| designer` in a **comment** and no constraint, and the seed wrote `'owner'` — not a role, since ownership is `orgs.owner_user_id` (021). No authorization path recognised it, so a locally seeded owner was refused every console area and nothing said why. The column now refuses it. **The upgrade path is tested, not just the fresh install**: `migrations` M9 walks a database to 021, gives it `owner` and `superuser` rows plus one of each valid role, and takes it across 022 — selective repair, five of five memberships kept, no ownership invented, and a counter-test showing constraint-before-repair aborting on that data. Green on PGlite and on real Postgres |
 | ~~**Invitations, owner claims and API keys are services with no door**~~ **The Organization area** (Step 6, Pathway 5, §10.7 5A.6 and 5A.10) | ✅ 2026-08-22 | Members with roles, invitations with their state, and keys shown once and revocable — the first area of the console that writes. Seven writes behind one dispatcher, all guarded by `requireOrgAdmin`, which reads the role from `CONSOLE_AREAS` rather than naming `admin`. Plain form POSTs and a 303, so the page still ships **zero client JavaScript** under the nonce policy. **No form carries an `orgId`** and both revokes are scoped to the session's organization — the parameter is required with `null` meaning "any", so `/admin`'s cross-tenant reach is a decision somebody wrote down. 66 + 22 + 16 checks, eleven source breaks and three HTTP breaks watched failing — `FinishedSPEC.md` §3af |
 | **An invitation is now actually sent** | ✅ 2026-08-22 | It was a row and a hashed token with nobody told, while the page said "sent". `sendInvitation` reserves the outbound-email budget, **then** creates the row, **then** sends — so a refused ceiling leaves no live link behind that nobody knows about. The ceilings are `authThrottle.ts`'s `INVITE_SCOPES`, written and uncalled since the abuse ladder: the global daily budget plus per-organization and per-address. A provider failure after the row exists is alerted and reported, never rolled back — the message may have been accepted. The mail names the organization, the inviter, the role and the expiry, and **nobody else in the organization** |
+| ~~**5A.8's session list is owed**~~ **The account page** (Step 6, Pathway 5 / §10.7 5A.8) | ✅ 2026-08-23 | Every browser signed in as one person, with its device label, sign-in method, start, last use, expiry, a current-browser marker and a per-row sign-out; the organizations they belong to; and their own sign-ins in plain words. **Not an eighth console area** — user-scoped, no role, and declared in `consoleIA.ts` as its own surface so no page escapes the ownership map through a test's exception list. `revokeSession` gained a required user scope, `null` meaning "any", because the id now comes from a form. Two defects the work exposed: the list ignored the idle cutoff, so a browser dead for 31 days read as signed in, and the device label was the client's own user-agent string. 33 + 17 + 8 checks, six source breaks and two HTTP breaks watched failing — `FinishedSPEC.md` §3ag |
 | **`api_keys` records who minted a key** | ✅ 2026-08-22 | Migration `023`. Audit, never authority — 5A.10 is explicit that a key belongs to the organization and survives its creator, and `ON DELETE SET NULL` says the same in schema. **`last_used_at` is deliberately not in it**: `findApiKey` runs on every authenticated request, so recording last use is a write on the hot path and how coarse to make it is its own decision. Owed, not guessed at |
 
 `main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
@@ -601,22 +631,24 @@ session layer. **The working branch is now `staging`, and `main` only ever
 receives it.** **Pathway 1 items 1–10 are implemented**, and the public site is
 **live on `normascope.com`** (§4g) with its legal pages published (§4h). Full
 suite:
-**1,429 checks green** on PGlite across thirty-six suites — `apiKeyRevocation`,
-`artifactUploads`, `auth`, `authAbuse`, `backup`, `budgetAlerts`,
-`bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`, `cropGrounding`,
-`enrichment`, `explainers`, `legal`, `metering`, `migrations`, `opsAlerts`,
-`organization`, `overview`, `planLimits`, `previewGate`, `providerBudget`,
-`rateLimit`, `realSeed`, `reconcile`, `reportPage`, `retention`, `secretScan`,
-`seo`, `siteAnalytics`, `storage`, `trends`, `uploadPipeline`, `waitlist`,
-`waitlistConfirmationEmail`, `webhooks` — and **1,464** against a real Postgres
-server, both run 2026-08-22. Migrations are `001`–`023`.
+**1,478 checks green** on PGlite across thirty-seven suites — `account`,
+`apiKeyRevocation`, `artifactUploads`, `auth`, `authAbuse`, `backup`,
+`budgetAlerts`, `bundleSecrets`, `cibatch`, `cloudShell`, `cropExplain`,
+`cropGrounding`, `enrichment`, `explainers`, `legal`, `metering`, `migrations`,
+`opsAlerts`, `organization`, `overview`, `planLimits`, `previewGate`,
+`providerBudget`, `rateLimit`, `realSeed`, `reconcile`, `reportPage`,
+`retention`, `secretScan`, `seo`, `siteAnalytics`, `storage`, `trends`,
+`uploadPipeline`, `waitlist`, `waitlistConfirmationEmail`, `webhooks` — and
+**1,513** against a real Postgres server, both run 2026-08-23. Migrations are
+`001`–`023`.
 
 Two checks that a suite cannot hold run as scripts, because each needs a
 production build, a server and a real database at once:
 `scripts/golive-check.mjs` against the deployed site, and
-`scripts/tenant-gate-check.mjs` — **33 checks** over HTTP with
+`scripts/tenant-gate-check.mjs` — **41 checks** over HTTP with
 `NORMA_DEV_OPEN=0`: the repository trend view and its export, the console's role
-matrix by direct URL, and every write the Organization area offers. Each group
+matrix by direct URL, every write the Organization area offers, and the account
+page's session sign-out. Each group
 has been watched failing against a build with its guard removed.
 
 Three things are left in Pathway 1 and none is a logic gap: the **Paddle sandbox
@@ -1592,6 +1624,13 @@ because there is no session layer.**
   seat must not require a GitHub account — this is a real differentiator, not a
   detail). **Both ship together — Harsha's call, 2026-08-21** (Open decisions 4,
   now closed).
+- **Passkeys (WebAuthn)** are a future authentication method to pursue after
+  the current session and account surfaces are complete. They may be added as
+  an additional sign-in method, not an immediate replacement for magic links
+  or GitHub OAuth. Registration must require an authenticated/recent session;
+  the account page must list, rename and revoke credentials, with magic links
+  retained as the recovery path. Use a maintained WebAuthn implementation
+  rather than implementing credential cryptography in-house.
 - **Sending an email is a metered, budgeted action, not a side effect of a
   request.** The abuse ladder below is part of this step's gate, not a
   hardening pass afterwards.
@@ -1614,6 +1653,18 @@ because there is no session layer.**
 - Subscription state, renewal date, invoices (link out to the MoR portal rather
   than rebuilding billing history), and a self-serve cancel.
 - Seat and repo list.
+
+**Built 2026-08-23, and it is deliberately less than the list above.** `/account`
+holds identity, memberships, 5A.8's session list with a per-row sign-out, and the
+person's own sign-in history. **Everything on this list that is about money is
+not there**, because it needs Step 7: a renewal date invented before Paddle is
+connected is worse than an area that says what is coming, and PATHWAYS 5A.14 puts
+Billing last for that reason. The money view belongs in the **Billing and usage**
+area of the organization console rather than on a personal page in any case — a
+credit balance is the organization's, not one member's. What the account page
+owes is recorded on the page itself, from `ACCOUNT_SURFACE`: identity linking,
+pending invitations, leaving an organization, preferences, and personal export
+and deletion.
 
 #### Magic links are an outbound-email budget — decided 2026-08-21
 
@@ -2111,7 +2162,8 @@ attempting org A's run, share, and batch — all denied).
 Authentication and authorization are different questions:
 
 - **Authentication** identifies a person. A person may sign in with GitHub,
-  email magic link, or both. The provider identities link to one `users` row;
+  email magic link, or (in a future iteration) a passkey. The provider
+  identities and passkey credentials link to one `users` row;
   a GitHub username is never the identity key — GitHub's immutable subject is.
 - **Authorization** comes from `memberships`. A user may belong to many
   organizations at once, with a separate role in each one. The active

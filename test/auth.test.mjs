@@ -168,7 +168,7 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
   const ipRow = (await db.query("SELECT ip_hash FROM sessions WHERE id = $1", [created.id])).rows[0];
   check("A1.6", ipRow.ip_hash !== "203.0.113.9" && ipRow.ip_hash.length === 64, "the address is hashed, never stored");
 
-  await revokeSession(db, created.id, "test");
+  await revokeSession(db, created.id, "test", { userId: null });
   check("A1.7", (await resolveSession(db, created.token)) === null, "revocation takes effect on the next request");
 
   // Expiry and idle are enforced on read, so shortening either binds existing
@@ -217,7 +217,7 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
     "and browsing the site does not refresh it — otherwise an open tab would satisfy it forever"
   );
 
-  await revokeSession(db, created.id, "test");
+  await revokeSession(db, created.id, "test", { userId: null });
   check("A2.8", (await rotateSession(db, created.id)) === null, "a revoked session cannot be resurrected by rotating it");
 }
 
@@ -579,7 +579,7 @@ const freshIp = () => `198.51.${Math.floor(ipCounter / 250) + 1}.${(ipCounter++ 
   const laptop = await createSession(db, { userId: person.id, method: "email", userAgent: "laptop" });
   const phone = await createSession(db, { userId: person.id, method: "email", userAgent: "phone" });
   check("A9.6", (await listSessions(db, person.id)).length >= 2, "concurrent sessions are allowed, one row per device");
-  await revokeSession(db, laptop.id, "lost laptop");
+  await revokeSession(db, laptop.id, "lost laptop", { userId: person.id });
   check(
     "A9.7",
     (await resolveSession(db, laptop.token)) === null && (await resolveSession(db, phone.token)) !== null,

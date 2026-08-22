@@ -20,6 +20,12 @@
  * control-plane UI contract and `PATHWAYS.md` §5's "Organization console".
  * Neither is invented here. What *is* decided here is the route each area
  * answers on and the role each one requires; both are recorded below.
+ *
+ * **It also holds the account surface**, which is not one of the seven and is
+ * scoped to a person rather than an organization — see {@link ACCOUNT_SURFACE}.
+ * It is here so that "every signed-in page belongs to something somebody
+ * decided about" stays one question with one answer, rather than a rule about
+ * the console and a list of exceptions beside it.
  */
 
 import type { Role } from "./users.js";
@@ -33,29 +39,29 @@ export type ConsoleAreaId =
   | "billing"
   | "data";
 
-export interface ConsoleArea {
-  id: ConsoleAreaId;
-  /** What the navigation calls it. */
+/**
+ * What every signed-in surface says about itself.
+ *
+ * **Split out from {@link ConsoleArea} when the account page arrived**, because
+ * the account page is the first signed-in surface that is *not* one of the seven
+ * organization areas: it is scoped to a person rather than to an organization,
+ * it has no role (you are always allowed to reach your own account), and it does
+ * not appear in the console navigation. What it does share is the part that
+ * matters here — a name, a front door, and an honest pair of lists saying what
+ * it is for and how much of that exists. So {@link outstanding} works on either,
+ * and `AreaOutline` renders either.
+ */
+export interface Surface {
+  /** What the navigation, or the page title, calls it. */
   label: string;
-  /** Where the navigation sends you — the area's own front door. */
+  /** Its front door. */
   href: string;
-  /**
-   * The path prefixes this area owns.
-   *
-   * **Exactly one area owns any console path**, which is what makes "do not add
-   * a one-off page when an existing area can own the workflow" (PATHWAYS §5)
-   * checkable rather than advisory. A new page either extends one of these
-   * prefixes or the person adding it has to say which area it belongs to.
-   */
-  owns: string[];
-  /** Roles that may reach it. Checked on the server, on every request. */
-  roles: Role[];
-  /** The question the area exists to answer, in one line. */
+  /** The question it exists to answer, in one line. */
   purpose: string;
   /**
-   * The workflows this area owns — the page-ownership map itself.
+   * The workflows it owns — the page-ownership map itself.
    *
-   * Not documentation: the areas that are not built yet render this list, so
+   * Not documentation: the surfaces that are not built yet render this list, so
    * the placeholder and the map cannot say different things.
    */
   holds: string[];
@@ -74,6 +80,21 @@ export interface ConsoleArea {
    * difference between them, computed rather than written down anywhere.
    */
   built: string[];
+}
+
+export interface ConsoleArea extends Surface {
+  id: ConsoleAreaId;
+  /**
+   * The path prefixes this area owns.
+   *
+   * **Exactly one area owns any console path**, which is what makes "do not add
+   * a one-off page when an existing area can own the workflow" (PATHWAYS §5)
+   * checkable rather than advisory. A new page either extends one of these
+   * prefixes or the person adding it has to say which area it belongs to.
+   */
+  owns: string[];
+  /** Roles that may reach it. Checked on the server, on every request. */
+  roles: Role[];
 }
 
 /**
@@ -223,16 +244,87 @@ export const CONSOLE_AREAS: ConsoleArea[] = [
  * an area label is not a reason to break a working path.
  */
 
+// ---------------------------------------------------------------------------
+// The account surface — one person, not one organization
+// ---------------------------------------------------------------------------
+
 /**
- * What an area still owes, as the difference between its two lists.
+ * Where a person manages their own account.
+ *
+ * **Deliberately not an eighth area.** PATHWAYS §5 keeps the individual account
+ * dashboard and the organization console apart, and the seven areas above are
+ * all organization-scoped: each one needs a membership to mean anything, and
+ * each one has a role that may reach it. This page needs neither. It answers for
+ * somebody who belongs to three organizations and for somebody who belongs to
+ * none — §10.7 5A.4 makes the second one an ordinary state — and there is no
+ * role that could be refused, because it is nobody's account but yours.
+ *
+ * **It is declared here rather than exempted in a test.** `cloudShell` S11.11
+ * fails a signed-in page that no surface claims, which is PATHWAYS §5's *"do
+ * not add a one-off page when an existing area can own the workflow"* with
+ * teeth. A path allowed by an exception list in a test file is a path nobody
+ * decided about; this is the decision, in the file the check reads.
+ */
+export const ACCOUNT_PATH = "/account";
+
+export const ACCOUNT_SURFACE: Surface = {
+  label: "Your account",
+  href: ACCOUNT_PATH,
+  purpose: "Who you are here, which organizations you are in, and every browser signed in as you.",
+  holds: [
+    "your name, address and when you joined",
+    "the organizations you belong to, and your role in each",
+    "every browser signed in, with per-browser and all-browser sign-out",
+    "recent sign-in activity on your account",
+    "linked GitHub and email identities, and identity recovery",
+    "pending invitations, and leaving an organization",
+    "notification routing, timezone and interface preferences",
+    "personal data export and account deletion",
+  ],
+  built: [
+    "your name, address and when you joined",
+    "the organizations you belong to, and your role in each",
+    "every browser signed in, with per-browser and all-browser sign-out",
+    "recent sign-in activity on your account",
+  ],
+};
+
+/** `/account` and anything nested under it, by segment. */
+export function isAccountPath(pathname: string): boolean {
+  return fit(ACCOUNT_PATH, pathname) !== null;
+}
+
+/**
+ * Every state-changing thing the account surface can do — the same contract
+ * {@link ORG_ACTIONS} has, for the same three readers.
+ *
+ * One entry today. It is a list rather than a string because the route types its
+ * dispatch table from it and the gate script iterates it, and both of those stop
+ * being worth anything the moment a second action is added by hand somewhere
+ * else.
+ *
+ * **Signing out is not here.** `/api/auth/signout` already ends this session and
+ * every session, it is reached from the masthead on every page rather than from
+ * this one, and moving it would break the menu for the sake of a tidier list.
+ */
+export const ACCOUNT_ACTIONS = ["session-revoke"] as const;
+
+export type AccountActionName = (typeof ACCOUNT_ACTIONS)[number];
+
+export function accountActionPath(action: AccountActionName): string {
+  return `/api/account/${action}`;
+}
+
+/**
+ * What a surface still owes, as the difference between its two lists.
  *
  * Nowhere writes this down. An entry stops appearing here the moment it is added
  * to `built`, which is the same edit that makes the claim — so a page cannot
  * promise a workflow that is already on it, and cannot quietly stop mentioning
  * one that is not.
  */
-export function outstanding(area: ConsoleArea): string[] {
-  return area.holds.filter((item) => !area.built.includes(item));
+export function outstanding(surface: Surface): string[] {
+  return surface.holds.filter((item) => !surface.built.includes(item));
 }
 
 /**
@@ -242,12 +334,12 @@ export function outstanding(area: ConsoleArea): string[] {
  * red check with a name on it, not a module that throws while a page is
  * rendering. Returns the offending strings, so the failure says which one.
  */
-export function unknownBuiltEntries(): { area: ConsoleAreaId; entry: string }[] {
-  const bad: { area: ConsoleAreaId; entry: string }[] = [];
-  for (const area of CONSOLE_AREAS) {
-    for (const entry of area.built) {
-      if (!area.holds.includes(entry)) {
-        bad.push({ area: area.id, entry });
+export function unknownBuiltEntries(): { surface: string; entry: string }[] {
+  const bad: { surface: string; entry: string }[] = [];
+  for (const surface of [...CONSOLE_AREAS, ACCOUNT_SURFACE]) {
+    for (const entry of surface.built) {
+      if (!surface.holds.includes(entry)) {
+        bad.push({ surface: surface.label, entry });
       }
     }
   }

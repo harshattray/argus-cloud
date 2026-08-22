@@ -481,6 +481,10 @@
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  /* The menu holds two submit buttons and one link. They are the same control
+     to the reader, so the link loses its underline rather than the buttons
+     gaining one. */
+  text-decoration: none;
 }
 
 .accountMenuItem:hover {

@@ -6,6 +6,7 @@ import {
   outstanding,
   type ConsoleArea,
   type DeploymentEnvironment,
+  type Surface,
 } from "argus-cloud/consoleIA.js";
 import { orgPlanState } from "argus-cloud/plans.js";
 import type { Membership } from "argus-cloud/users.js";
@@ -100,7 +101,12 @@ function roleList(roles: readonly string[]): string {
   return `${plural.slice(0, -1).join(", ")} and ${plural[plural.length - 1]}`;
 }
 
-function ConsoleNav({ nav, current }: { nav: ConsoleArea[]; current: ConsoleArea }) {
+/**
+ * `current` is null on the account page, which is inside the product and inside
+ * none of the seven areas. Nothing is marked, which is the truth — marking an
+ * area the reader is not in would be worse than marking nothing.
+ */
+function ConsoleNav({ nav, current }: { nav: ConsoleArea[]; current: ConsoleArea | null }) {
   return (
     <nav className={styles.nav} aria-label="Organization console">
       <ul>
@@ -108,8 +114,8 @@ function ConsoleNav({ nav, current }: { nav: ConsoleArea[]; current: ConsoleArea
           <li key={area.id}>
             <Link
               href={area.href}
-              className={area.id === current.id ? styles.navOn : styles.navItem}
-              aria-current={area.id === current.id ? "page" : undefined}
+              className={area.id === current?.id ? styles.navOn : styles.navItem}
+              aria-current={area.id === current?.id ? "page" : undefined}
             >
               {area.label}
             </Link>
@@ -142,7 +148,7 @@ function ContextRow({
 }: {
   session: ResolvedSession;
   membership: Membership;
-  area: ConsoleArea;
+  area: ConsoleArea | null;
   path: string;
   subscriptionStatus: string;
   environment: DeploymentEnvironment;
@@ -223,11 +229,13 @@ export function ConsoleShell({
           path={context.path}
           account={<AccountMenu signedInAs={context.session.user.display_name} />}
           context={
-            context.kind === "no-org" ? undefined : (
+            // No organization, no row — whether that is a person with no
+            // membership at all or the account page reached by one.
+            context.kind === "no-org" || context.membership === null ? undefined : (
               <ContextRow
                 session={context.session}
                 membership={context.membership}
-                area={context.area}
+                area={context.kind === "account" ? null : context.area}
                 path={context.path}
                 subscriptionStatus={context.subscriptionStatus}
                 environment={context.environment}
@@ -344,8 +352,12 @@ export function ConsoleGate({ context }: { context: ConsoleNoOrg | ConsoleDenied
  *
  * The honesty matters more than the drawing: this says what is not here yet and
  * does not imply it is coming on a date nobody has picked.
+ *
+ * **It takes a `Surface`, not a `ConsoleArea`**, so the account page — which is
+ * not one of the seven — renders its own unfinished list through exactly this
+ * component rather than through a second one that would word it differently.
  */
-export function AreaOutline({ area }: { area: ConsoleArea }) {
+export function AreaOutline({ area }: { area: Surface }) {
   const todo = outstanding(area);
   if (todo.length === 0) {
     return null;
@@ -354,10 +366,13 @@ export function AreaOutline({ area }: { area: ConsoleArea }) {
   return (
     <section className={styles.outline}>
       {empty ? <p className={styles.outlinePurpose}>{area.purpose}</p> : null}
+      {/* "This page", not "this area": the account surface renders the same
+          outline and is deliberately not one of the seven. Every surface that
+          reaches here is a page, which is the word that stays true for both. */}
       <p className={styles.outlineNote}>
         {empty
-          ? "This area is part of the console's structure and does not hold anything yet. When it does, this is what will be here:"
-          : "Also part of this area, and not built yet:"}
+          ? "This page is part of the console's structure and does not hold anything yet. When it does, this is what will be here:"
+          : "Also part of this page, and not built yet:"}
       </p>
       <ul className={styles.outlineList}>
         {todo.map((item) => (

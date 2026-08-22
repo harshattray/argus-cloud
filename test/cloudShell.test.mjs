@@ -868,8 +868,17 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   //
   // PATHWAYS §5: "do not add a one-off page when an existing area can own the
   // workflow". This is that rule with teeth — a new signed-in page either
-  // extends an area's `owns` or fails here.
+  // extends an area's `owns`, or is the account surface, or fails here.
+  //
+  // **`isAccountPath` rather than a name in `outside`.** The account page is
+  // genuinely not one of the seven — it is scoped to a person — and the
+  // difference between the two ways of admitting that is where the decision
+  // lives. In the exception set it would be a line in a test file that nobody
+  // reviews as a design choice; asking `consoleIA.ts` means the surface is
+  // declared in the same module as the areas, next to what it holds and what it
+  // still owes.
   {
+    const { isAccountPath } = await import(path.join(DIST, "consoleIA.js"));
     const outside = new Set(["(site)", "(pitch)", "admin", "api", "login", "unlock", "r"]);
     const { readdir } = await import("node:fs/promises");
     const entries = await readdir(path.join(WEB, "app"), { withFileTypes: true });
@@ -877,10 +886,11 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith("_") || outside.has(entry.name)) continue;
       if (!existsSync(path.join(WEB, "app", entry.name, "page.tsx"))) continue;
-      if (areaForPath(`/${entry.name}`) === null) orphans.push(entry.name);
+      const route = `/${entry.name}`;
+      if (areaForPath(route) === null && !isAccountPath(route)) orphans.push(entry.name);
     }
     check("S11.11", orphans.length === 0,
-      `every signed-in page belongs to an area (orphans: ${orphans.join(", ") || "none"})`);
+      `every signed-in page belongs to an area or to the account surface (orphans: ${orphans.join(", ") || "none"})`);
   }
 
   // ── The context row says all four things ──────────────────────────────────
@@ -1241,6 +1251,107 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
       "the area outline renders holds-minus-built rather than the whole list, so a half-built area stops promising its own working controls");
     check("S12.9b", /todo\.length === 0/.test(shell),
       "and an area with nothing outstanding renders no outline at all");
+  }
+}
+
+// ═══ S13 — the account page: the one surface that is not an area ═══
+//
+// The session list is the control somebody reaches for after losing a laptop,
+// and it is reached from a menu whose other two items already end sessions. What
+// can go wrong here is not the domain logic — `test/account.test.mjs` holds that
+// and `tenant-gate-check.mjs` G7 proves it over HTTP — but the wiring:
+//
+//   - the page skips its gate and is readable by typing the path;
+//   - the revoke trusts the id in the form, so a copied id ends a stranger's
+//     browser;
+//   - the page is unreachable, because it has no navigation item by design and
+//     the only entry point is a menu somebody forgot to change;
+//   - the raw user agent or the stored address reaches the page.
+{
+  const accountLib = decomment(await readFile(path.join(WEB, "lib/account.ts"), "utf-8"));
+  const route = decomment(await readFile(path.join(WEB, "app/api/account/[action]/route.ts"), "utf-8"));
+  const page = decomment(await readFile(path.join(WEB, "app/account/page.tsx"), "utf-8"));
+  const menu = decomment(await readFile(path.join(WEB, "app/_components/cloud/account-menu.tsx"), "utf-8"));
+  const consoleLib = decomment(await readFile(path.join(WEB, "lib/console.ts"), "utf-8"));
+
+  const { ACCOUNT_ACTIONS, ACCOUNT_PATH, accountActionPath } = await import(path.join(DIST, "consoleIA.js"));
+  const actions = [...ACCOUNT_ACTIONS];
+
+  // ── Every named action has a handler, and every form posts at one ─────────
+  {
+    const missing = actions.filter((a) => !new RegExp(`(^|\\s)(async )?"?${a}"?\\(`, "m").test(route));
+    check("S13.1", missing.length === 0,
+      `every declared account action has a handler (${actions.join(", ")}; missing: ${missing.join(", ") || "none"})`);
+    check("S13.1b", /Record<AccountActionName, Action>/.test(route),
+      "and the dispatch table is typed by that list, so a missing handler is a build failure rather than a 404");
+
+    const used = [...page.matchAll(/accountActionPath\("([a-z-]+)"\)/g)].map((m) => m[1]);
+    const unknown = used.filter((a) => !actions.includes(a));
+    check("S13.2", used.length > 0 && unknown.length === 0,
+      `every revoke form posts through accountActionPath to a declared action (${used.length} forms, unknown: ${unknown.join(", ") || "none"})`);
+    check("S13.2b", accountActionPath(actions[0]) === `/api/account/${actions[0]}`,
+      `and the path is built from the name (${accountActionPath(actions[0])})`);
+  }
+
+  // ── The gate runs once, before the dispatch ───────────────────────────────
+  {
+    check("S13.3", /requireAccount\(request\)/.test(route) && (route.match(/requireAccount\(/g) ?? []).length === 1,
+      "the gate is called once, before the dispatch, so no handler can be reached without it");
+    // The same structural point S12.5c makes, and with the same limit: whether
+    // it *refuses* a cross-site POST is G7's job over HTTP. What is checkable
+    // here is that the origin is decided before anything is looked up.
+    const originAt = accountLib.indexOf("sameOrigin(request)");
+    const sessionAt = accountLib.indexOf("await currentSession()");
+    check("S13.3b", originAt !== -1 && sessionAt > originAt,
+      "with the same-origin check first, before the session is read");
+    check("S13.3c", !/orgId|membership|canReach/.test(accountLib),
+      "and no organization in the gate at all — a person with no membership still has to be able to end a session (§10.7 5A.4)");
+  }
+
+  // ── The session id from the form is scoped to the person ──────────────────
+  //
+  // The failure this prevents is one row of the table: an id belonging to
+  // somebody else's browser, posted from yours. The scope is passed into the
+  // `UPDATE` — `revokeSession` requires it — rather than checked in a branch
+  // above it, because a branch is a thing that can be reordered away.
+  {
+    check("S13.4", /userId: account\.session\.user\.id/.test(route),
+      "the revoke is scoped to the signed-in user, taken from the session");
+    check("S13.4b", !/userId: null/.test(route) && !/form\.get\("userId"\)/.test(route),
+      "never to null and never to a field in the form");
+    check("S13.4c", /clearSessionCookie\(response\)/.test(route),
+      "and revoking the browser you are holding clears its cookie rather than leaving a page whose session no longer resolves");
+  }
+
+  // ── The page is guarded, and by the same door as the areas ────────────────
+  {
+    check("S13.5", /accountContext\(/.test(page),
+      "the page resolves its own session on the server rather than trusting that the menu linked here");
+    check("S13.5b", /redirect\(`\/login\?next=/.test(consoleLib) &&
+      (consoleLib.match(/redirect\(`\/login\?next=/g) ?? []).length === 2,
+      "and no session sends the reader to sign in, the same way the seven areas do");
+  }
+
+  // ── Reachable, because nothing else links to it ───────────────────────────
+  //
+  // No navigation item by design: it belongs to a person, not to one of the
+  // seven organization areas. That makes the masthead menu the only entry point,
+  // and a page nobody can reach is not a shipped page.
+  {
+    check("S13.6", menu.includes("ACCOUNT_PATH") && !menu.includes('"/account"'),
+      "the account menu links to the surface through its declared path rather than a typed string");
+    check("S13.6b", ACCOUNT_PATH === "/account" && existsSync(path.join(WEB, "app/account/page.tsx")),
+      `and a page answers there (${ACCOUNT_PATH})`);
+  }
+
+  // ── Nothing on the page that must not be on it ────────────────────────────
+  {
+    check("S13.7", !/userAgent|ip_hash|ipHash/.test(page),
+      "the page renders neither the raw user agent nor anything derived from an address (§10.7 5A.8)");
+    const jsxText = page.replace(/\w+=\{[^}]*\}/g, "");
+    const echoed = />\s*\{\s*(notice|code)\s*\}/.test(jsxText);
+    check("S13.7b", /NOTICES\[code as AccountNotice\]/.test(page) && !echoed,
+      `the notice is looked up in a fixed map and never rendered as the caller wrote it (echoed: ${echoed})`);
   }
 }
 

@@ -248,11 +248,42 @@ export function hasRecentAuth(session: SessionRecord, now: Date = new Date()): b
   return age <= RECENT_AUTH_MINUTES;
 }
 
-/** Ends one session. Idempotent: the first reason recorded is the one kept. */
-export async function revokeSession(db: Db, id: string, reason: string): Promise<boolean> {
+/**
+ * Ends one session. Idempotent: the first reason recorded is the one kept.
+ *
+ * **The scope is required, and `null` is what "any session" looks like.** A
+ * session id is a UUID somebody hands us, and the account page hands us one out
+ * of a form in a browser. Scoped to the signed-in user, the worst a forged id
+ * achieves is nothing; unscoped, it ends a stranger's session — the same defect
+ * the two Organization revokes had while `/admin` was their only caller, found
+ * there before it shipped and not worth discovering twice. Writing `null` is a
+ * decision somebody made; a missing argument is one nobody did, so there is no
+ * default.
+ */
+export async function revokeSession(
+  db: Db,
+  id: string,
+  reason: string,
+  scope: { userId: string | null }
+): Promise<boolean> {
+  if (!scope || scope.userId === undefined) {
+    // TypeScript already requires it; this catches the caller that is not
+    // compiled — a test, a script, a REPL. `revokeApiKey` carries the same guard
+    // for the same reason: without it the missing argument reads as "no such
+    // session" and sends the reader looking for the wrong thing.
+    throw new Error("revokeSession needs a userId — pass null to revoke regardless of owner");
+  }
+  const params: unknown[] = [id, reason.slice(0, 200)];
+  let scoped = "";
+  if (scope.userId !== null) {
+    params.push(scope.userId);
+    scoped = ` AND user_id = $${params.length}`;
+  }
   const rows = await db.query<{ id: string }>(
-    "UPDATE sessions SET revoked_at = now(), revoked_reason = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING id",
-    [id, reason.slice(0, 200)]
+    `UPDATE sessions SET revoked_at = now(), revoked_reason = $2
+      WHERE id = $1 AND revoked_at IS NULL${scoped}
+      RETURNING id`,
+    params
   );
   return rows.rows.length > 0;
 }
@@ -271,17 +302,90 @@ export async function revokeAllSessions(db: Db, userId: string, reason: string):
   return rows.rows.length;
 }
 
+/**
+ * A user-agent string, reduced to something a person recognises.
+ *
+ * **The list has to be recognisable or it is not a control.** §10.7 5A.8 asks
+ * for a "device/browser label", and the reason is what the reader is being asked
+ * to do with it: decide which row is the phone they lost. A 200-character
+ * user-agent string in a table cell does not answer that, and rendering it
+ * verbatim also puts an unbounded attacker-chosen string on the page — the
+ * header comes from the client and nothing validates it.
+ *
+ * So this returns one of a **fixed set of phrases we wrote**, never a substring
+ * of the input. Unrecognised is "Unknown browser", which is honest and cannot
+ * carry anything through.
+ *
+ * The matching is deliberately shallow. Browser sniffing is a swamp — every
+ * browser claims to be several others, in an order chosen for compatibility with
+ * 1998 — so the order below is what makes it work: the impostors are checked
+ * before the strings they impersonate. Edge says "Chrome", Chrome says "Safari",
+ * and Safari says "Mozilla" like everything else.
+ */
+export function deviceLabel(userAgent: string): string {
+  const ua = userAgent.toLowerCase();
+  if (ua.length === 0) {
+    return "Unknown browser";
+  }
+
+  const browser = ua.includes("edg/")
+    ? "Edge"
+    : ua.includes("opr/") || ua.includes("opera")
+      ? "Opera"
+      : ua.includes("firefox")
+        ? "Firefox"
+        : ua.includes("chrome") || ua.includes("chromium")
+          ? "Chrome"
+          : ua.includes("safari")
+            ? "Safari"
+            : null;
+
+  // iOS before macOS: an iPhone's user agent says "like Mac OS X".
+  const platform = ua.includes("iphone")
+    ? "iPhone"
+    : ua.includes("ipad")
+      ? "iPad"
+      : ua.includes("android")
+        ? "Android"
+        : ua.includes("mac os")
+          ? "macOS"
+          : ua.includes("windows")
+            ? "Windows"
+            : ua.includes("linux")
+              ? "Linux"
+              : null;
+
+  if (browser && platform) {
+    return `${browser} on ${platform}`;
+  }
+  if (browser) {
+    return browser;
+  }
+  if (platform) {
+    return platform;
+  }
+  return "Unknown browser";
+}
+
 export interface SessionSummary {
   id: string;
   method: Provider;
   createdAt: string;
   lastSeenAt: string;
   expiresAt: string;
-  userAgent: string;
+  /** {@link deviceLabel} of the stored user agent — one of our phrases, never theirs. */
+  label: string;
   current: boolean;
 }
 
-/** The "your sessions" list. Carries no token and no address. */
+/**
+ * The "your sessions" list. Carries no token, no address and no raw user agent.
+ *
+ * §10.7 5A.8 forbids the address explicitly. The user agent is left out for a
+ * quieter reason: it is a client-supplied string, and the only thing the page
+ * needs from it is which device this is, which {@link deviceLabel} answers with
+ * a phrase of ours.
+ */
 export async function listSessions(db: Db, userId: string, currentId?: string): Promise<SessionSummary[]> {
   const rows = await db.query<{
     id: string;
@@ -291,10 +395,18 @@ export async function listSessions(db: Db, userId: string, currentId?: string): 
     expires_at: string | Date;
     user_agent: string;
   }>(
+    // **The three conditions are `resolveSession`'s three, deliberately.**
+    // Revoked, past its absolute expiry, or idle too long: a row failing any of
+    // them is already dead on the next request, and a list that showed it would
+    // be telling somebody a browser is signed in when it is not — the one lie
+    // this page exists to prevent. The idle cutoff is the one that is easy to
+    // forget, because nothing about the row itself changes when it passes.
     `SELECT id, method, created_at, last_seen_at, expires_at, user_agent
-       FROM sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+       FROM sessions
+      WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+        AND last_seen_at > now() - ($2 || ' days')::interval
       ORDER BY last_seen_at DESC`,
-    [userId]
+    [userId, String(SESSION_IDLE_DAYS)]
   );
   return rows.rows.map((r) => ({
     id: r.id,
@@ -302,7 +414,7 @@ export async function listSessions(db: Db, userId: string, currentId?: string): 
     createdAt: new Date(r.created_at).toISOString(),
     lastSeenAt: new Date(r.last_seen_at).toISOString(),
     expiresAt: new Date(r.expires_at).toISOString(),
-    userAgent: r.user_agent,
+    label: deviceLabel(r.user_agent),
     current: r.id === currentId,
   }));
 }

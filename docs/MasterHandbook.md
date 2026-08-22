@@ -345,10 +345,13 @@ DATABASE_URL="$(scripts/test-db.sh url)" npm run build:web
 DATABASE_URL="$(scripts/test-db.sh url)" GATE_BASE=http://127.0.0.1:3200 node scripts/tenant-gate-check.mjs
 ```
 
-33 checks over HTTP against a production build: the repository trend view and its
-export, the console's role matrix by direct URL, and every write the Organization
+41 checks over HTTP against a production build: the repository trend view and its
+export, the console's role matrix by direct URL, every write the Organization
 area offers — each refused for no session, for the wrong role, from another
-origin, and from another organization's admin holding a real row id.
+origin, and from another organization's admin holding a real row id — and the
+account page's session sign-out, where the same question is asked about a person
+rather than a tenant: two colleagues in one organization cannot sign each other
+out.
 
 **Do not override `GATE_COOKIE_NAME`.** A production build uses the `__Host-`
 prefixed cookie and the script's default already matches. Overriding it wrongly
@@ -449,6 +452,42 @@ Work through it in this order:
 3. **Has the invitation expired or been used?** 14 days, once.
 4. **Is the email budget paused?** Point them at GitHub sign-in.
 
+### A customer thinks somebody else is signed in as them
+
+They can answer most of this themselves now, and telling them how is faster than
+querying it: **account menu → Your account** lists every browser signed in as
+them, with the device, the sign-in method, when it started and when it was last
+used, and a per-row sign-out. **Sign out everywhere** is the safe move if
+anything on that list is unexplained.
+
+What to do on our side, in order:
+
+1. **Revoke the sessions** if they cannot reach the page:
+
+   ```sql
+   UPDATE sessions SET revoked_at = now(), revoked_reason = 'support: suspected compromise'
+    WHERE user_id = (SELECT id FROM users WHERE email = 'them@company.com')
+      AND revoked_at IS NULL;
+   ```
+
+   It takes effect on the next request from every device — there is no cache.
+
+2. **Read the audit trail** for that user. `auth_events` holds the sign-ins,
+   sign-outs and revocations; addresses and IPs are keyed hashes, so compare them
+   to each other rather than trying to read them.
+
+   ```sql
+   SELECT at, kind, outcome, reason, ip_hash FROM auth_events
+    WHERE user_id = (SELECT id FROM users WHERE email = 'them@company.com')
+    ORDER BY at DESC LIMIT 50;
+   ```
+
+3. **Check the organization's keys** if the account is an admin's — a session is
+   not the only credential they hold. Section 5.
+
+Note what a revoked session is *not*: it does not revoke API keys, and it does
+not undo anything already done. Treat both separately.
+
 ### A customer says a report is "Not found"
 
 The same page is returned for missing, revoked, expired, and belonging to another
@@ -498,8 +537,10 @@ reach for a command instead of a screen:
 - **Usage and spend per tenant** — revenue minus cost per customer. The data is
   already recorded per call; the query is not written.
 - **Security and abuse** — suspicious sign-ins, upload abuse, cross-tenant probe
-  failures, key events. The audit log is being written today; nothing reads it
-  back.
+  failures, key events. The audit log is written today and there is no operator
+  view of it; the only thing that reads it back is the customer's own account
+  page, which shows that one person their own sign-ins. Ours is a SQL client —
+  section 11.
 - **Controls** — scoped pauses for AI, uploads, sharing, providers, individual
   organizations. Today: the breaker, and that is all.
 - **Audit and support** — immutable operator actions, break-glass access,

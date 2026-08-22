@@ -3399,6 +3399,89 @@ Postgres, both typechecks, web build, `npm audit` **0**. Migrations `001`–`023
 
 ---
 
+### 3ag. The account page: every browser signed in as you ✅ (2026-08-23)
+
+**The control somebody reaches for after losing a laptop, with the list it was
+missing.** Since 2026-08-22 the masthead menu could *end* sessions — one, or all
+of them — and deliberately could not *show* them. So the person pressing "sign
+out everywhere" was acting on a set they could not see, and the person who only
+wanted to end the tablet at home had no way to say which one that was. §10.7
+5A.8 specifies the list, and this is it: device label, sign-in method, started,
+last used, expiry, a current-browser marker, and a per-row sign-out.
+
+**It is not an eighth console area, and that decision is in code.** The seven
+areas are organization-scoped: each needs a membership to mean anything, and each
+has a role that may reach it. This page needs neither — it answers for somebody
+in three organizations and for somebody in none, and there is no role that could
+be refused from your own account. `consoleIA.ts` gained a `Surface` type (a
+label, a front door, `holds` and `built`), `ConsoleArea extends Surface`, and
+`ACCOUNT_SURFACE` is declared beside the seven.
+
+**Why declared rather than exempted.** `cloudShell` S11.11 fails a signed-in page
+that no surface claims — PATHWAYS §5's *"do not add a one-off page when an
+existing area can own the workflow"* with teeth. The cheap way past it was to add
+`account` to the exception set inside the test. That would have put the decision
+in a test file nobody reviews as a design choice; asking `isAccountPath()`
+instead keeps it in the module that also records what the page holds and what it
+still owes (C6.1–C6.3).
+
+#### What did not exist and now does
+
+| Added | Where | Why |
+|---|---|---|
+| A user scope on `revokeSession` | `sessions.ts` | It took a session id and nothing else. Safe while the only caller passed an id it had just resolved from a cookie; unsafe the moment a form in a browser supplies one. **Required, with `null` meaning "any"** — the same shape as `revokeApiKey`, for the same reason, including the named error for a caller that is not compiled |
+| The idle cutoff in `listSessions` | `sessions.ts` | The list filtered on revoked and expired, and not on idle — so a browser unused for 31 days appeared as signed in while its next request would already be refused. **C3b runs the two-condition version** and watches it list exactly that row |
+| `deviceLabel` | `sessions.ts` | The stored user agent is a client-chosen string up to 300 characters. It returns one of *our* phrases — "Chrome on macOS", "Safari on iPhone", "Unknown browser" — never a substring of the input, so nothing an attacker sets becomes page content (C4b) |
+| `accountEvents` | `authEvents.ts` | `recentAuthEvents` is the operator's read and returns hashes. This returns three columns — when, what, outcome — scoped to one user. No hashes, and no `reason`, which is a machine string written for an operator |
+| `session-revoked` | `authEvents.ts` | A browser ended *from another browser* is not the same event as signing out, and after a lost laptop the difference is the question being asked |
+
+#### The surface
+
+`/account`, one dispatcher at `/api/account/[action]` typed
+`Record<AccountActionName, Action>` from `ACCOUNT_ACTIONS`, plain form POSTs and a
+303 — the Organization area's shape, so the second account write cannot be
+written slightly differently. `requireAccount` is called once before the dispatch
+and is deliberately two checks rather than four: same origin, and a session. **No
+organization and no role**, because §10.7 5A.4 makes "signed in, member of
+nothing" an ordinary state and that person still has to be able to end a session.
+
+Signing out the browser you are reading on is allowed — somebody working down the
+list reaches their own eventually — and clears the cookie on the way to `/login`,
+rather than leaving a page holding a token that no longer resolves.
+
+#### Watched failing
+
+Six deliberate breaks in the suites, six distinct reds:
+
+| Break | Red |
+|---|---|
+| `revokeSession` ignores its scope | C2.2, C2.3 — Ada's id ends Bob's browser |
+| `listSessions` without the idle condition | C3.4 |
+| `deviceLabel` returns the user agent | C1.2, C1.3, C4.1, C4.2, C4.3, C4b.1 |
+| `isAccountPath` matches by string prefix | C6.3 |
+| The route passes `userId: null` | S13.4b |
+| The route skips `requireAccount` | S13.3 |
+
+And two over HTTP, on a rebuilt production server against real Postgres:
+
+| Break | Red |
+|---|---|
+| The route's scope set to `null` | G7.3, G7.3b, G7.4 — a valid session plus a colleague's row id signs them out |
+| The same-origin check disabled | G7.2, and the cross-site POST then really does end a browser |
+
+#### Three things only a browser showed
+
+| What | Why it mattered |
+|---|---|
+| Four buttons all named "Sign out" | Read aloud, the table is four identical destructive controls and the row is a spatial fact a screen reader does not carry into the name. Each now carries a visually-hidden device label |
+| "The switcher at the top of the page chooses which one you are looking at" | Shown to somebody in **no** organization, one line above "You are not in an organization yet". The sentence appears only when there is more than one membership |
+| *"Also part of this **area**, and not built yet"* | The shared outline's word for the seven. This page is not one of them; it says "this page" now, which is true of both |
+
+**Verify:** 1,478 checks across 37 suites on PGlite, **1,513** against real
+Postgres, both typechecks, web build, `npm audit` **0**. Migrations unchanged at
+`001`–`023` — none of this needed a column. `scripts/tenant-gate-check.mjs`:
+**41 checks**, up from 33.
+
 ---
 
 ## 4. argus-cloud — the web surface

@@ -30,6 +30,13 @@ export type AuthEventKind =
   | "github-callback"
   | "github-refused"
   | "signed-out"
+  /**
+   * One browser ended from the account page, which is not the same event as
+   * signing out: the request came from a *different* session than the one that
+   * died. After a lost laptop, "which browser ended this, and when" is the
+   * question, and one kind covering both cannot answer it.
+   */
+  | "session-revoked"
   | "session-rejected"
   /**
    * A session minted by the local development door, which skips proving the
@@ -129,4 +136,35 @@ export async function recentAuthEvents(db: Db, limit = 50): Promise<AuthEventRow
     ipHash: r.ip_hash.slice(0, 12),
     userId: r.user_id,
   }));
+}
+
+export interface AccountEvent {
+  at: string;
+  kind: string;
+  outcome: string;
+}
+
+/**
+ * What has happened to one person's account, for that person to read.
+ *
+ * **Three columns, and the omissions are the design.** No hashes: they are
+ * meaningless to a customer and they are the only part of this table that is
+ * derived from a secret, so a page that renders them is a page that leaks
+ * keyspace for nothing. No `reason`: the reasons are machine strings written for
+ * an operator (`ip_hour`, `no-linked-account`, `all:3`), and showing them turns
+ * an account page into a support ticket. The page turns `kind` and `outcome`
+ * into a sentence.
+ *
+ * **Scoped by `user_id`, and `actor_user_id` is deliberately not included.**
+ * The two differ where an admin acted *on* somebody — a role change, a removal —
+ * and those belong on the organization's audit, not on the actor's own account
+ * page. What this answers is "what happened to me".
+ */
+export async function accountEvents(db: Db, userId: string, limit = 10): Promise<AccountEvent[]> {
+  const rows = await db.query<{ at: string | Date; kind: string; outcome: string }>(
+    `SELECT at, kind, outcome FROM auth_events
+      WHERE user_id = $1 ORDER BY at DESC, id DESC LIMIT $2`,
+    [userId, Math.max(1, Math.min(100, limit))]
+  );
+  return rows.rows.map((r) => ({ at: new Date(r.at).toISOString(), kind: r.kind, outcome: r.outcome }));
 }

@@ -75,12 +75,43 @@ export interface ConsoleNoOrg extends ConsoleShellData {
   kind: "no-org";
 }
 
-export type ConsoleContext = ConsoleOk | ConsoleDenied | ConsoleNoOrg;
+/**
+ * A signed-in page that is not one of the seven areas.
+ *
+ * The account page is scoped to a person, so there is no area to highlight and
+ * no role to refuse — but the reader is still inside the product, and taking the
+ * organization row away from them for the length of one page would mean losing
+ * the switcher, the plan state and the environment on the one page most likely
+ * to be reached while something is wrong. So the chrome stays and the navigation
+ * marks nothing current.
+ *
+ * `membership` is null for somebody in no organization, and then there is no
+ * context row at all — the same shape as `no-org`, arrived at differently.
+ */
+export interface ConsoleAccount extends ConsoleShellData {
+  kind: "account";
+  membership: Membership | null;
+  subscriptionStatus: string;
+  nav: ConsoleArea[];
+}
+
+/**
+ * What an *area* page can be handed — the three states `consoleContext` returns.
+ *
+ * Kept separate from {@link ConsoleContext} so that `if (ctx.kind !== "ok")
+ * return <ConsoleGate context={ctx} />` still typechecks in all seven pages: the
+ * account state cannot reach them, and the compiler knowing that is what keeps
+ * `ConsoleGate` from having to handle a case it has no words for.
+ */
+export type ConsoleAreaContext = ConsoleOk | ConsoleDenied | ConsoleNoOrg;
+
+/** Anything the shell can draw chrome around. */
+export type ConsoleContext = ConsoleAreaContext | ConsoleAccount;
 
 export async function consoleContext(
   areaId: ConsoleAreaId,
   path: string
-): Promise<ConsoleContext> {
+): Promise<ConsoleAreaContext> {
   const theme = await readTheme();
   const session = await currentSession();
   if (!session) {
@@ -109,4 +140,40 @@ export async function consoleContext(
   return area.roles.includes(membership.role)
     ? { kind: "ok", ...common }
     : { kind: "denied", ...common };
+}
+
+/**
+ * The same door, for the account page.
+ *
+ * **It cannot go through `consoleContext`**, because that function's first act
+ * is to look up an area and its last act is to compare a role against it, and
+ * neither exists here. What it does share is the part that must not differ: no
+ * session means the sign-in page with a `next` back to here, and the shell data
+ * is assembled the same way, so the two surfaces cannot end up disagreeing about
+ * the theme, the environment or who is signed in.
+ */
+export async function accountContext(path: string): Promise<ConsoleAccount> {
+  const theme = await readTheme();
+  const session = await currentSession();
+  if (!session) {
+    redirect(`/login?next=${encodeURIComponent(path)}`);
+  }
+
+  const environment = deploymentEnvironment(process.env);
+  const jar = await cookies();
+  const membership = activeMembership(session, jar.get(ACTIVE_ORG_COOKIE)?.value);
+  const subscriptionStatus = membership
+    ? (await orgPlanState(await getDb(), membership.orgId)).subscriptionStatus
+    : "none";
+
+  return {
+    kind: "account",
+    theme,
+    path,
+    session,
+    environment,
+    membership,
+    subscriptionStatus,
+    nav: membership ? navFor(membership.role) : [],
+  };
 }
