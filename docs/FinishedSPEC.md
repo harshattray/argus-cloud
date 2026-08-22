@@ -3052,8 +3052,8 @@ a seventh place for those answers to differ.
 
 | Check | Result |
 |---|---|
-| `npm run verify` | ✅ **1332 checks across 35 suites**, up from 1293; both typechecks, web build, `npm audit` **0** |
-| New guards | `cloudShell` **S11, 38 checks** (S11.1–S11.32 with sub-ids), and **S7.6b–S7.6d** rewritten where the no-organization state moved |
+| `npm run verify` | ✅ **1341 checks across 35 suites** on PGlite and **1373 on real Postgres**, up from 1293; both typechecks, web build, `npm audit` **0** |
+| New guards | `cloudShell` **S11, 38 checks**; `migrations` **M9, 8 checks** for the 022 upgrade path; **S7.6b–S7.6d** rewritten where the no-organization state moved; `scripts/tenant-gate-check.mjs`, **17 checks over HTTP** |
 | Watched failing | ✅ fifteen breaks applied and reverted from copies — the list is below |
 | In a browser | ✅ 1280, 666 and 375, light and dark, signed in as an admin of two organizations |
 
@@ -3113,6 +3113,61 @@ two behind; the export route's own comment promised the change. `PATHWAYS.md`
 membership in the owning organization, with the dev flag left as the local door
 (S11.24–S11.26).
 
+**Verified over HTTP, not only in the source** — `scripts/tenant-gate-check.mjs`,
+17 checks against a **production build** on **real Postgres** with
+`NORMA_DEV_OPEN=0`. S11.24–S11.26 assert the shape of the fix; this asserts the
+behaviour, because a unit test of any one of the three moving parts — cookie,
+URL id, database row — is exactly what let the defect ship.
+
+| Case | Trend page | CSV export |
+|---|---|---|
+| No session | refusal page, no commit | 404, no CSV |
+| Member of the owning organization | renders, real commits | 200, `text/csv`, 4 rows |
+| Member of another organization | refusal page | 404 |
+| Repository that does not exist | same page, 0 bytes apart | 404 |
+
+Isolation is checked **in both directions** (G4): A's session refused on B's
+repository as well as the reverse, because isolation proven one way is isolation
+proven for one fixture. The refusal names nothing of the probed tenant — no
+repository name, commit or organization id (G1.5) — and a nonexistent repository
+is byte-for-byte the same page as one that is not yours, so probing ids maps
+nothing.
+
+> **The script was green for the wrong reason first, twice.** It used the frame
+> label as the marker for "data rendered" — but `hero.png` comes out of the
+> *requester's own query string* and is echoed back in the refusal, so the check
+> proved nothing. The markers are commit shas now, which only come from the
+> database. Then G5 searched the raw HTML for "is for admins" and missed it:
+> React writes `<!-- -->` between adjacent text nodes, so the bytes read
+> `is for <!-- -->admins`. It reported a designer reaching the billing area
+> while the page was refusing them correctly on screen. Both are why the script
+> normalises the body before matching, and why a check nobody has watched fail
+> is not a check.
+
+**Watched failing, twice, each reproducing a real state:**
+
+| Run | Result |
+|---|---|
+| Same build, `NORMA_DEV_OPEN=1` | **10 of 17 red** — the door opens the trend and the export to anyone, including strangers |
+| **Pre-fix source rebuilt**, `NORMA_DEV_OPEN=0` | **4 red, and they are the shipped defect**: G1.2, G2.2, G4.1, G4.2 — the *member* is refused, while every stranger check still passes. Customers 404, nothing leaks |
+
+**Harsha's launch role decision, confirmed on the wire (G5).** Members and
+designers get product and report access; Organization, Billing and Privacy are
+admin-only, and no financial or usage data reaches a member or designer until a
+read-only usage view is designed for it. A designer with a valid session, typing
+the URLs directly, is refused exactly those three areas and reaches exactly the
+other four — and an admin of the same organization gets the real page, so the
+refusal is about the role rather than about a broken page.
+
+> **One thing this surfaced that is not part of the fix.** Pages refuse with a
+> "Not found" *body* at HTTP **200**, not a 404 status. That is how every Cloud
+> page has behaved since Phase H — `/r/`, `/repos/{id}` and the trend view all
+> render a `NotFound` component, and no page calls `notFound()` from
+> `next/navigation`. The route handlers do answer a real 404. Nothing leaks
+> either way, and G1.6 records the status rather than blessing it. Worth
+> deciding deliberately: anything reading status codes — uptime monitoring,
+> analytics, a CDN — counts every refusal as a success.
+
 **A second defect, and it is the one CLAUDE.md rule 1 is about.**
 `scripts/dev-membership.mjs` wrote `role: 'owner'` into `memberships`. `owner`
 is not a role — §10.7 5A.5 and migration 021 both say ownership is
@@ -3123,6 +3178,36 @@ simply refused every area of the console, with `hasRole(m, ['admin'])` returning
 false for `'owner'` and nothing in that answer saying why. Migration `022`
 repairs the rows and adds the CHECK; the seed calls `claimOwnership`, which sets
 the invariant and the admin membership in one transaction.
+
+**The upgrade path is tested, not just the fresh install** — `migrations` **M9**,
+green on PGlite *and* on real Postgres. M1 only proves 022 applies to an empty
+database, where the repair matches nothing and the CHECK goes on unopposed. What
+has to work is the other case, so M9 walks a database to 021, gives it the rows
+the seed left — `owner`, plus a `superuser` nobody wrote on purpose, plus one of
+each valid role — and then takes it across 022 with the real runner reading the
+real file.
+
+| Check | What it holds |
+|---|---|
+| M9.2 | 022 applies to a database that already holds them, rather than aborting mid-transaction |
+| M9.3 | every out-of-domain role became `admin` — by domain, not by the one string we knew about |
+| M9.4 | valid rows untouched: the repair is selective, not a blanket UPDATE |
+| M9.5 | all five memberships survive — nobody lost a seat, which a DELETE would also have "fixed" |
+| M9.6 | **no ownership was invented.** `owner_user_id` was null and stays null: an `owner` role row was never evidence of the invariant, and guessing which member owns the organization is the silent decision 5A.5 forbids |
+| M9.7 | the constraint is live afterwards |
+| M9.8 | **counter-test** — constraint first, repair second, on the same data: fails, which on a deployment is a migration that aborts halfway |
+| M9.9 | and 022's own order succeeds on those same rows, so M9.8 is about the order rather than about the data |
+
+> **M9's counter-test was wrong the first time, and only real Postgres said
+> so.** It dropped the constraint from `memberships` itself in order to re-add
+> it the naive way. On PGlite that is invisible — every process gets its own
+> database — but on a real server every suite shares one, `freshDb()` included,
+> so it left the schema with `022` recorded as applied and the constraint gone.
+> `migrate()` skips a migration already in `schema_migrations`, so nothing put
+> it back, and `cloudShell` **S11.31 failed six suites later**. The check was
+> right; the harness was leaking. It runs on a scratch table now. This is
+> CLAUDE.md rule 4 arriving from the other direction: PGlite hid a defect *in a
+> test* rather than in the code.
 
 **Three things only a browser could have found**, and each now has a check:
 

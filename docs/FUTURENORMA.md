@@ -22,7 +22,19 @@ so every customer who clicked a sparkline got "Not found" — while `PATHWAYS.md
 `memberships`, which is not a role; migration 001 had written the domain in a
 comment and no constraint, so the column took it and the local sign-in address
 was refused every area of the console with nothing saying why. Migration `022`
-adds the CHECK. Verify green at **1332 checks across thirty-five suites**,
+adds the CHECK.
+
+**Both are verified rather than asserted.** `scripts/tenant-gate-check.mjs` runs
+17 checks over HTTP against a production build on real Postgres with the door
+shut — isolation in both directions, and watched failing against the pre-fix
+build, where the *member* is refused and every stranger check still passes.
+`migrations` M9 walks a database to 021, gives it the bad rows, and takes it
+across 022: the repair is selective, no seat is lost, no ownership is invented,
+and the counter-test shows constraint-before-repair aborting on that same data.
+**The launch role decision is Harsha's, 2026-08-22: deny.** Members and
+designers get product and report access and no financial or usage data; a
+read-only usage view later would be its own surface, not a widening of this
+matrix. Verify green at **1341 checks across thirty-five suites** on PGlite and **1373 on real Postgres**,
 `npm audit` **0**. `FinishedSPEC.md` §3ae.
 
 Before that, **2026-08-22** — **the Cloud surface can now tell a failure from
@@ -555,7 +567,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
 | **The organization console's shell, navigation and role matrix** (Step 6, Pathway 5) | ✅ 2026-08-22, **shell only — five of seven areas hold nothing yet** | Seven areas, one context row naming organization / role / subscription state / environment, and an organization switcher. `src/consoleIA.ts` is the single list the navigation renders from, every page guards from, and the suite **imports and evaluates**. Admin-only: Organization, Billing, Privacy and data — where every write in §10.7 5A.9 already sat. 38 checks, fifteen watched failing — `FinishedSPEC.md` §3ae. **The individual account page is not built**, so 5A.8's session list is still owed |
-| **`memberships.role` has a domain** | ✅ 2026-08-22 | Migration `022`. 001 wrote `admin \| member \| designer` in a **comment** and no constraint, and the seed wrote `'owner'` — not a role, since ownership is `orgs.owner_user_id` (021). No authorization path recognised it, so a locally seeded owner was refused every console area and nothing said why. The column now refuses it |
+| **`memberships.role` has a domain** | ✅ 2026-08-22 | Migration `022`. 001 wrote `admin \| member \| designer` in a **comment** and no constraint, and the seed wrote `'owner'` — not a role, since ownership is `orgs.owner_user_id` (021). No authorization path recognised it, so a locally seeded owner was refused every console area and nothing said why. The column now refuses it. **The upgrade path is tested, not just the fresh install**: `migrations` M9 walks a database to 021, gives it `owner` and `superuser` rows plus one of each valid role, and takes it across 022 — selective repair, five of five memberships kept, no ownership invented, and a counter-test showing constraint-before-repair aborting on that data. Green on PGlite and on real Postgres |
 
 `main` @ **`dc178cf`** — the merge of `staging` (PR #18), which landed Step 6's
 session layer. **The working branch is now `staging`, and `main` only ever

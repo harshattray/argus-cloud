@@ -2034,10 +2034,18 @@ without manually opening Cloud.
 > §7's open-item table had recorded that gate closed. And the launch role
 > matrix is now written down: Overview, Runs, Trends and Explain for every
 > role; Organization, Billing and Privacy for admins alone, which is where
-> every write in 5A.9's table already sat. **The one judgement in it:** 5A.9
-> gives members and designers a "permitted read" of the usage and credit
-> ledger, and no policy system exists to express "permitted", so the launch
-> default is deny. Widening it is a decision, not a bug fix.
+> every write in 5A.9's table already sat.
+>
+> **The judgement in it is decided — Harsha, 2026-08-22: the launch default is
+> deny.** 5A.9 gives members and designers a "permitted read" of the usage and
+> credit ledger; "permitted" is an organization policy and no policy system
+> exists, so members and designers get product and report access only, and **no
+> financial or usage data**. A read-only usage view can be added later if it is
+> wanted — a new surface with its own design, not a widening of this matrix.
+> Proven on the wire rather than only in configuration: a designer with a valid
+> session, typing the URLs directly, is refused exactly Organization, Billing
+> and Privacy and reaches exactly the other four, while an admin of the same
+> organization gets the real page — `scripts/tenant-gate-check.mjs` G5.
 >
 > **Not done:** the operator console, the account and billing pages (including
 > that session list), deletion UI, privacy controls, key management UI, the
@@ -2460,7 +2468,7 @@ only after the basic chart agrees with enrichment. It now does.
 
 | # | Item | Why it matters |
 |---|---|---|
-| 1 | ~~`/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production~~ | **Closed 2026-08-21 for `/repos` and `/repos/{id}`, and this row was wrong about the rest until 2026-08-22.** The trend view and its CSV export still answered to `NORMA_DEV_OPEN` alone, so every customer who clicked a sparkline got "Not found" — while this row read as closed, because the page above them had been fixed. Both now take membership in the owning organization, with the dev flag left as the local door. A share token still cannot open a repository-wide view, for the reason this row always gave. Guards: `cloudShell` S11.24–S11.26. |
+| 1 | ~~`/repos/*` is gated by `NORMA_DEV_OPEN` and 404s in production~~ | **Closed 2026-08-21 for `/repos` and `/repos/{id}`, and this row was wrong about the rest until 2026-08-22.** The trend view and its CSV export still answered to `NORMA_DEV_OPEN` alone, so every customer who clicked a sparkline got "Not found" — while this row read as closed, because the page above them had been fixed. Both now take membership in the owning organization, with the dev flag left as the local door. A share token still cannot open a repository-wide view, for the reason this row always gave. Guards: `cloudShell` S11.24–S11.26 for the shape, and **`scripts/tenant-gate-check.mjs` for the behaviour** — 17 checks over HTTP against a production build on real Postgres with the door shut, isolation checked in both directions, watched failing against the pre-fix build (the *member* is refused; every stranger check still passes). `FinishedSPEC.md` §3ae. |
 | 1b | A share view carries no breadcrumb, so it shows no organization name | Deliberate — the trail would name the repository and offer a link the holder cannot open. It has one consequence worth knowing: the demo tenant's `DEMO — … (sample data)` label rides on the breadcrumb, so a demo report sent as a share link is unlabelled. `seed-demo` prints that caveat; a durable fix is a share-view label, which is Pathway 5's territory. |
 | 2 | ~~There is no repository *list*~~ | **Closed 2026-08-21.** `/repos` answers "what does this organization have" from the membership list the session resolved — never from a URL. The trends API is unchanged and still answers only about a frame. |
 | 3 | The x-axis is runs in which the frame was *compared* | A run where the frame is absent entirely is not a point on the chart, where a run that recorded a null measurement is a gap. Both are honest; they are not the same picture, and nothing yet says which happened. |
