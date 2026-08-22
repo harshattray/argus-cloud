@@ -21,6 +21,7 @@
 //           same commit.
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -338,8 +339,9 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
   // Not vacuous: an empty or truncated list would make every check below pass
   // by having nothing to check.
-  check("S7.1", poses.length >= 11 && poses.includes("lantern") && poses.includes("hourglass"),
-    `${poses.length} poses declared, including the two the Cloud surface uses (${poses.join(", ")})`);
+  const CLOUD_POSES = ["lantern", "hourglass", "parcel", "key", "envelope"];
+  check("S7.1", poses.length >= 14 && CLOUD_POSES.every((p) => poses.includes(p)),
+    `${poses.length} poses declared, including the five the Cloud surface uses (${poses.join(", ")})`);
 
   // TypeScript already forces `ARMS` and `MOTION` to hold every pose — they are
   // `Record<TwinPose, …>`. Nothing forces the CSS, and a pose whose class is
@@ -354,11 +356,9 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
   // The prop is what stops a new pose reading as an existing one: a silhouette
   // is recognised before a limb is, so a pose that only moves an elbow is the
   // same drawing at a glance (`normascopeWeb.md` §5).
-  const propless = ["lantern", "hourglass"].filter(
-    (p) => !new RegExp(`case "${p}":`).test(twins)
-  );
+  const propless = CLOUD_POSES.filter((p) => !new RegExp(`case "${p}":`).test(twins));
   check("S7.3", propless.length === 0,
-    `both Cloud poses carry a drawn prop${propless.length ? ` — missing: ${propless.join(", ")}` : ""}`);
+    `every Cloud pose carries a drawn prop${propless.length ? ` — missing: ${propless.join(", ")}` : ""}`);
 
   // Decommented: the doc block above `CloudEmpty` explains at length why it is
   // *not* a `TwinLink`, and a check reading the raw file finds that sentence and
@@ -374,6 +374,172 @@ const decomment = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
   check("S7.5", !/TwinLink/.test(empty) && !/\bsign\b/.test(empty),
     "and it is a plain Twin: no `get cloud` sticker, because everyone reading this page has already bought it");
+
+  // The two 2026-08-22 placements. Both replaced a page that was mostly empty
+  // colour, and both are easy to lose in a refactor without anything failing:
+  // the drawing is decoration, so nothing throws when it goes.
+  const reposPage = decomment(await readFile(path.join(WEB, "app/repos/page.tsx"), "utf-8"));
+  check("S7.6",
+    /<CloudTwin pose="parcel"/.test(reposPage) && /norma-scope upload/.test(reposPage),
+    "the repository list's blank slate carries the parcel figure and the command that ends it");
+
+  // The other thin state on the same page. It is the one a person lands on when
+  // their session resolves and their membership list is empty — legitimate per
+  // §10.7 5A.4, and for a while the only state on the surface still rendering as
+  // a bare paragraph in a card that stopped a third of the way down the window.
+  check("S7.6b",
+    /<CloudTwin pose="envelope"/.test(reposPage) && /invitation link/.test(reposPage),
+    "and the no-organization state carries the envelope figure and names the invitation that ends it");
+
+  // Both `/repos` states use one block. Two copies of the same layout is how
+  // the pair drifts — one gets a height and the other keeps the old collapse.
+  const blankSlateUses = (reposPage.match(/styles\.blankSlate/g) ?? []).length;
+  check("S7.6c", blankSlateUses === 2,
+    `both blank states share .blankSlate rather than each owning a layout (${blankSlateUses} uses)`);
+
+  const login = decomment(await readFile(path.join(WEB, "app/login/page.tsx"), "utf-8"));
+  check("S7.7", /<CloudTwin pose="key"/.test(login) && !/TwinLink/.test(login),
+    "the sign-in page carries the key figure, and no sticker — the offer there is the footnote, not a drawing holding a sign");
+}
+
+// ═══ S8 — the sign-in page is a page, not a card on a colour ═══
+//
+// It shipped as a single centred card with no header, no footer and no link
+// anywhere: somebody who reached `/login` from a stale bookmark or a spent link
+// had the browser's Back button and nothing else, and the theme switch — which
+// every signed-in page has — first appeared *after* they got in.
+{
+  const login = decomment(await readFile(path.join(WEB, "app/login/page.tsx"), "utf-8"));
+  const css = decomment(await readFile(path.join(WEB, "app/login/login.module.css"), "utf-8"));
+  const surface = decomment(await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8"));
+
+  check("S8.1", /className={styles\.home}\s+href="\/"/.test(login),
+    "the wordmark is a link to the public site — the way home every header already implies");
+
+  check("S8.2", /<ThemeSwitch/.test(login),
+    "and the theme switch is on it, so the colour choice does not first appear after signing in");
+
+  check("S8.3", /<footer/.test(login) && /YuticEndorsement/.test(login) && /href="\/legal"/.test(login),
+    "there is a footer, with the endorsement and a way out in words");
+
+  // The theme switch posts a redirect target, and it is built from the value
+  // `safeNext` has already vetted rather than from the raw query parameter.
+  check("S8.4", /themeNext = next \? `\/login\?next=\$\{encodeURIComponent\(destination\)\}`/.test(login),
+    "the theme switch's return path is built from the validated destination, never from the raw `next`");
+
+  // S8.5 / S8.5b — the bug this pair exists for, found in a browser on
+  // 2026-08-22 and live on every signed-in page at the time.
+  //
+  // `.onLight` / `.onDark` are bare single-class selectors. A rule like
+  // `.wordmark img { display: block }` is a class *and* a type, so it outranks
+  // them and both ground-dependent files render, one stacked under the other.
+  // Nothing fails; the mark just grows a faint duplicate along its underside.
+  const setsDisplay = (text, selector) => {
+    const rule = new RegExp(`\\${selector}\\s*\\{[^}]*\\}`).exec(text);
+    return rule !== null && /display\s*:/.test(rule[0]);
+  };
+
+  check("S8.5", !setsDisplay(surface, ".wordmark img") && !setsDisplay(css, ".home img"),
+    "no type-and-class rule sets `display` on a themed wordmark image — that outranks the .onLight/.onDark cascade and renders both files");
+
+  // The counter-test: the same cascade evaluated with the offending rule back
+  // in, by specificity, to show the check is asserting something.
+  {
+    const beats = (a, b) => a[0] * 10 + a[1] > b[0] * 10 + b[1];
+    // [classes, types] for `.wordmark img` and for `.onDark`.
+    const scoped = [1, 1];
+    const themed = [1, 0];
+    check("S8.5b", beats(scoped, themed),
+      "counter-test: `.wordmark img` (1 class, 1 type) beats `.onDark` (1 class), so a `display` there wins and the hidden copy is shown");
+  }
+}
+
+// ═══ S9 — the two masthead controls ═══
+//
+// The theme switch was three tracked uppercase words in equal chips, and the
+// account controls were a strip under the footer rule reading
+// `name · Sign out · Sign out everywhere` with no bottom padding. Both were
+// rebuilt on 2026-08-22.
+//
+// What can go wrong here is quiet in both directions: an icon-only control that
+// drops its text has no accessible name and nothing turns red, and a menu built
+// with a positioned `<div>` instead of a popover is clipped by the card it
+// lives in — visibly, but only for the person who opens it.
+{
+  const themeSwitch = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/theme-switch.tsx"), "utf-8")
+  );
+  const account = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/account-menu.tsx"), "utf-8")
+  );
+  const shell = decomment(
+    await readFile(path.join(WEB, "app/_components/cloud/cloud-shell.tsx"), "utf-8")
+  );
+  const surface = decomment(
+    await readFile(path.join(WEB, "app/_styles/surface.module.css"), "utf-8")
+  );
+
+  // Every option keeps its word in the DOM; only the selected one is shown.
+  // Dropping the other two is the obvious "simplification" and it leaves two
+  // buttons whose accessible name is a `title`, which a lot of assistive
+  // technology will not read.
+  check("S9.1",
+    /styles\.themeLabel : styles\.visuallyHidden/.test(themeSwitch),
+    "the unselected theme options keep their labels in the DOM as visuallyHidden, not as title-only icons");
+
+  check("S9.2", /aria-pressed={option\.active}/.test(themeSwitch),
+    "and the selected one is announced as pressed, not signalled by the filled chip alone");
+
+  // Still three plain forms. The redesign was chrome; a colour preference that
+  // needs hydration would put a script on pages that have none.
+  const themeForms = (themeSwitch.match(/method="POST"/g) ?? []).length;
+  check("S9.3",
+    themeForms === 1 && !/use client/.test(themeSwitch) && !/onClick/.test(themeSwitch),
+    "the theme switch is still one form per option and no client JavaScript");
+
+  // The account menu, and the constraint that decided its mechanism.
+  check("S9.4",
+    /popover="auto"/.test(account) && /popoverTarget/.test(account) &&
+      !/use client/.test(account) && !/onClick/.test(account),
+    "the account menu is a native popover — no client JavaScript, and the top layer is what keeps it out of the card's overflow");
+
+  check("S9.5", /:popover-open/.test(surface) && /accountMenu/.test(surface),
+    "and the stylesheet only reveals it on :popover-open, so it is closed without a script saying so");
+
+  // Both actions survived the move into a menu unchanged: same route, same
+  // method, and `scope=all` still distinguishes the two.
+  const posts = (account.match(/action="\/api\/auth\/signout"/g) ?? []).length;
+  check("S9.6",
+    posts === 2 && /name="scope" value="all"/.test(account) && !/<a /.test(account),
+    `both sign-outs are still same-origin form posts, not links (${posts} forms)`);
+
+  // The thing the reader complained about: two bare links a foot apart, with no
+  // way to tell which one they wanted. The second now explains itself.
+  check("S9.7", /accountMenuHint/.test(account) && /every device/.test(account),
+    "and \"sign out everywhere\" says what it does, which is the whole reason the two were confusable");
+
+  // The masthead offers the slot; it does not go looking for a session. A share
+  // reader has one run and no account.
+  check("S9.8", /account\?: ReactNode/.test(shell) && /{account}/.test(shell),
+    "the masthead takes the account menu as an optional slot rather than resolving a session itself");
+
+  const share = decomment(await readFile(path.join(WEB, "app/r/[runId]/page.tsx"), "utf-8"));
+  check("S9.9", !/AccountMenu/.test(share),
+    "and the share-token report passes none — a share link has a reader, not a user");
+
+  // S9.10 / S9.10b — why this is a popover at all.
+  const shellCss = surface;
+  const cardHidesOverflow = /\.card\s*\{[^}]*overflow:\s*hidden/.test(shellCss);
+  check("S9.10", cardHidesOverflow,
+    "the sheet still clips its overflow, which is the constraint the popover exists to satisfy");
+  check("S9.10b", cardHidesOverflow && /popover="auto"/.test(account),
+    "counter-test: the masthead is inside that clip, so a positioned <div> menu would be cut off at the sheet's top edge — only the top layer escapes it");
+
+  // The strip this replaced is gone, not orphaned beside its replacement.
+  const stripGone = !existsSync(path.join(WEB, "app/repos/session-controls.tsx"));
+  const repos = decomment(await readFile(path.join(WEB, "app/repos/page.tsx"), "utf-8"));
+  check("S9.11", stripGone && !/SessionControls/.test(repos),
+    "the old sign-out strip under the footer is deleted, not left rendering next to the menu");
 }
 
 console.log(failures === 0 ? "\nAll cloud-shell checks passed." : `\n${failures} check(s) failed.`);

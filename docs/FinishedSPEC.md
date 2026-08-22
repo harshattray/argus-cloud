@@ -2798,6 +2798,146 @@ links and `E5b` added for images, so a revert of that decision fails.
 
 ---
 
+### 3ab. Empty pages, the sign-in shell, and the two masthead controls ✅ (2026-08-22)
+
+Harsha's review of the signed-in surface. Five things, and one of them was a
+defect nobody had reported.
+
+**The two `/repos` blank states stopped collapsing.** An organization with
+nothing uploaded, and a signed-in person in no organization, were each one grey
+paragraph in a sheet sized by its contents — so the card ended a third of the
+way down the window and pulled the Yutic line up with it. **Nothing was pushing
+the footer up; there was nothing holding it down.** Both now share
+`.blankSlate`: `min-height: clamp(260px, 44vh, 400px)`, words left, figure
+right, and below 620px the figure moves above the words at the right margin. A
+min-height rather than a stretch to the viewport, or the endorsement lands
+exactly on the fold at every screen size. S7.6c pins the two to one class, since
+two copies of a layout is how the pair drifts apart again.
+
+**`/login` became a page.** It was a card alone on a colour with no header, no
+footer and no link anywhere: somebody arriving from a stale bookmark or a spent
+link had the browser's Back button and nothing else, and the theme switch — on
+every signed-in page — first appeared *after* they got in. It now has the same
+three parts every Cloud page has. Not `CloudMasthead` / `CloudFooter`: those
+draw the edges of a sheet and this surface has none. What is shared is the
+wordmark pair, the theme switch, the endorsement, and the three-state cascade.
+
+**Three new twin poses** — `parcel`, `key`, `envelope` — one per placement, per
+the rule in `normascopeWeb.md` §5. Two failed drafts are recorded there because
+both failures were about legibility at 118px: a key drawn as a bare shaft with a
+ring read as a balloon on a string (a key is recognised by its notches), and an
+envelope drawn with a letter rising out of it read as a sheet of paper, which is
+`reading` with `stack` beside it.
+
+**The theme switch and the account controls were rebuilt.** The switch was three
+tracked uppercase words in equal chips — roughly 190px, with a rule between each
+pair, to set a colour preference. Each option is now an icon and **only the
+selected one is captioned**, which halves the width and makes the filled chip
+say what the state is. The unselected labels are not dropped, they are
+`visuallyHidden`: an icon-only button whose accessible name is its `title` is a
+name much assistive technology will not read, and nothing turns red when that
+happens (S9.1).
+
+The account controls were a strip under the footer rule reading
+`name · Sign out · Sign out everywhere`, with no bottom padding, so the text sat
+on the card's cut edge. Two failures, and the second matters more: **two
+sign-outs side by side made the reader choose without telling them what they
+were choosing between** — one ends this session, the other revokes every row for
+the user. They are now one account button in the masthead (filled avatar,
+truncated name, chevron) opening a native popover where the second carries a
+line of explanation. Both are still same-origin form posts to the same route
+(S9.6).
+
+Mechanism is the explainer's, for the explainer's three reasons: native
+`popover`, no client JavaScript, no inline styles. The third is load-bearing
+here — `.card` is `overflow: hidden` and this control sits in the masthead
+*inside* that clip, so a positioned `<div>` would be cut off at the sheet's top
+edge. Only the top layer escapes it (S9.10b).
+
+> **The defect.** `.wordmark img { display: block }` in `surface.module.css`
+> outranks the bare `.onLight` / `.onDark` classes that implement the theme
+> cascade — one class and one type against one class — so **both ground-dependent
+> wordmark files rendered, stacked, on every signed-in Cloud page**. It reads as
+> a mark with a faint duplicate along its underside, which is why it shipped.
+> Found in a browser while building the sign-in header, where the same mistake
+> was made a second time and caught immediately. S8.5 forbids a `display` on
+> either selector and S8.5b evaluates the specificity to show the check asserts
+> something.
+
+Verified in a browser at 1280 and 375, in light and dark, against a real
+Postgres: `npm run verify` green, and the account menu opens anchored under its
+button and over the sheet's edge rather than clipped by it.
+
+---
+
+### 3ac. A local sign-in door, and seeds that create somebody to sign in as ✅ (2026-08-22)
+
+**The signed-in surface could not be looked at locally.** `/repos` needs a
+session; locally there is no mail provider, so the magic-link flow prints the
+whole message to the dev server's console and signing in meant fishing a URL out
+of a terminal every time the cookie was cleared. Worse, it did not end there —
+see the seeds below.
+
+`POST /api/auth/dev-signin` mints an ordinary session for one configured
+address, and `/login` grows a **Sign in as …** button captioned *local
+development only*. `PATHWAYS.md` §10.7 5A.13 carries the fence; in short, three
+conditions all have to hold (`NORMA_DEV_SIGNIN_EMAIL` set, `NODE_ENV` not
+production, `VERCEL` unset), there is no default, and the route answers 404
+rather than 403 when any of them fails. The session is not special — same
+`createSession`, same limits, same revocation — and it gets its own `dev-signin`
+audit kind so the log cannot read it as a consumed magic link. Every other
+address typed into the form goes through the real route untouched.
+
+`test/auth.test.mjs` **A13** evaluates the guard against every environment
+combination rather than against the one the developer's laptop happens to be in.
+**A13.7b** is the counter-test: the obvious version, checking only `NODE_ENV`,
+is open on any Vercel preview carrying the variable.
+
+**The seeds built everything except a person.** `seed-demo` and `seed-real`
+predate the session layer, so they create organizations, repositories, runs,
+artifacts and credits and nobody who can see them — signing in after a full seed
+landed on **"No organization yet"**, which is a correct page and not the one
+anybody was trying to reach. A membership was the only missing row.
+`scripts/dev-membership.mjs` grants the local address owner membership in the
+tenants the seed just made, so `npm run seed:demo -- --reset` now ends with an
+account that can open both.
+
+> **Not "every org in the database".** That was the first cut, and against a
+> database the suites had also run through it granted membership in 59
+> organizations named things like `ret-4641063c`. `membershipsFor` orders by
+> name, so the account landed on a retention fixture instead of the demo tenant.
+> The caller passes the ids it created.
+
+Verified end to end against a real Postgres: seed → press the button → the DEMO
+tenant with three repositories and twelve runs each → a frame trend page drawing
+real history.
+
+**And the answer to "do the sign-out buttons actually work".** They do, and this
+was checked rather than read. A second session was created for the same user,
+**Sign out everywhere** pressed in the browser, and the database inspected:
+
+```text
+live sessions after sign out everywhere: 0
+  revoked: signed out everywhere | second device
+  revoked: signed out everywhere | Mozilla/5.0 (Macintosh…)
+audit log:
+   signed-out allowed all:2
+   dev-signin allowed local
+```
+
+`/repos` then redirected to `/login`. The rows are revoked, not the cookie
+merely cleared, so it takes effect for every holder of that cookie on the next
+request.
+
+> **A trap worth writing down.** PGlite is single-writer. A dev server left
+> running from an earlier session holds `.pgdata`, and every later `next dev`
+> and every seed then crashes inside the WASM with `Aborted()` and no useful
+> message. Two `next-server` processes from 2026-08-20 were doing exactly that
+> on this machine, which is why local seeding failed until they were named.
+> `lsof +D .pgdata` finds them. Recorded in `README.md` beside the setup.
+
+---
+
 ---
 
 ## 4. argus-cloud — the web surface

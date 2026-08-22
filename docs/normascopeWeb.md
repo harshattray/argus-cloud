@@ -250,7 +250,7 @@ deliberately: an index of legal documents is not a place to sell.
 
 Two identical figures in dark glasses, each reading its own copy of the same
 page. Traced from a frame of Harsha's own generated footage — the still is not
-in the repo. `web/app/(site)/_components/twins.tsx`, one character, twelve
+in the repo. `web/app/(site)/_components/twins.tsx`, one character, fifteen
 poses, two tones (charcoal line on paper, cream line on ink).
 
 They are not general decoration. **Nine placements, nine poses, no pose twice
@@ -269,14 +269,55 @@ an existing placement's slot.
 | `/legal` | the document index | stack |
 | 404 | "Nothing here to compare" | empty |
 
-**Two more live on the Cloud surface, not the site (2026-08-20).** They are
-the same rule applied to a second product: a new placement takes a new pose,
-and `empty` already belongs to the 404.
+**Five more live on the Cloud surface, not the site (2026-08-20, 2026-08-22).**
+They are the same rule applied to a second product: a new placement takes a new
+pose, and `empty` already belongs to the 404.
 
 | Page | Where | Pose |
 |---|---|---|
 | `/repos/…/trend` | frame not found, or not yours | lantern |
 | `/repos/…/trend` | a range holding no runs | hourglass |
+| `/repos` | an organization that has uploaded nothing | parcel |
+| `/repos` | signed in, and in no organization | envelope |
+| `/login` | beside the sign-in card | key |
+
+`parcel`, `key` and `envelope` were added on 2026-08-22, all three for the same
+reason: the pages were mostly empty colour. `/repos` for a new customer was one
+grey sentence in a card that stopped a third of the way down the window, and
+`/login` was a card floating alone with no header, no footer and no way back to
+the site. Neither was a layout bug — the sheet is sized by its contents and
+there was simply nothing on either page to hold it open.
+
+**Both `/repos` states share one block**, `.blankSlate` in
+`web/app/repos/trends.module.css` — `min-height: clamp(260px, 44vh, 400px)`,
+words left, figure right, and below 620px the figure moves above the words at
+the right margin. A min-height rather than a stretch to the viewport: filling
+the window would park the Yutic line exactly on the fold at every screen size.
+
+`parcel` is an open carton with nothing in it, held low, flaps folded back and
+shaken twice. **It is the pose to keep apart from `empty` in your head**: both
+are about nothing being there, and they mean different things. `empty` is a
+picture frame with no picture in it — *this page does not exist*. `parcel` is a
+container waiting on something from elsewhere — *nothing has arrived yet*. One
+is a dead end, the other is a beginning.
+
+`key` is a key held up beside the head, bow at the bottom, two bits at the top —
+the one prop in the set that names an action rather than an instrument. The hand
+grips the shaft rather than the bow: on the bow, the ring's paper annulus is
+three units against a hand of radius 9.5, and the whole thing read as a
+lollipop. The two teeth are not decoration either — a bare shaft with a ring
+under it read as a balloon on a string under about 150px, because **a key is
+recognised by its notches**, the way the tape is recognised by its graduations.
+
+`envelope` is held face-on in both hands, and offered forward once a cycle
+rather than turned — the only prop in the set that comes *nearer* instead of
+rotating. It stands where a signed-in person has an account and no organization,
+and the way out of that is an invitation that was emailed, so the drawing is the
+object they have to go and find. **The flap V is the whole thing.** A letter
+rising out of a pocket was drawn first and read as a sheet of paper being held,
+which is `reading`, with `stack` beside it — the set has two paper props already
+and a third made three. The closed flap is the one mark that says envelope and
+nothing else, and it survives to 118px where the letter version did not.
 
 `lantern` hangs a lamp low beside the figure, arm down — the only prop in the
 set *below* the body, which is what keeps it out of `magnify`'s silhouette when
@@ -291,14 +332,17 @@ set back down rather than turned: **an hourglass rotating on a page of charts
 reads as a loading spinner**, and "wait, it's coming" is the one thing that
 state must not say.
 
-Both are rendered twice and hidden by CSS, because the Cloud theme has three
+All five are rendered twice and hidden by CSS, because the Cloud theme has three
 states and the *auto* one leaves the server unable to know which ground the
 drawing will land on. That is the same cascade the wordmark and the Yutic
 endorsement already use, in `_styles/surface.module.css`.
 
-**Neither carries a sticker or links to `/cloud`.** Everyone who reaches these
-pages is signed into Cloud already; the offer would be selling something they
-have bought. Same call the 404 makes, for the neighbouring reason.
+**None of them carries a sticker or links to `/cloud`.** Everyone who reaches
+these pages is signed into Cloud already, or is signing in to it; the offer
+would be selling something they have bought. Same call the 404 makes, for the
+neighbouring reason. `/login` is the one that needed thought — a visitor with no
+account can land there — and the answer is the footnote at the foot of the card,
+which is a sentence rather than a figure holding a sign.
 
 **`empty` was added 2026-08-16 with the 404 page**, and it is the rule working
 rather than an exception to it: a new placement took a new pose. `shrug` was
@@ -358,7 +402,9 @@ kick and flash. The tape is drawn out and springs back. The glass sweeps. The
 sheets are tapped square. The page turns. Shoulders shrug, a hand waves, a
 finger jabs twice, the held cloud drifts. The lantern sweeps out along the
 ground; the hourglass is tipped and set down while one grain falls through it.
-Twelve poses, twelve idle animations, plus two that ride a pose — the
+The carton is shaken and nothing rattles; the key is raised and held up a beat;
+the envelope is offered forward and drawn back.
+Fifteen poses, fifteen idle animations, plus two that ride a pose — the
 camera's flash and the hourglass's grain — in `globals.css` under "The twins";
 `twins.tsx` holds the map of which parts of each drawing move.
 

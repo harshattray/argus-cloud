@@ -2,7 +2,32 @@
 
 **Private.** Contains credentials, pricing, margins, and strategy.
 
-Last updated: **2026-08-21** — **Step 6's session layer is live in
+Last updated: **2026-08-22** — **the signed-in surface got its chrome, and one
+defect that had been shipping since 2026-08-20 was found in a browser.**
+`.wordmark img { display: block }` outranks the bare `.onLight` / `.onDark`
+classes that implement the theme cascade, so **both ground-dependent wordmark
+files were rendering, stacked, on every signed-in Cloud page** — a mark with a
+faint duplicate along its underside, subtle enough to survive review. The theme
+switch is icons with one caption rather than three tracked words; the two
+sign-outs moved from a strip on the card's cut edge into an account menu in the
+masthead, where the second one can say what it does; `/login` gained a header, a
+footer and a way back to the site; and the two `/repos` empty states stopped
+collapsing the card to a third of the window. Three new twin poses, one per
+placement.
+
+**A local sign-in door came with it**, because none of the above could be looked
+at without fishing a magic link out of the dev server's console. One configured
+address, three conditions that must all hold, no default, 404 rather than 403
+when closed, and its own audit kind — `PATHWAYS.md` §10.7 5A.13 carries it as a
+threat-model entry rather than a development footnote. The seeds now create
+somebody to sign in as, which they never had: they built organizations, runs and
+credits and nobody who could see them.
+
+On `staging`, **not merged and not deployed**. Verify green at **1275 checks
+across thirty-five suites**, **1307** against real Postgres, `npm audit` **0**.
+`FinishedSPEC.md` §3ab, §3ac.
+
+Before that, **2026-08-21** — **Step 6's session layer is live in
 production.** `staging` merged to `main` (PR #18, `dc178cf`) and
 `scripts/golive-check.mjs` **passes every check against `normascope.com`**,
 including the fifteen that only exist since this work: `/login` under the strict
@@ -464,8 +489,8 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | Waitlist client-side validation, sharing the server's rules and wording | ✅ | `web/lib/waitlistEmail.ts`; both forms + the API import it — §4f |
 | **The hosted run report renders images, findings and history** (BuildV5 Phase H) | ✅ built 2026-08-19 | The gate — a prospect comparing a local report with the hosted one — needs Step 5 — `FinishedSPEC.md` §3t |
 | **Trends: repository view, frame trend chart, trends API** (BuildV5 Phase I) | ✅ built 2026-08-20 | The first page above `/r/{runId}`. First drift is *placed* from `enrichment.ts`, never recomputed — the counter-test shows the naive version disagreeing on a truncated window. 71 checks — §3u. ~~Owner-gated by `NORMA_DEV_OPEN`~~ **— since 2026-08-21 these pages are gated by the session layer, and `/repos` lists the tenant's repositories (§3aa). The development door remains for a laptop with no session** |
-| **Cloud app chrome: wordmark, breadcrumbs, frame navigation, theme switch, Yutic endorsement** | ✅ 2026-08-20 | One shell across `/r/` and `/repos/`. The theme has three states (light / dark / follow the device) and is a cookie read server-side, so there is no flash and no client JavaScript on either page tree. 32 checks — §3v |
-| **A labelled demo tenant** (`npm run seed:demo`) | ✅ 2026-08-20 | Three repositories, twelve weeks, six frames, real credit grants and `usage_events`. The organization is named `DEMO — … (sample data)` and it is the top breadcrumb, so the label is on screen throughout a walkthrough. **Not evidence** — §3v records the one surface where the label does not appear |
+| **Cloud app chrome: wordmark, breadcrumbs, frame navigation, theme switch, account menu, Yutic endorsement** | ✅ 2026-08-20, **rebuilt 2026-08-22** | One shell across `/r/`, `/repos/` and now `/login`. The theme has three states (light / dark / follow the device) and is a cookie read server-side, so there is no flash and no client JavaScript on either page tree. The switch is icons with only the selected one captioned — the unselected labels stay in the DOM as `visuallyHidden`, because a button whose accessible name is its `title` is a name much assistive technology will not read. Sign out and sign out everywhere moved into an account menu in the masthead: a native popover, still no client JavaScript, and the top layer is what keeps it out of the sheet's `overflow: hidden`. 32 + 27 checks — §3v, §3ab. **It also carried a live defect for two days**: both ground-dependent wordmark files rendered on every signed-in page, because a type-and-class selector setting `display` outranks the bare classes that hide one |
+| **A labelled demo tenant** (`npm run seed:demo`) | ✅ 2026-08-20, **signable-in 2026-08-22** | Three repositories, twelve weeks, six frames, real credit grants and `usage_events`. The organization is named `DEMO — … (sample data)` and it is the top breadcrumb, so the label is on screen throughout a walkthrough. **Not evidence** — §3v records the one surface where the label does not appear. **The seed built no user until 2026-08-22**, so a full seed followed by a sign-in landed on "No organization yet"; it now grants the local address owner membership in both tenants it creates — §3ac |
 | **Every Cloud figure explains itself** | ✅ 2026-08-20 | The word itself is the control, under a dotted underline — 26 on a seven-frame report. The text comes from `web/lib/glossary.ts`, which the public `/report` page also prints, so the words a prospect reads before signing up are the words they read after. **A first cut used a circled "?" and came to 103 of them; Harsha rejected it** — §3w records what replaced it and why the count fell. Native HTML popover, so `/repos/` still ships **zero client JavaScript** and no new inline styles. 52 checks — `FinishedSPEC.md` §3w |
 | **Hovering a chart point names its run** | ✅ 2026-08-20 | The trend chart draws a card — commit, measurement, the threshold that run was judged at, the verdict and the date — on `:hover`, from a full-height hit column per run. The sparklines use `<title>` instead, because `preserveAspectRatio="none"` would smear anything drawn in their coordinate system — §3w |
 | **Waiting is shown, and the brand book still holds** | ✅ 2026-08-20 | The Yutic mark, still, inside a ring that turns — because `yutic-brand-rules.txt` §01 says the mark is **never rotated or given effects**, and a spinning logo is both. Rendered at the 28px floor with one eye diameter of clearspace; `prefers-reduced-motion` stops it. Loading states on the three `force-dynamic` routes, and inline beside Explain and the share controls. **The rule is overridable and §09 is the precedent** — 14 checks, one of which is the one to delete if it is — §3x |
@@ -473,7 +498,7 @@ time on the 0.7.0 release, both now fixed but easy to reintroduce:
 | **A tenant of real runs** (`npm run seed:real`) | ✅ 2026-08-20 | Ten runs that actually happened, from `norma-bridge-usecase/` and `test-run/` cases 01–05: 59 frame rows, 151 images, 22.3 MB, 11 recorded Sonnet 5 findings. Every figure is read from the summary `norma-scope` wrote — nothing computed, no invented branch or SHA, and **no `usage_events`**, because that spend went through the CLI and a hosted usage row would claim otherwise. A separate organization from the demo one, named `REAL — …`, for the same reason the demo one is named `DEMO — …`. 21 checks — §3w |
 | **Cloud screenshots, both themes, one command** (`npm run capture:cloud`) | ✅ 2026-08-20 | 20 shots into `docs/screenshots/cloud/` with a generated manifest. Not `web/public/` — these are pictures of a surface that 404s in production. It refuses to write a screenshot of a page that did not load; §3w records the four ways the first version lied |
 
-| **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ **live on `normascope.com` 2026-08-21** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. 101 + 67 checks, and `golive-check` passes all fifteen L9 checks against production — `FinishedSPEC.md` §3aa |
+| **Sessions, both sign-in methods, and the abuse ladder behind the email one** (Step 6, Pathway 5 / §10.7 5A) | ✅ **live on `normascope.com` 2026-08-21** | Migration `021`. Server-side sessions (rows, not JWTs, so revocation lands on the next request), GitHub OAuth keyed on the immutable subject, magic links at 15 minutes and single use, invitations, owner claims, a keyed-hash auth audit log, and the five-ceiling email budget. **20 processes against one budget of 5 authorise exactly 5**; the naive per-process counter authorises all 20. Since 2026-08-22 there is also **one credential path that skips proving the address** — a local sign-in door for working on the signed-in surface, behind three conditions that must all hold, with no default, a 404 rather than a 403 when closed, and its own `dev-signin` audit kind. It is in the threat model at `PATHWAYS.md` §10.7 5A.13 rather than treated as tooling, and A13.7b shows the naive `NODE_ENV`-only guard open on a Vercel preview. 101 + 67 + 11 checks, and `golive-check` passes all fifteen L9 checks against production — `FinishedSPEC.md` §3aa |
 | **Cross-tenant probes are refused at the session layer** | ✅ 2026-08-21 | The gate Step 6 has carried since it was written. `authorize` takes the org list from the session and never from the request, and the counter-test runs the version that trusts a caller-supplied id and watches it open. `/repos` — the repository list Pathway 6 could not build without a session — exists |
 | **A magic link cannot be aimed at a stranger** | ✅ 2026-08-21 | The set of addresses anyone can make the service mail is members, live invitations, and the purchaser of an unclaimed organization. Everything else gets the identical response and no mail — which also means enumeration consumes no send budget, only the prober's own allowance |
 
